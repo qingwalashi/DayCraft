@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { toast } from '@/components/ui/use-toast'
+import { toast } from 'sonner'
 import { useTenantStore } from '@/lib/store/tenant-store'
+import { Tenant } from '@/lib/supabase/client'
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null)
@@ -11,19 +12,34 @@ export function useAuth() {
   const { setCurrentTenant } = useTenantStore()
 
   useEffect(() => {
+    const supabase = createClient()
+    
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user || null)
       setLoading(false)
+
+      // 当用户登录时获取其租户信息
+      if (user) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('tenant_id, tenants:tenant_id(*)')
+          .eq('id', user.id)
+          .single()
+        
+        if (data && data.tenants) {
+          setCurrentTenant(data.tenants as unknown as Tenant)
+        }
+      }
     }
-    
+
     getUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         setUser(session?.user || null)
         setLoading(false)
-        
+
         // 当用户登录时获取其租户信息
         if (session?.user) {
           const { data } = await supabase
@@ -32,11 +48,9 @@ export function useAuth() {
             .eq('id', session.user.id)
             .single()
           
-          if (data?.tenants) {
-            setCurrentTenant(data.tenants)
+          if (data && data.tenants) {
+            setCurrentTenant(data.tenants as unknown as Tenant)
           }
-        } else {
-          setCurrentTenant(null)
         }
       }
     )
@@ -49,28 +63,25 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string) => {
     try {
       setLoading(true)
+      const supabase = createClient()
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) {
-        toast({
-          title: '登录失败',
-          description: error.message,
-          variant: 'destructive'
-        })
+        toast.error('登录失败', {
+          description: error.message
+        });
         return false
       }
       
       router.push('/dashboard/overview')
       return true
     } catch (error: any) {
-      toast({
-        title: '登录失败',
-        description: error.message,
-        variant: 'destructive'
-      })
+      toast.error('登录失败', {
+        description: error.message
+      });
       return false
     } finally {
       setLoading(false)
@@ -80,17 +91,16 @@ export function useAuth() {
   const signup = useCallback(async (email: string, password: string, tenantName: string) => {
     try {
       setLoading(true)
+      const supabase = createClient()
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       })
 
       if (authError) {
-        toast({
-          title: '注册失败',
-          description: authError.message,
-          variant: 'destructive'
-        })
+        toast.error('注册失败', {
+          description: authError.message
+        });
         return false
       }
 
@@ -102,16 +112,14 @@ export function useAuth() {
           .select()
         
         if (tenantError) {
-          toast({
-            title: '创建租户失败',
-            description: tenantError.message,
-            variant: 'destructive'
-          })
+          toast.error('创建租户失败', {
+            description: tenantError.message
+          });
           return false
         }
         
         // 创建用户资料
-        const tenant = tenantData[0]
+        const tenant = tenantData[0] as Tenant;
         await supabase
           .from('user_profiles')
           .insert([{
@@ -125,21 +133,18 @@ export function useAuth() {
         // 设置当前租户
         setCurrentTenant(tenant)
         
-        toast({
-          title: '注册成功',
-          description: '请登录您的账户',
-        })
+        toast.success('注册成功', {
+          description: '请登录您的账户'
+        });
         
         router.push('/login')
         return true
       }
       
     } catch (error: any) {
-      toast({
-        title: '注册失败',
-        description: error.message,
-        variant: 'destructive'
-      })
+      toast.error('注册失败', {
+        description: error.message
+      });
       return false
     } finally {
       setLoading(false)
@@ -147,17 +152,11 @@ export function useAuth() {
   }, [router, setCurrentTenant])
 
   const logout = useCallback(async () => {
+    const supabase = createClient()
     await supabase.auth.signOut()
     setCurrentTenant(null)
     router.push('/')
   }, [router, setCurrentTenant])
 
-  return {
-    user,
-    loading,
-    login,
-    logout,
-    signup,
-    isAuthenticated: !!user
-  }
+  return { user, loading, login, signup, logout }
 } 

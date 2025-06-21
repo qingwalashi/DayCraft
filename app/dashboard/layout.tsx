@@ -119,8 +119,8 @@ export default function DashboardLayout({
             // 使用新创建的资料
             setUserProfile({
               id: user.id,
-              name: newProfile.full_name || user.email?.split('@')[0] || '用户',
-              email: newProfile.email || user.email || '',
+              name: (newProfile.full_name as string) || user.email?.split('@')[0] || '用户',
+              email: (newProfile.email as string) || user.email || '',
             });
           }
         } else {
@@ -137,8 +137,8 @@ export default function DashboardLayout({
         // 成功获取资料
         setUserProfile({
           id: user.id,
-          name: data.full_name || user.email?.split('@')[0] || '用户',
-          email: data.email || user.email || '',
+          name: (data.full_name as string) || user.email?.split('@')[0] || '用户',
+          email: (data.email as string) || user.email || '',
         });
       }
     } catch (error) {

@@ -91,7 +91,7 @@ export default function DashboardOverview() {
       
       if (error) throw error;
       
-      setProjects(data || []);
+      setProjects(data as Project[] || []);
       return data;
     } catch (error) {
       console.error("获取项目数据失败", error);
@@ -124,13 +124,14 @@ export default function DashboardOverview() {
       
       if (error) throw error;
       
+      // 使用类型断言处理数据
       const formattedReports = (data || []).map(report => ({
-        id: report.id,
-        date: report.date,
+        id: report.id as string,
+        date: report.date as string,
         status: '已提交',
-        workItems: (report.report_items || []).map((item: any) => ({
-          content: item.content,
-          project: item.projects
+        workItems: ((report.report_items || []) as unknown as any[]).map((item: any) => ({
+          content: item.content as string,
+          project: item.projects as Project
         }))
       }));
       

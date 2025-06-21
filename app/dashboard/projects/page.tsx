@@ -62,7 +62,7 @@ export default function ProjectsPage() {
           throw error;
         }
         
-        setProjects(data || []);
+        setProjects(data as Project[] || []);
       } catch (error) {
         console.error('获取项目失败', error);
         toast.error('获取项目失败');
@@ -117,7 +117,7 @@ export default function ProjectsPage() {
         throw error;
       }
       
-      setProjects([insertedProject, ...projects]);
+      setProjects([insertedProject as Project, ...projects]);
       setIsAddingProject(false);
       reset();
       toast.success('项目创建成功');
