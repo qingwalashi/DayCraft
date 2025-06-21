@@ -16,6 +16,17 @@ interface WorkItem {
   projectId: string;
 }
 
+// 添加一些类型定义
+interface DailyReportData {
+  id: string;
+}
+
+interface ReportItemData {
+  id: string;
+  content: string;
+  project_id: string;
+}
+
 export default function NewDailyReportPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -107,12 +118,14 @@ export default function NewDailyReportPage() {
         throw error;
       }
       
-      if (data && data.id) {
+      // 使用类型断言
+      const typedData = data as DailyReportData;
+      if (typedData && typedData.id) {
         setExistingReport(true);
-        setExistingReportId(data.id);
+        setExistingReportId(typedData.id);
         
         // 如果找到现有日报，加载它的内容
-        await loadExistingReportContent(data.id);
+        await loadExistingReportContent(typedData.id);
       }
       
     } catch (error) {
@@ -140,12 +153,15 @@ export default function NewDailyReportPage() {
       
       console.log(`加载到 ${data?.length || 0} 条工作项`);
       
+      // 使用类型断言
+      const typedItems = data as ReportItemData[];
+      
       // 保存已有工作项的ID，用于后续更新
-      if (data && data.length > 0) {
-        setExistingReportItems(data.map(item => ({id: item.id})));
+      if (typedItems && typedItems.length > 0) {
+        setExistingReportItems(typedItems.map(item => ({id: item.id})));
         
         // 将现有的日报项目转换为WorkItem格式，包含ID信息
-        const existingItems: WorkItem[] = data.map(item => ({
+        const existingItems: WorkItem[] = typedItems.map(item => ({
           id: item.id,
           content: item.content,
           projectId: item.project_id
@@ -322,7 +338,7 @@ export default function NewDailyReportPage() {
           const { data: remainingItems, error: checkError } = await supabase
             .from('report_items')
             .select('id')
-            .eq('report_id', reportId);
+            .eq('report_id', reportId as string);
             
           if (checkError) {
             throw checkError;
@@ -335,7 +351,7 @@ export default function NewDailyReportPage() {
             const { error: finalDeleteError } = await supabase
               .from('report_items')
               .delete()
-              .eq('report_id', reportId);
+              .eq('report_id', reportId as string);
               
             if (finalDeleteError) {
               console.error('最终删除失败:', finalDeleteError);
@@ -351,7 +367,7 @@ export default function NewDailyReportPage() {
         const { error: updateError } = await supabase
           .from('daily_reports')
           .update({ updated_at: new Date().toISOString() })
-          .eq('id', reportId);
+          .eq('id', reportId as string);
         
         if (updateError) {
           console.error('更新日报记录失败', updateError);
@@ -380,7 +396,7 @@ export default function NewDailyReportPage() {
       
       // 添加工作项
       const reportItems = filteredItems.map(item => ({
-        report_id: reportId,
+        report_id: reportId as string,
         project_id: item.projectId,
         content: item.content
       }));
@@ -409,7 +425,7 @@ export default function NewDailyReportPage() {
         const { data: finalItems, error: finalCheckError } = await supabase
           .from('report_items')
           .select('id')
-          .eq('report_id', reportId);
+          .eq('report_id', reportId as string);
           
         if (finalCheckError) {
           console.warn('最终检查失败:', finalCheckError);
