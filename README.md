@@ -46,10 +46,10 @@ yarn install
 
 3. 配置环境变量
 
-复制 `.env.example` 文件并重命名为 `.env.local`，然后填入你的 Supabase 配置信息：
+复制 `.env.example` 文件并重命名为 `.env`，然后填入你的 Supabase 配置信息：
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
 4. 初始化数据库
