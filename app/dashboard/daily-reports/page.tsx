@@ -24,6 +24,21 @@ interface ReportItemWithProject {
   project: Project;
 }
 
+// 添加接口定义
+interface DailyReportData {
+  id: string;
+  date: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ReportItemData {
+  id: string;
+  content: string;
+  projects: Project | Project[];
+}
+
 export default function DailyReportsPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -64,7 +79,7 @@ export default function DailyReportsPage() {
         throw projectsError;
       }
       
-      setProjects(projectsData || []);
+      setProjects(projectsData as Project[] || []);
       
       // 获取日报数据
       const { data: reportsData, error: reportsError } = await supabase
@@ -80,7 +95,7 @@ export default function DailyReportsPage() {
       const reportsWithItems: ReportWithItems[] = [];
       
       // 获取每个日报的工作项
-      for (const report of reportsData || []) {
+      for (const report of (reportsData as unknown as DailyReportData[]) || []) {
         // 获取该日报的所有工作项
         const { data: reportItemsData, error: reportItemsError } = await supabase
           .from('report_items')
@@ -103,15 +118,15 @@ export default function DailyReportsPage() {
         const day = format(reportDate, 'EEEE', { locale: zhCN });
         const formattedDate = format(reportDate, 'yyyy-MM-dd');
         
-        const items = reportItemsData?.map(item => {
+        const items = (reportItemsData as unknown as ReportItemData[] || []).map(item => {
           // 确保projects是单个Project对象而不是数组
           const project = Array.isArray(item.projects) ? item.projects[0] : item.projects;
           return {
-            id: item.id,
-            content: item.content,
+            id: item.id as string,
+            content: item.content as string,
             project: project as Project
           };
-        }) || [];
+        });
         
         reportsWithItems.push({
           id: report.id,
