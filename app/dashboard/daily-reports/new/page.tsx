@@ -50,7 +50,8 @@ export default function NewDailyReportPage() {
           throw projectsError;
         }
 
-        setProjects(projectsData || []);
+        // 添加类型断言确保类型匹配
+        setProjects(projectsData as Project[] || []);
         
         // 如果有可用项目，设置第一个工作项的默认项目
         if (projectsData && projectsData.length > 0) {

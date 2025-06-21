@@ -1,5 +1,6 @@
-export default {
-    server: {
-      host: '0.0.0.0'
-    }
-  }
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // 配置项放在这里
+}
+
+export default nextConfig;
