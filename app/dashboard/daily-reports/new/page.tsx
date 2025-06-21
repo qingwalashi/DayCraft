@@ -55,7 +55,9 @@ export default function NewDailyReportPage() {
         
         // 如果有可用项目，设置第一个工作项的默认项目
         if (projectsData && projectsData.length > 0) {
-          setWorkItems([{ content: '', projectId: projectsData[0].id }]);
+          // 添加类型断言确保id的类型为string
+          const firstProject = projectsData[0] as Project;
+          setWorkItems([{ content: '', projectId: firstProject.id }]);
         }
         
         // 检查URL参数中是否有日期
