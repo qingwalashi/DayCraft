@@ -1,0 +1,693 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon } from "lucide-react";
+import Link from "next/link";
+import { useAuth } from "@/contexts/auth-context";
+import { createClient, Project } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
+
+interface WorkItem {
+  id?: string; // 添加可选的id字段，用于跟踪已有工作项
+  content: string;
+  projectId: string;
+}
+
+export default function NewDailyReportPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingExistingReport, setIsLoadingExistingReport] = useState(false);
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [workItems, setWorkItems] = useState<WorkItem[]>([{ content: '', projectId: '' }]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [existingReport, setExistingReport] = useState<boolean>(false);
+  const [existingReportId, setExistingReportId] = useState<string | null>(null);
+  const [existingReportItems, setExistingReportItems] = useState<{id: string}[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // 加载活跃项目数据
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchProjects = async () => {
+      setIsLoading(true);
+      try {
+        // 获取所有活跃的项目
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('name');
+
+        if (projectsError) {
+          throw projectsError;
+        }
+
+        setProjects(projectsData || []);
+        
+        // 如果有可用项目，设置第一个工作项的默认项目
+        if (projectsData && projectsData.length > 0) {
+          setWorkItems([{ content: '', projectId: projectsData[0].id }]);
+        }
+        
+        // 检查URL参数中是否有日期
+        const urlParams = new URLSearchParams(window.location.search);
+        const dateParam = urlParams.get('date');
+        
+        if (dateParam) {
+          console.log(`从URL参数获取日期: ${dateParam}`);
+          setDate(dateParam);
+          await checkExistingReport(dateParam);
+        } else {
+          // 检查所选日期是否已存在日报
+          await checkExistingReport(date);
+        }
+      } catch (error) {
+        console.error('获取项目失败', error);
+        toast.error('获取项目数据失败');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [user, supabase]);
+
+  // 检查所选日期是否已存在日报
+  const checkExistingReport = async (selectedDate: string) => {
+    if (!user) return;
+    
+    try {
+      // 重置已有日报状态
+      setExistingReportId(null);
+      setExistingReport(false);
+      setExistingReportItems([]);
+      
+      const { data, error } = await supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', selectedDate)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGRST116') { // 没有找到记录
+          return;
+        }
+        throw error;
+      }
+      
+      if (data && data.id) {
+        setExistingReport(true);
+        setExistingReportId(data.id);
+        
+        // 如果找到现有日报，加载它的内容
+        await loadExistingReportContent(data.id);
+      }
+      
+    } catch (error) {
+      console.error('检查日报是否存在时出错', error);
+    }
+  };
+  
+  // 加载已有日报的内容
+  const loadExistingReportContent = async (reportId: string) => {
+    setIsLoadingExistingReport(true);
+    try {
+      console.log(`正在加载日报ID: ${reportId} 的内容`);
+      const { data, error } = await supabase
+        .from('report_items')
+        .select(`
+          id,
+          content,
+          project_id
+        `)
+        .eq('report_id', reportId);
+        
+      if (error) {
+        throw error;
+      }
+      
+      console.log(`加载到 ${data?.length || 0} 条工作项`);
+      
+      // 保存已有工作项的ID，用于后续更新
+      if (data && data.length > 0) {
+        setExistingReportItems(data.map(item => ({id: item.id})));
+        
+        // 将现有的日报项目转换为WorkItem格式，包含ID信息
+        const existingItems: WorkItem[] = data.map(item => ({
+          id: item.id,
+          content: item.content,
+          projectId: item.project_id
+        }));
+        
+        setWorkItems(existingItems);
+        toast.info('已加载现有日报内容');
+      } else {
+        // 如果数据库中有日报记录但没有工作项
+        if (projects.length > 0) {
+          setWorkItems([{ content: '', projectId: projects[0].id }]);
+        }
+        toast.info('该日报没有工作内容，可以添加新内容');
+      }
+    } catch (error) {
+      console.error('加载日报内容失败', error);
+      toast.error('加载日报内容失败');
+    } finally {
+      setIsLoadingExistingReport(false);
+    }
+  };
+
+  // 处理日期变更
+  const handleDateChange = async (newDate: string) => {
+    setDate(newDate);
+    await checkExistingReport(newDate);
+  };
+
+  // 处理工作项内容变更
+  const handleWorkItemContentChange = (index: number, content: string) => {
+    const newWorkItems = [...workItems];
+    newWorkItems[index].content = content;
+    setWorkItems(newWorkItems);
+  };
+
+  // 处理工作项项目变更
+  const handleWorkItemProjectChange = (index: number, projectId: string) => {
+    const newWorkItems = [...workItems];
+    newWorkItems[index].projectId = projectId;
+    setWorkItems(newWorkItems);
+  };
+
+  // 添加新的工作项
+  const addWorkItem = () => {
+    // 获取最后一个工作项的项目ID作为默认值
+    const lastItemProjectId = workItems.length > 0 
+      ? workItems[workItems.length - 1].projectId 
+      : (projects.length > 0 ? projects[0].id : '');
+    
+    setWorkItems([...workItems, { content: '', projectId: lastItemProjectId }]);
+  };
+
+  // 删除工作项
+  const removeWorkItem = (index: number) => {
+    const newWorkItems = [...workItems];
+    newWorkItems.splice(index, 1);
+    setWorkItems(newWorkItems);
+  };
+
+  // 获取项目名称
+  const getProjectName = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    return project ? `${project.name} (${project.code})` : "";
+  };
+
+  // 复制预览内容为YAML格式
+  const handleCopyPreview = () => {
+    // 过滤有效的工作项
+    const validWorkItems = workItems.filter(item => item.content.trim() !== '' && item.projectId);
+    
+    // 按项目组织工作内容
+    const projectMap = new Map<string, {name: string, code: string, items: string[]}>();
+    
+    validWorkItems.forEach(item => {
+      const project = projects.find(p => p.id === item.projectId);
+      if (!project) return;
+      
+      if (!projectMap.has(project.id)) {
+        projectMap.set(project.id, {
+          name: project.name,
+          code: project.code,
+          items: []
+        });
+      }
+      
+      projectMap.get(project.id)?.items.push(item.content);
+    });
+    
+    // 生成YAML格式内容
+    let yamlContent = '';
+    
+    projectMap.forEach(project => {
+      yamlContent += `${project.name} (${project.code}):\n`;
+      project.items.forEach(content => {
+        yamlContent += `  - ${content}\n`;
+      });
+      yamlContent += '\n';
+    });
+    
+    // 复制到剪贴板
+    navigator.clipboard.writeText(yamlContent)
+      .then(() => {
+        toast.success('日报内容已复制到剪贴板');
+      })
+      .catch(err => {
+        console.error('复制失败:', err);
+        toast.error('复制失败，请重试');
+      });
+  };
+
+  // 切换预览模式
+  const togglePreview = () => {
+    setShowPreview(!showPreview);
+  };
+
+  // 提交日报
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast.error('用户未登录');
+      return;
+    }
+    
+    setIsSubmitting(true);
+
+    // 过滤空的工作项
+    const filteredItems = workItems.filter(item => 
+      item.content.trim() !== '' && 
+      item.projectId
+    );
+    
+    try {
+      let reportId;
+      
+      // 检查是否已存在日报
+      if (existingReport && existingReportId) {
+        reportId = existingReportId;
+        console.log(`更新已有日报 ID: ${reportId}`);
+        
+        // 确保先删除原有工作项 - 改为逐条确认删除
+        if (existingReportItems.length > 0) {
+          console.log(`准备删除 ${existingReportItems.length} 条原有工作项`);
+          
+          // 使用事务或批量操作删除所有工作项
+          const deletePromises = [];
+          for (const item of existingReportItems) {
+            const deletePromise = supabase
+              .from('report_items')
+              .delete()
+              .eq('id', item.id);
+            
+            deletePromises.push(deletePromise);
+          }
+          
+          // 等待所有删除操作完成
+          const deleteResults = await Promise.all(deletePromises);
+          
+          // 检查是否有删除失败的情况
+          let hasDeleteError = false;
+          deleteResults.forEach((result, index) => {
+            if (result.error) {
+              console.error(`删除ID为 ${existingReportItems[index].id} 的工作项失败:`, result.error);
+              hasDeleteError = true;
+            }
+          });
+          
+          if (hasDeleteError) {
+            throw new Error('删除原有工作项时出现错误');
+          }
+          
+          console.log(`已删除所有原有工作项`);
+          
+          // 额外验证：检查工作项是否真的已被删除
+          const { data: remainingItems, error: checkError } = await supabase
+            .from('report_items')
+            .select('id')
+            .eq('report_id', reportId);
+            
+          if (checkError) {
+            throw checkError;
+          }
+          
+          if (remainingItems && remainingItems.length > 0) {
+            console.warn(`警告：仍有 ${remainingItems.length} 个工作项未被删除`);
+            
+            // 最后一次尝试删除所有剩余项
+            const { error: finalDeleteError } = await supabase
+              .from('report_items')
+              .delete()
+              .eq('report_id', reportId);
+              
+            if (finalDeleteError) {
+              console.error('最终删除失败:', finalDeleteError);
+              throw finalDeleteError;
+            }
+          }
+        }
+        
+        // 等待一小段时间，确保删除操作完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 更新日报记录
+        const { error: updateError } = await supabase
+          .from('daily_reports')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', reportId);
+        
+        if (updateError) {
+          console.error('更新日报记录失败', updateError);
+          throw updateError;
+        }
+      } else {
+        console.log(`创建新日报，日期: ${date}`);
+        // 创建新日报
+        const { data: reportData, error: reportError } = await supabase
+          .from('daily_reports')
+          .insert({
+            user_id: user.id,
+            date: date
+          })
+          .select()
+          .single();
+        
+        if (reportError) {
+          console.error('创建新日报失败', reportError);
+          throw reportError;
+        }
+        
+        reportId = reportData.id;
+        console.log(`新创建的日报 ID: ${reportId}`);
+      }
+      
+      // 添加工作项
+      const reportItems = filteredItems.map(item => ({
+        report_id: reportId,
+        project_id: item.projectId,
+        content: item.content
+      }));
+      
+      // 确保工作项不为空
+      if (reportItems.length > 0) {
+        console.log(`准备插入 ${reportItems.length} 条工作项`);
+        console.log('工作项内容:', JSON.stringify(reportItems));
+        
+        // 等待一小段时间，确保上一个操作完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 创建新的工作项
+        const { data: insertedItems, error: itemsError } = await supabase
+          .from('report_items')
+          .insert(reportItems)
+          .select();
+        
+        if (itemsError) {
+          console.error('添加工作项失败', itemsError);
+          throw itemsError;
+        }
+        console.log(`成功添加了 ${insertedItems?.length || 0} 条工作项`);
+        
+        // 额外验证：检查插入后的工作项总数
+        const { data: finalItems, error: finalCheckError } = await supabase
+          .from('report_items')
+          .select('id')
+          .eq('report_id', reportId);
+          
+        if (finalCheckError) {
+          console.warn('最终检查失败:', finalCheckError);
+        } else {
+          console.log(`日报现在共有 ${finalItems?.length || 0} 条工作项`);
+          
+          if (finalItems && reportItems.length !== finalItems.length) {
+            console.warn(`警告：预期应有 ${reportItems.length} 条工作项，但实际有 ${finalItems.length} 条`);
+          }
+        }
+      }
+      
+      toast.success(existingReport ? '日报更新成功' : '日报创建成功');
+      
+      // 等待一点时间让用户看到成功消息
+      await new Promise(resolve => setTimeout(resolve, 800));
+      router.push('/dashboard/daily-reports');
+      
+    } catch (error) {
+      console.error('提交日报失败', error);
+      toast.error('提交日报失败');
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+        <span className="ml-2 text-gray-500">加载中...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <Link href="/dashboard/daily-reports" className="mr-4 text-gray-500 hover:text-gray-700">
+            <ArrowLeftIcon className="h-5 w-5" />
+          </Link>
+          <h1 className="text-2xl font-bold">{existingReport ? '编辑日报' : '新建日报'}</h1>
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={togglePreview}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <EyeIcon className="h-4 w-4 mr-2" />
+            {showPreview ? '返回编辑' : '预览日报'}
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            <SaveIcon className="h-4 w-4 mr-2" />
+            {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
+          </button>
+        </div>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+          <p className="text-yellow-800">
+            您目前没有活跃的项目。请先在 
+            <Link href="/dashboard/projects" className="text-blue-600 hover:underline">
+              项目管理
+            </Link> 
+            中创建并激活项目后再创建日报。
+          </p>
+        </div>
+      ) : showPreview ? (
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium">日报预览</h2>
+            <button
+              onClick={handleCopyPreview}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <CopyIcon className="h-4 w-4 mr-1" />
+              复制内容
+            </button>
+          </div>
+          
+          <div className="border-b pb-2 mb-4">
+            <p className="font-medium">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
+            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 mt-1 inline-block">
+              {existingReport ? '已提交' : '未提交'}
+            </span>
+          </div>
+          
+          <div className="space-y-4">
+            {projects.map(project => {
+              const projectWorkItems = workItems.filter(item => 
+                item.projectId === project.id && item.content.trim() !== ''
+              );
+              
+              if (projectWorkItems.length === 0) return null;
+              
+              return (
+                <div key={project.id} className="border-l-2 border-blue-500 pl-3">
+                  <div className="text-sm font-medium text-blue-600 mb-1">
+                    {project.name} ({project.code})
+                  </div>
+                  <ul className="space-y-1">
+                    {projectWorkItems.map((item, idx) => (
+                      <li key={idx} className="text-sm text-gray-500 flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>{item.content}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            
+            {workItems.every(item => item.content.trim() === '') && (
+              <div className="text-center text-gray-500 py-8">
+                请添加至少一项工作内容
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* 日期选择 */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="mb-4">
+              <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
+                日报日期
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="date"
+                  id="date"
+                  name="date"
+                  value={date}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  required
+                  disabled={isLoadingExistingReport}
+                />
+              </div>
+              {existingReport && (
+                <div className="mt-2 flex items-center">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    已有日报
+                  </span>
+                  <span className="ml-2 text-sm text-gray-600">
+                    已加载该日期的日报内容，可以直接编辑
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 工作内容 */}
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* 工作内容 - 占2/3 */}
+            <div className="lg:w-2/3 bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-4">今日工作内容</h2>
+              {isLoadingExistingReport ? (
+                <div className="flex justify-center items-center p-12">
+                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-sm text-gray-500">加载日报内容...</span>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {workItems.map((item, index) => (
+                    <div key={index} className="space-y-2 p-3 bg-gray-50 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-medium text-gray-700">
+                          工作项 {index + 1}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeWorkItem(index)}
+                          className="p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="md:col-span-3">
+                          <label htmlFor={`content-${index}`} className="block text-xs text-gray-500 mb-1">
+                            工作内容
+                          </label>
+                          <input
+                            id={`content-${index}`}
+                            type="text"
+                            value={item.content}
+                            onChange={(e) => handleWorkItemContentChange(index, e.target.value)}
+                            placeholder="描述您完成的工作内容"
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          />
+                        </div>
+                        <div className="md:col-span-1">
+                          <label htmlFor={`project-${index}`} className="block text-xs text-gray-500 mb-1">
+                            所属项目
+                          </label>
+                          <select
+                            id={`project-${index}`}
+                            value={item.projectId}
+                            onChange={(e) => handleWorkItemProjectChange(index, e.target.value)}
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            required
+                          >
+                            <option value="" disabled>选择项目</option>
+                            {projects.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.name} ({project.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addWorkItem}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    添加工作项
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 日报预览 - 占1/3 */}
+            <div className="lg:w-1/3 bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-4">日报预览</h2>
+              {isLoadingExistingReport ? (
+                <div className="flex justify-center items-center p-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-sm text-gray-500">加载中...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {projects.map(project => {
+                    const projectWorkItems = workItems.filter(item => 
+                      item.projectId === project.id && item.content.trim() !== ''
+                    );
+                    
+                    if (projectWorkItems.length === 0) return null;
+                    
+                    return (
+                      <div key={project.id} className="border-l-2 border-blue-500 pl-3">
+                        <div className="text-sm font-medium text-blue-600 mb-1">
+                          {project.name} ({project.code})
+                        </div>
+                        <ul className="space-y-1">
+                          {projectWorkItems.map((item, idx) => (
+                            <li key={idx} className="text-sm text-gray-500 flex items-start">
+                              <span className="mr-2">•</span>
+                              <span>{item.content}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                  
+                  {workItems.every(item => item.content.trim() === '') && (
+                    <div className="text-center text-gray-500 py-8">
+                      请添加至少一项工作内容
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+} 
