@@ -10,7 +10,16 @@ export const createClient = () => {
     return supabaseClient;
   }
 
+  // 获取当前环境的站点URL
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 
+    (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+
+  // 创建客户端
   supabaseClient = createClientComponentClient();
+  
+  // 设置身份验证重定向URL
+  // 注意：这里我们不能直接在创建客户端时设置auth.redirectTo选项，因为类型定义不支持
+  // 但我们可以在使用signUp或signIn方法时指定redirectTo
 
   return supabaseClient;
 };

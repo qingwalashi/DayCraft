@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTenantStore } from '@/lib/store/tenant-store'
 import { Tenant } from '@/lib/supabase/client'
+import { getAuthCallbackUrl } from '@/lib/utils/env'
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null)
@@ -64,6 +65,10 @@ export function useAuth() {
     try {
       setLoading(true)
       const supabase = createClient()
+      
+      // 获取重定向URL
+      const redirectUrl = getAuthCallbackUrl();
+      
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -92,9 +97,16 @@ export function useAuth() {
     try {
       setLoading(true)
       const supabase = createClient()
+      
+      // 获取重定向URL
+      const redirectUrl = getAuthCallbackUrl();
+      
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
       })
 
       if (authError) {
