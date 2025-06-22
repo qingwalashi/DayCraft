@@ -297,15 +297,61 @@ export default function DashboardOverview() {
       yamlContent += '\n';
     });
     
-    // 复制到剪贴板
-    navigator.clipboard.writeText(yamlContent)
-      .then(() => {
-        toast.success('日报内容已复制到剪贴板');
-      })
-      .catch(err => {
-        console.error('复制失败:', err);
+    try {
+      // 使用异步函数进行复制
+      if (navigator.clipboard && window.isSecureContext) {
+        // 安全上下文中使用标准 Clipboard API
+        navigator.clipboard.writeText(yamlContent)
+          .then(() => {
+            toast.success('日报内容已复制到剪贴板');
+          })
+          .catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyTextToClipboard(yamlContent);
+          });
+      } else {
+        // 回退方法，适用于非安全上下文
+        fallbackCopyTextToClipboard(yamlContent);
+      }
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast.error('复制失败，请重试');
+    }
+  };
+
+  // 回退复制方法
+  const fallbackCopyTextToClipboard = (text: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // 避免滚动到底部
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          toast.success('日报内容已复制到剪贴板');
+        } else {
+          toast.error('复制失败，请重试');
+        }
+      } catch (err) {
+        console.error('复制命令执行失败:', err);
         toast.error('复制失败，请重试');
-      });
+      }
+      
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.error('回退复制方法失败:', err);
+      toast.error('复制失败，请重试');
+    }
   };
 
   if (loading || isLoading || !user) {

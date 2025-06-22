@@ -253,64 +253,74 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">项目管理</h1>
-        <button
-          onClick={() => setIsAddingProject(true)}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          disabled={isLoading}
-        >
-          <PlusIcon className="h-4 w-4 mr-2" />
-          <span>添加项目</span>
-        </button>
-      </div>
-
-      {/* 搜索栏 */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <SearchIcon className="h-5 w-5 text-gray-400" />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">项目管理</h1>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* 搜索框 */}
+          <div className="relative flex-grow sm:flex-grow-0 sm:min-w-[200px]">
+            <input
+              type="text"
+              placeholder="搜索项目..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <SearchIcon className="h-5 w-5 text-gray-400" />
+            </div>
+          </div>
+          
+          {/* 添加项目按钮 */}
+          <button
+            onClick={() => setIsAddingProject(true)}
+            className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            <span>添加项目</span>
+          </button>
         </div>
-        <input
-          type="text"
-          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-          placeholder="搜索项目名称、编号或描述..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
       </div>
 
       {/* 添加项目表单 */}
       {isAddingProject && (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-medium mb-4">添加新项目</h2>
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-6 animate-fade-in">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">添加新项目</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                项目名称 <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="name"
-                type="text"
-                {...register("name")}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
-                项目编号 <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="code"
-                type="text"
-                {...register("code")}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              />
-              {errors.code && (
-                <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                  项目名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.name ? "border-red-500" : "border-gray-300"
+                  }`}
+                  placeholder="输入项目名称"
+                  {...register("name")}
+                />
+                {errors.name && (
+                  <p className="mt-1 text-sm text-red-500">{errors.name.message}</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
+                  项目编号 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="code"
+                  type="text"
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.code ? "border-red-500" : "border-gray-300"
+                  }`}
+                  placeholder="输入项目编号"
+                  {...register("code")}
+                />
+                {errors.code && (
+                  <p className="mt-1 text-sm text-red-500">{errors.code.message}</p>
+                )}
+              </div>
             </div>
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
@@ -319,40 +329,38 @@ export default function ProjectsPage() {
               <textarea
                 id="description"
                 rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="输入项目描述（可选）"
                 {...register("description")}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              />
-              {errors.description && (
-                <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-              )}
+              ></textarea>
             </div>
             <div className="flex items-center">
               <input
                 id="is_active"
                 type="checkbox"
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 {...register("is_active")}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
                 项目活跃
               </label>
             </div>
-            <div className="flex justify-end space-x-3">
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="submit"
+                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                保存项目
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   setIsAddingProject(false);
                   reset();
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 取消
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
-              >
-                保存
               </button>
             </div>
           </form>
@@ -360,149 +368,209 @@ export default function ProjectsPage() {
       )}
 
       {/* 项目列表 */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-medium">项目列表</h2>
-        </div>
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         {isLoading ? (
-          <div className="flex justify-center items-center p-12">
+          <div className="p-8 flex justify-center">
             <Loader2Icon className="h-8 w-8 text-blue-500 animate-spin" />
-            <span className="ml-2 text-gray-500">加载中...</span>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-gray-500">暂无项目数据</p>
+            <button
+              onClick={() => setIsAddingProject(true)}
+              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+            >
+              <PlusIcon className="h-5 w-5 mr-2" />
+              添加第一个项目
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     项目名称
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     项目编号
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    项目描述
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    描述
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     状态
                   </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     操作
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredProjects.length > 0 ? (
-                  filteredProjects.map((project) => (
-                    <tr key={project.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingProjectId === project.id ? (
-                          <input
-                            type="text"
-                            className="block w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            value={editProject.name}
-                            onChange={(e) => setEditProject({ ...editProject, name: e.target.value })}
-                          />
-                        ) : (
-                          <div className="text-sm font-medium text-gray-900">{project.name}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingProjectId === project.id ? (
-                          <input
-                            type="text"
-                            className="block w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            value={editProject.code}
-                            onChange={(e) => setEditProject({ ...editProject, code: e.target.value })}
-                          />
-                        ) : (
-                          <div className="text-sm text-blue-600 font-mono">{project.code}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        {editingProjectId === project.id ? (
-                          <textarea
-                            rows={2}
-                            className="block w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            value={editProject.description}
-                            onChange={(e) => setEditProject({ ...editProject, description: e.target.value })}
-                          />
-                        ) : (
-                          <div className="text-sm text-gray-500 line-clamp-2">{project.description || '无描述'}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingProjectId === project.id ? (
-                          <label className="inline-flex items-center">
-                            <input
-                              type="checkbox"
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              checked={editProject.is_active}
-                              onChange={(e) => setEditProject({ ...editProject, is_active: e.target.checked })}
-                            />
-                            <span className="ml-2 text-sm text-gray-900">
-                              {editProject.is_active ? '活跃' : '未活跃'}
-                            </span>
-                          </label>
-                        ) : (
-                          <span 
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              project.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                            }`}
-                            onClick={() => toggleProjectStatus(project.id, project.is_active)}
-                            style={{ cursor: 'pointer' }}
+                {filteredProjects.map((project) => (
+                  <tr key={project.id} className={!project.is_active ? "bg-gray-50" : undefined}>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <div className="text-sm font-medium text-gray-900">{project.name}</div>
+                        {/* 移动端显示项目编号和状态 */}
+                        <div className="text-xs text-gray-500 mt-1 sm:hidden">
+                          {project.code} · {project.is_active ? "活跃" : "未活跃"}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                      <div className="text-sm text-gray-900">{project.code}</div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
+                      <div className="text-sm text-gray-500 line-clamp-2">{project.description || "-"}</div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          project.is_active
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {project.is_active ? "活跃" : "未活跃"}
+                      </span>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {editingProjectId === project.id ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={saveEditedProject}
+                            className="text-green-600 hover:text-green-900"
                           >
-                            {project.is_active ? '活跃' : '未活跃'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {editingProjectId === project.id ? (
-                          <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={saveEditedProject}
-                              className="text-green-600 hover:text-green-900"
-                            >
-                              <CheckIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="text-red-600 hover:text-red-900"
-                            >
+                            <CheckIcon className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            <XIcon className="h-5 w-5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => startEditingProject(project)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="编辑项目"
+                          >
+                            <PencilIcon className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => deleteProject(project.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="删除项目"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => toggleProjectStatus(project.id, project.is_active)}
+                            className={`${
+                              project.is_active ? "text-gray-600" : "text-green-600"
+                            } hover:text-gray-900`}
+                            title={project.is_active ? "设为未活跃" : "设为活跃"}
+                          >
+                            {project.is_active ? (
                               <XIcon className="h-5 w-5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={() => startEditingProject(project)}
-                              className="text-blue-600 hover:text-blue-900"
-                            >
-                              <PencilIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => deleteProject(project.id)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500">
-                      {searchTerm ? "没有找到匹配的项目" : "暂无项目数据，请点击\"添加项目\"按钮创建新项目"}
+                            ) : (
+                              <CheckIcon className="h-5 w-5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* 编辑项目弹窗 */}
+      {editingProjectId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">编辑项目</h3>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 mb-1">
+                    项目名称 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-name"
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={editProject.name}
+                    onChange={(e) => setEditProject({ ...editProject, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-code" className="block text-sm font-medium text-gray-700 mb-1">
+                    项目编号 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-code"
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={editProject.code}
+                    onChange={(e) => setEditProject({ ...editProject, code: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-description" className="block text-sm font-medium text-gray-700 mb-1">
+                    项目描述
+                  </label>
+                  <textarea
+                    id="edit-description"
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={editProject.description}
+                    onChange={(e) => setEditProject({ ...editProject, description: e.target.value })}
+                  ></textarea>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    id="edit-is_active"
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    checked={editProject.is_active}
+                    onChange={(e) => setEditProject({ ...editProject, is_active: e.target.checked })}
+                  />
+                  <label htmlFor="edit-is_active" className="ml-2 block text-sm text-gray-900">
+                    项目活跃
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={saveEditedProject}
+                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                保存更改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-} 
+}

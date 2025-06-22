@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon } from "lucide-react";
+import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, DailyReport, ReportItem } from "@/lib/supabase/client";
@@ -52,6 +52,8 @@ export default function DailyReportsPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reports, setReports] = useState<ReportWithItems[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [previewReport, setPreviewReport] = useState<ReportWithItems | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // 加载项目和日报数据
   useEffect(() => {
@@ -300,15 +302,61 @@ export default function DailyReportsPage() {
       yamlContent += '\n';
     });
     
-    // 复制到剪贴板
-    navigator.clipboard.writeText(yamlContent)
-      .then(() => {
-        toast.success('日报内容已复制到剪贴板');
-      })
-      .catch(err => {
-        console.error('复制失败:', err);
+    try {
+      // 使用异步函数进行复制
+      if (navigator.clipboard && window.isSecureContext) {
+        // 安全上下文中使用标准 Clipboard API
+        navigator.clipboard.writeText(yamlContent)
+          .then(() => {
+            toast.success('日报内容已复制到剪贴板');
+          })
+          .catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyTextToClipboard(yamlContent);
+          });
+      } else {
+        // 回退方法，适用于非安全上下文
+        fallbackCopyTextToClipboard(yamlContent);
+      }
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast.error('复制失败，请重试');
+    }
+  };
+
+  // 回退复制方法
+  const fallbackCopyTextToClipboard = (text: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // 避免滚动到底部
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          toast.success('日报内容已复制到剪贴板');
+        } else {
+          toast.error('复制失败，请重试');
+        }
+      } catch (err) {
+        console.error('复制命令执行失败:', err);
         toast.error('复制失败，请重试');
-      });
+      }
+      
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.error('回退复制方法失败:', err);
+      toast.error('复制失败，请重试');
+    }
   };
 
   // 搜索过滤日报
@@ -338,11 +386,62 @@ export default function DailyReportsPage() {
     setCurrentPage(pageNumber);
   };
 
-  // 处理日报选择
+  // 处理日报选择，显示预览
   const handleReportSelect = (reportId: string) => {
     const report = reports.find(r => r.id === reportId);
     if (report) {
-      setSelectedDate(report.date);
+      setPreviewReport(report);
+      setIsPreviewOpen(true);
+    }
+  };
+
+  // 关闭预览
+  const closePreview = () => {
+    setIsPreviewOpen(false);
+    setPreviewReport(null);
+  };
+
+  // 在预览中复制日报内容
+  const handlePreviewCopy = () => {
+    if (!previewReport) return;
+    
+    // 获取报告中涉及的所有项目
+    const reportProjects = getReportProjects(previewReport);
+    
+    let yamlContent = '';
+    
+    // 按项目组织工作内容
+    reportProjects.forEach(project => {
+      yamlContent += `${project.name} (${project.code}):\n`;
+      
+      // 获取该项目下的所有工作项
+      const projectItems = getProjectItems(previewReport, project.id);
+      projectItems.forEach(item => {
+        yamlContent += `  - ${item.content}\n`;
+      });
+      
+      yamlContent += '\n';
+    });
+    
+    try {
+      // 使用异步函数进行复制
+      if (navigator.clipboard && window.isSecureContext) {
+        // 安全上下文中使用标准 Clipboard API
+        navigator.clipboard.writeText(yamlContent)
+          .then(() => {
+            toast.success('日报内容已复制到剪贴板');
+          })
+          .catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyTextToClipboard(yamlContent);
+          });
+      } else {
+        // 回退方法，适用于非安全上下文
+        fallbackCopyTextToClipboard(yamlContent);
+      }
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast.error('复制失败，请重试');
     }
   };
 
@@ -366,182 +465,284 @@ export default function DailyReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">日报管理</h1>
-        <Link 
-          href="/dashboard/daily-reports/new" 
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          <PlusIcon className="h-4 w-4 mr-2" />
-          <span>新建日报</span>
-        </Link>
-      </div>
-
-      {/* 搜索栏 */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <SearchIcon className="h-5 w-5 text-gray-400" />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">日报管理</h1>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* 搜索框 */}
+          <div className="relative flex-grow sm:flex-grow-0 sm:min-w-[200px]">
+            <input
+              type="text"
+              placeholder="搜索日报内容..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <SearchIcon className="h-5 w-5 text-gray-400" />
+            </div>
+          </div>
+          
+          {/* 创建日报按钮 */}
+          <Link 
+            href="/dashboard/daily-reports/new" 
+            className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            <span>创建日报</span>
+          </Link>
         </div>
-        <input
-          type="text"
-          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-          placeholder="搜索日报内容、日期或项目..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
       </div>
 
       {/* 日报列表 */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-medium">我的日报列表</h2>
-        </div>
-        
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         {isLoading ? (
-          <div className="flex justify-center items-center p-12">
+          <div className="p-8 flex justify-center">
             <Loader2Icon className="h-8 w-8 text-blue-500 animate-spin" />
-            <span className="ml-2 text-gray-500">加载中...</span>
+          </div>
+        ) : reports.length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-gray-500">暂无日报数据</p>
+            <Link 
+              href="/dashboard/daily-reports/new"
+              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+            >
+              <PlusIcon className="h-5 w-5 mr-2" />
+              创建第一份日报
+            </Link>
           </div>
         ) : (
-          <>
-            <ul className="divide-y divide-gray-200">
-              {currentReports.length > 0 ? (
-                currentReports.map((report) => (
-                  <li 
-                    key={report.id}
-                    className={`p-4 hover:bg-gray-50 cursor-pointer ${
-                      selectedDate === report.date ? 'bg-blue-50' : ''
-                    }`}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    日期
+                  </th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                    星期
+                  </th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    项目
+                  </th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                    状态
+                  </th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    操作
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {reports.map((report) => (
+                  <tr 
+                    key={report.id} 
+                    className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => handleReportSelect(report.id)}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="w-full">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{report.date} ({report.day})</p>
-                          <div className="flex items-center space-x-2">
-                            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                              {report.status}
-                            </span>
-                            <button 
-                              onClick={(e) => handleCopyReport(e, report)}
-                              className="p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
-                              title="复制日报内容"
-                            >
-                              <CopyIcon className="h-4 w-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => handleEditClick(e, report.date)}
-                              className="p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
-                              title="编辑日报"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => handleDeleteClick(e, report.id)}
-                              className="p-1.5 rounded-md hover:bg-red-100 text-red-600 transition-colors"
-                              title="删除日报"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3 space-y-3">
-                          {getReportProjects(report).map(project => (
-                            <div key={project.id} className="border-l-2 border-blue-500 pl-3">
-                              <div className="text-sm font-medium text-blue-600 mb-1">
-                                {project.name} ({project.code})
-                              </div>
-                              <ul className="space-y-1">
-                                {getProjectItems(report, project.id).map((item) => (
-                                  <li key={item.id} className="text-sm text-gray-500 flex items-start">
-                                    <span className="mr-2">•</span>
-                                    <span>{item.content}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <div className="text-sm font-medium text-gray-900">{report.date}</div>
+                        {/* 移动端显示星期和状态 */}
+                        <div className="text-xs text-gray-500 mt-1 sm:hidden">
+                          {report.day} · {report.status}
                         </div>
                       </div>
-                    </div>
-                  </li>
-                ))
-              ) : (
-                <li className="p-4 text-center text-gray-500">
-                  {searchTerm ? "没有找到匹配的日报" : "暂无日报数据"}
-                </li>
-              )}
-            </ul>
-            
-            {/* 分页 */}
-            {totalPages > 1 && (
-              <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-                <div className="flex-1 flex justify-between items-center">
-                  <button
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
-                      currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    <ChevronLeftIcon className="h-4 w-4 mr-1" />
-                    上一页
-                  </button>
-                  <span className="text-sm text-gray-700">
-                    第 {currentPage} 页，共 {totalPages} 页
-                  </span>
-                  <button
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${
-                      currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    下一页
-                    <ChevronRightIcon className="h-4 w-4 ml-1" />
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {/* 删除确认对话框 */}
-            {confirmDeleteOpen && (
-              <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">确认删除</h3>
-                  <p className="text-gray-500 mb-6">
-                    您确定要删除这份日报吗？此操作将同时删除所有相关的工作内容且不可恢复。
-                  </p>
-                  <div className="flex justify-end space-x-3">
-                    <button
-                      onClick={handleCancelDelete}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      disabled={isDeletingReport}
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleConfirmDelete}
-                      className="px-4 py-2 bg-red-600 rounded-md text-sm font-medium text-white hover:bg-red-700 focus:outline-none"
-                      disabled={isDeletingReport}
-                    >
-                      {isDeletingReport ? (
-                        <span className="flex items-center">
-                          <Loader2Icon className="h-4 w-4 animate-spin mr-2" />
-                          删除中...
-                        </span>
-                      ) : (
-                        '确认删除'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                      <div className="text-sm text-gray-900">{report.day}</div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
+                      <div className="flex flex-wrap gap-1">
+                        {getReportProjects(report).map((project) => (
+                          <span
+                            key={project.id}
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {project.name}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {report.status}
+                      </span>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={(e) => handleEditClick(e, report.date)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="编辑日报"
+                        >
+                          <PencilIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleCopyReport(e, report)}
+                          className="text-gray-600 hover:text-gray-900"
+                          title="复制日报"
+                        >
+                          <CopyIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteClick(e, report.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="删除日报"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {/* 分页控件 - 移动端优化 */}
+      {reports.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
+          <div className="text-sm text-gray-700">
+            显示 <span className="font-medium">1</span> 到 <span className="font-medium">{reports.length}</span> 条，共 <span className="font-medium">{reports.length}</span> 条记录
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">上一页</span>
+              <ChevronLeftIcon className="h-5 w-5" />
+            </button>
+            <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+              第 {currentPage} 页
+            </span>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={true} // 假设只有一页
+              className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">下一页</span>
+              <ChevronRightIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 日报预览弹窗 */}
+      {isPreviewOpen && previewReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">
+                日报详情 - {previewReport.date} ({previewReport.day})
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePreviewCopy}
+                  className="p-2 rounded-md text-blue-600 hover:bg-blue-50"
+                  title="复制日报内容"
+                >
+                  <CopyIcon className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={closePreview}
+                  className="p-2 rounded-md text-gray-500 hover:bg-gray-100"
+                  title="关闭预览"
+                >
+                  <XIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-4">
+                {getReportProjects(previewReport).map(project => (
+                  <div key={project.id} className="border-l-2 border-blue-500 pl-4 py-2">
+                    <div className="flex items-center mb-2">
+                      <div className="text-sm font-medium text-blue-600">
+                        {project.name}
+                      </div>
+                      <div className="text-xs text-gray-500 ml-2">
+                        ({project.code})
+                      </div>
+                    </div>
+                    <ul className="space-y-2">
+                      {getProjectItems(previewReport, project.id).map((item, idx) => (
+                        <li key={idx} className="text-sm text-gray-600 flex items-start">
+                          <span className="mr-2 text-blue-400 flex-shrink-0">•</span>
+                          <span className="break-words">{item.content}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+              <div className="text-sm text-gray-500">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+                  {previewReport.status}
+                </span>
+                {format(parseISO(previewReport.date), 'yyyy年MM月dd日')}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={(e) => handleEditClick(e, previewReport.date)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <PencilIcon className="h-4 w-4 mr-1" />
+                  编辑
+                </button>
+                <button
+                  onClick={closePreview}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认对话框 */}
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">确认删除</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700">确定要删除这份日报吗？此操作无法撤销。</p>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                onClick={handleCancelDelete}
+                className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                disabled={isDeletingReport}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                disabled={isDeletingReport}
+              >
+                {isDeletingReport ? (
+                  <>
+                    <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                    删除中...
+                  </>
+                ) : (
+                  "确认删除"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
