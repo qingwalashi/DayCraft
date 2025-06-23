@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon } from "lucide-react";
+import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon, AlertCircleIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, DailyReport, ReportItem } from "@/lib/supabase/client";
-import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getYear, addWeeks, subWeeks, isSameDay } from "date-fns";
+import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getYear, addWeeks, subWeeks, isSameDay, isToday } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -62,9 +62,6 @@ export default function DailyReportsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const supabase = createClient();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingReport, setIsDeletingReport] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
@@ -78,40 +75,102 @@ export default function DailyReportsPage() {
   const [weekData, setWeekData] = useState<WeekData[]>([]);
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
+  // 新增今日日报提醒状态
+  const [todayReportReminder, setTodayReportReminder] = useState<{
+    date: string;
+    hasReport: boolean;
+  } | null>(null);
+
   // 加载项目和日报数据
   useEffect(() => {
     if (!user) return;
     
-    fetchData();
-  }, [user, supabase]);
+    // 初始化周数据结构
+    initWeekData();
+    
+    // 检查今天的日报状态
+    checkTodayReport();
+  }, [user]);
 
-  const fetchData = async () => {
+  // 当周索引变化时，加载该周的日报数据
+  useEffect(() => {
+    if (user && weekData.length > 0) {
+      fetchWeekReports(weekData[currentWeekIndex]);
+    }
+  }, [user, currentWeekIndex, weekData.length]);
+
+  // 初始化周数据结构
+  const initWeekData = () => {
+    const today = new Date();
+    const weeks: WeekData[] = [];
+    
+    // 生成最近12周的数据结构
+    for (let i = 0; i < 12; i++) {
+      const weekStartDate = startOfWeek(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7), { locale: zhCN });
+      const weekEndDate = endOfWeek(weekStartDate, { locale: zhCN });
+      const weekNumber = getWeek(weekStartDate, { locale: zhCN });
+      const year = getYear(weekStartDate);
+      
+      // 获取这一周的所有日期
+      const weekDates = eachDayOfInterval({ start: weekStartDate, end: weekEndDate });
+      
+      // 创建每天的初始数据
+      const days: DayItem[] = weekDates.map(date => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const day = format(date, 'EEEE', { locale: zhCN });
+        
+        return {
+          date: dateStr,
+          formattedDate: format(date, 'yyyy-MM-dd'),
+          day,
+          hasReport: false,
+          report: null
+        };
+      });
+      
+      weeks.push({
+        weekNumber,
+        year,
+        startDate: weekStartDate,
+        endDate: weekEndDate,
+        formattedPeriod: `${format(weekStartDate, 'yyyy-MM-dd')} 至 ${format(weekEndDate, 'yyyy-MM-dd')}`,
+        days
+      });
+    }
+    
+    setWeekData(weeks);
+  };
+
+  // 获取指定周的日报数据
+  const fetchWeekReports = async (week: WeekData) => {
+    if (!user) return;
+    
     setIsLoading(true);
     try {
-      if (!user) {
-        console.error('用户未登录');
-        toast.error('请先登录');
-        return;
-      }
-
-      // 获取项目数据
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', user.id);
-      
-      if (projectsError) {
-        throw projectsError;
+      // 获取项目数据（只需获取一次）
+      if (projects.length === 0) {
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('user_id', user.id);
+        
+        if (projectsError) {
+          throw projectsError;
+        }
+        
+        setProjects(projectsData as Project[] || []);
       }
       
-      setProjects(projectsData as Project[] || []);
+      // 获取该周日期范围内的日报数据
+      const startDateStr = format(week.startDate, 'yyyy-MM-dd');
+      const endDateStr = format(week.endDate, 'yyyy-MM-dd');
       
-      // 获取日报数据
       const { data: reportsData, error: reportsError } = await supabase
         .from('daily_reports')
         .select('*')
         .eq('user_id', user.id)
-        .order('date', { ascending: false });
+        .gte('date', startDateStr)
+        .lte('date', endDateStr);
       
       if (reportsError) {
         throw reportsError;
@@ -162,10 +221,9 @@ export default function DailyReportsPage() {
         });
       }
       
-      setReports(reportsWithItems);
+      // 更新当前周的日报数据
+      updateWeekData(week, reportsWithItems);
       
-      // 生成周数据
-      generateWeekData(reportsWithItems);
     } catch (error) {
       console.error('加载数据失败', error);
       toast.error('加载数据失败');
@@ -174,51 +232,78 @@ export default function DailyReportsPage() {
     }
   };
 
-  // 生成周数据
-  const generateWeekData = (reports: ReportWithItems[]) => {
-    const today = new Date();
-    const weeks: WeekData[] = [];
-    
-    // 生成最近12周的数据
-    for (let i = 0; i < 12; i++) {
-      const weekStartDate = startOfWeek(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7), { locale: zhCN });
-      const weekEndDate = endOfWeek(weekStartDate, { locale: zhCN });
-      const weekNumber = getWeek(weekStartDate, { locale: zhCN });
-      const year = getYear(weekStartDate);
+  // 更新周数据中的日报信息
+  const updateWeekData = (week: WeekData, reports: ReportWithItems[]) => {
+    setWeekData(prevWeeks => {
+      const updatedWeeks = [...prevWeeks];
+      const weekIndex = updatedWeeks.findIndex(w => 
+        w.year === week.year && w.weekNumber === week.weekNumber
+      );
       
-      // 获取这一周每天的数据
-      const days: DayItem[] = [];
-      
-      // 获取这一周的所有日期
-      const weekDates = eachDayOfInterval({ start: weekStartDate, end: weekEndDate });
-      
-      weekDates.forEach(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
-        const day = format(date, 'EEEE', { locale: zhCN });
+      if (weekIndex !== -1) {
+        const updatedDays = [...updatedWeeks[weekIndex].days];
         
-        // 查找该日期是否有日报
-        const reportForDate = reports.find(report => report.date === dateStr);
-        
-        days.push({
-          date: dateStr,
-          formattedDate: format(date, 'yyyy-MM-dd'),
-          day,
-          hasReport: !!reportForDate,
-          report: reportForDate || null
+        // 更新每一天的日报状态
+        updatedDays.forEach((day, index) => {
+          const report = reports.find(r => r.date === day.date);
+          updatedDays[index] = {
+            ...day,
+            hasReport: !!report,
+            report: report || null
+          };
+          
+          // 如果是今天，更新今日日报提醒状态
+          if (isToday(parseISO(day.date))) {
+            setTodayReportReminder({
+              date: day.date,
+              hasReport: !!report
+            });
+          }
         });
+        
+        updatedWeeks[weekIndex] = {
+          ...updatedWeeks[weekIndex],
+          days: updatedDays
+        };
+      }
+      
+      return updatedWeeks;
+    });
+    
+    // 更新全局reports状态，用于预览等功能
+    setReports(reports);
+  };
+
+  // 检查今天是否已经写了日报
+  const checkTodayReport = async () => {
+    if (!user) return;
+    
+    try {
+      const today = new Date();
+      const todayStr = format(today, 'yyyy-MM-dd');
+      
+      // 查询今天的日报
+      const { data: todayReport, error } = await supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', todayStr)
+        .maybeSingle();
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('检查今日日报失败', error);
+        return;
+      }
+      
+      // 设置今日日报提醒状态
+      setTodayReportReminder({
+        date: todayStr,
+        hasReport: !!todayReport
       });
       
-      weeks.push({
-        weekNumber,
-        year,
-        startDate: weekStartDate,
-        endDate: weekEndDate,
-        formattedPeriod: `${format(weekStartDate, 'yyyy-MM-dd')} 至 ${format(weekEndDate, 'yyyy-MM-dd')}`,
-        days
-      });
+    } catch (error) {
+      console.error('检查今日日报失败', error);
     }
-    
-    setWeekData(weeks);
   };
 
   // 切换到上一周
@@ -348,7 +433,7 @@ export default function DailyReportsPage() {
       
       // 刷新数据，确保UI显示正确
       setTimeout(() => {
-        fetchData();
+        fetchWeekReports(weekData[currentWeekIndex]);
       }, 1000);
       
     } catch (error) {
@@ -446,32 +531,8 @@ export default function DailyReportsPage() {
     }
   };
 
-  // 搜索过滤日报
-  const filteredReports = reports.filter(report => {
-    // 按日期搜索
-    if (report.date.includes(searchTerm)) {
-      return true;
-    }
-    
-    // 按项目名称或编号搜索
-    return report.items.some(item => 
-      item.content.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      item.project?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.project?.code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
-
-  // 获取当前页的日报
-  const itemsPerPage = 10;
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentReports = filteredReports.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
-
-  // 处理页面变化
-  const handlePageChange = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
-  };
+  // 获取当前周数据
+  const currentWeekData = weekData[currentWeekIndex];
 
   // 处理日报选择，显示预览
   const handleReportSelect = (reportId: string) => {
@@ -550,9 +611,6 @@ export default function DailyReportsPage() {
     return Array.from(projectMap.values());
   };
 
-  // 获取当前周数据
-  const currentWeekData = weekData[currentWeekIndex];
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -567,31 +625,29 @@ export default function DailyReportsPage() {
             </div>
           )}
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          {/* 搜索框 */}
-          <div className="relative flex-grow sm:flex-grow-0 sm:min-w-[200px]">
-            <input
-              type="text"
-              placeholder="搜索日报内容..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <SearchIcon className="h-5 w-5 text-gray-400" />
+      </div>
+
+      {/* 今日日报提醒 */}
+      {todayReportReminder && !todayReportReminder.hasReport && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded-md">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertCircleIcon className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                您今天还没有填写日报，
+                <Link 
+                  href={`/dashboard/daily-reports/new?date=${todayReportReminder.date}`}
+                  className="font-medium underline text-blue-700 hover:text-blue-600"
+                >
+                  立即填写
+                </Link>
+              </p>
             </div>
           </div>
-          
-          {/* 创建日报按钮 */}
-          <Link 
-            href="/dashboard/daily-reports/new" 
-            className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <PlusIcon className="h-5 w-5 mr-2" />
-            <span>创建日报</span>
-          </Link>
         </div>
-      </div>
+      )}
 
       {/* 周切换控件 */}
       <div className="flex items-center justify-between mb-4">
@@ -622,13 +678,6 @@ export default function DailyReportsPage() {
         ) : weekData.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-gray-500">暂无日报数据</p>
-            <Link 
-              href="/dashboard/daily-reports/new"
-              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" />
-              创建第一份日报
-            </Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -653,83 +702,95 @@ export default function DailyReportsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {currentWeekData && currentWeekData.days.map((day) => (
-                  <tr 
-                    key={day.date} 
-                    className={`hover:bg-gray-50 ${day.hasReport ? 'cursor-pointer' : ''}`}
-                    onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
-                  >
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <div className="text-sm font-medium text-gray-900">{day.formattedDate}</div>
-                        {/* 移动端显示星期和状态 */}
-                        <div className="text-xs text-gray-500 mt-1 sm:hidden">
-                          {day.day} · {day.hasReport ? '已提交' : '未提交'}
+                {currentWeekData && currentWeekData.days.map((day) => {
+                  const isCurrentDay = isToday(parseISO(day.date));
+                  return (
+                    <tr 
+                      key={day.date} 
+                      className={`hover:bg-gray-50 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay && !day.hasReport ? 'bg-blue-50' : ''}`}
+                      onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
+                    >
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <div className={`text-sm font-medium ${isCurrentDay && !day.hasReport ? 'text-blue-700 font-bold' : 'text-gray-900'}`}>
+                            {day.formattedDate}
+                            {isCurrentDay && !day.hasReport && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                今天
+                              </span>
+                            )}
+                          </div>
+                          {/* 移动端显示星期和状态 */}
+                          <div className="text-xs text-gray-500 mt-1 sm:hidden">
+                            {day.day} · {day.hasReport ? '已提交' : '未提交'}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                      <div className="text-sm text-gray-900">{day.day}</div>
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
-                      {day.hasReport && day.report ? (
-                        <div className="flex flex-wrap gap-1">
-                          {getReportProjects(day.report).map((project) => (
-                            <span
-                              key={project.id}
-                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                            >
-                              {project.name}
-                            </span>
-                          ))}
+                      </td>
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                        <div className={`text-sm ${isCurrentDay && !day.hasReport ? 'text-blue-700 font-medium' : 'text-gray-900'}`}>
+                          {day.day}
                         </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                      {day.hasReport ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          已提交
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          未提交
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          href={`/dashboard/daily-reports/new?date=${day.date}`}
-                          className="text-blue-600 hover:text-blue-900"
-                          title={day.hasReport ? "编辑日报" : "创建日报"}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </Link>
-                        {day.hasReport && day.report && (
-                          <>
-                            <button
-                              onClick={(e) => handleCopyReport(e, day.report!)}
-                              className="text-gray-600 hover:text-gray-900"
-                              title="复制日报"
-                            >
-                              <CopyIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteClick(e, day.report!.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="删除日报"
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                            </button>
-                          </>
+                      </td>
+                      <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
+                        {day.hasReport && day.report ? (
+                          <div className="flex flex-wrap gap-1">
+                            {getReportProjects(day.report).map((project) => (
+                              <span
+                                key={project.id}
+                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                              >
+                                {project.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                        {day.hasReport ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            已提交
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isCurrentDay ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
+                            {isCurrentDay ? '今日待填' : '未提交'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            href={`/dashboard/daily-reports/new?date=${day.date}`}
+                            className={`${isCurrentDay && !day.hasReport ? 'text-blue-600 hover:text-blue-900 animate-pulse' : 'text-blue-600 hover:text-blue-900'}`}
+                            title={day.hasReport ? "编辑日报" : "创建日报"}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <PencilIcon className="h-5 w-5" />
+                          </Link>
+                          {day.hasReport && day.report && (
+                            <>
+                              <button
+                                onClick={(e) => handleCopyReport(e, day.report!)}
+                                className="text-gray-600 hover:text-gray-900"
+                                title="复制日报"
+                              >
+                                <CopyIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteClick(e, day.report!.id)}
+                                className="text-red-600 hover:text-red-900"
+                                title="删除日报"
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
