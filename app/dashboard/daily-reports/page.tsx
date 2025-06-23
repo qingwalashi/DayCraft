@@ -5,7 +5,7 @@ import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, T
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, DailyReport, ReportItem } from "@/lib/supabase/client";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getYear, addWeeks, subWeeks, isSameDay } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -39,6 +39,25 @@ interface ReportItemData {
   projects: Project | Project[];
 }
 
+// 新增日期项接口
+interface DayItem {
+  date: string;
+  formattedDate: string;
+  day: string;
+  hasReport: boolean;
+  report: ReportWithItems | null;
+}
+
+// 新增周数据接口
+interface WeekData {
+  weekNumber: number;
+  year: number;
+  startDate: Date;
+  endDate: Date;
+  formattedPeriod: string;
+  days: DayItem[];
+}
+
 export default function DailyReportsPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -54,6 +73,10 @@ export default function DailyReportsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [previewReport, setPreviewReport] = useState<ReportWithItems | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  
+  // 新增周数据状态
+  const [weekData, setWeekData] = useState<WeekData[]>([]);
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
   // 加载项目和日报数据
   useEffect(() => {
@@ -140,11 +163,75 @@ export default function DailyReportsPage() {
       }
       
       setReports(reportsWithItems);
+      
+      // 生成周数据
+      generateWeekData(reportsWithItems);
     } catch (error) {
       console.error('加载数据失败', error);
       toast.error('加载数据失败');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 生成周数据
+  const generateWeekData = (reports: ReportWithItems[]) => {
+    const today = new Date();
+    const weeks: WeekData[] = [];
+    
+    // 生成最近12周的数据
+    for (let i = 0; i < 12; i++) {
+      const weekStartDate = startOfWeek(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7), { locale: zhCN });
+      const weekEndDate = endOfWeek(weekStartDate, { locale: zhCN });
+      const weekNumber = getWeek(weekStartDate, { locale: zhCN });
+      const year = getYear(weekStartDate);
+      
+      // 获取这一周每天的数据
+      const days: DayItem[] = [];
+      
+      // 获取这一周的所有日期
+      const weekDates = eachDayOfInterval({ start: weekStartDate, end: weekEndDate });
+      
+      weekDates.forEach(date => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const day = format(date, 'EEEE', { locale: zhCN });
+        
+        // 查找该日期是否有日报
+        const reportForDate = reports.find(report => report.date === dateStr);
+        
+        days.push({
+          date: dateStr,
+          formattedDate: format(date, 'yyyy-MM-dd'),
+          day,
+          hasReport: !!reportForDate,
+          report: reportForDate || null
+        });
+      });
+      
+      weeks.push({
+        weekNumber,
+        year,
+        startDate: weekStartDate,
+        endDate: weekEndDate,
+        formattedPeriod: `${format(weekStartDate, 'yyyy-MM-dd')} 至 ${format(weekEndDate, 'yyyy-MM-dd')}`,
+        days
+      });
+    }
+    
+    setWeekData(weeks);
+  };
+
+  // 切换到上一周
+  const handlePreviousWeek = () => {
+    if (currentWeekIndex < weekData.length - 1) {
+      setCurrentWeekIndex(currentWeekIndex + 1);
+    }
+  };
+
+  // 切换到下一周
+  const handleNextWeek = () => {
+    if (currentWeekIndex > 0) {
+      setCurrentWeekIndex(currentWeekIndex - 1);
     }
   };
 
@@ -463,10 +550,23 @@ export default function DailyReportsPage() {
     return Array.from(projectMap.values());
   };
 
+  // 获取当前周数据
+  const currentWeekData = weekData[currentWeekIndex];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">日报管理</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">日报管理</h1>
+          {currentWeekData && (
+            <div className="mt-2 text-sm text-gray-500 flex items-center">
+              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md">
+                {currentWeekData.year}年第{currentWeekData.weekNumber}周
+              </span>
+              <span className="ml-2">{currentWeekData.formattedPeriod}</span>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           {/* 搜索框 */}
           <div className="relative flex-grow sm:flex-grow-0 sm:min-w-[200px]">
@@ -493,13 +593,33 @@ export default function DailyReportsPage() {
         </div>
       </div>
 
+      {/* 周切换控件 */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={handlePreviousWeek}
+          disabled={currentWeekIndex >= weekData.length - 1}
+          className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ChevronLeftIcon className="h-4 w-4 mr-1" />
+          上一周
+        </button>
+        <button
+          onClick={handleNextWeek}
+          disabled={currentWeekIndex <= 0}
+          className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          下一周
+          <ChevronRightIcon className="h-4 w-4 ml-1" />
+        </button>
+      </div>
+
       {/* 日报列表 */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {isLoading ? (
           <div className="p-8 flex justify-center">
             <Loader2Icon className="h-8 w-8 text-blue-500 animate-spin" />
           </div>
-        ) : reports.length === 0 ? (
+        ) : weekData.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-gray-500">暂无日报数据</p>
             <Link 
@@ -533,64 +653,79 @@ export default function DailyReportsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {reports.map((report) => (
+                {currentWeekData && currentWeekData.days.map((day) => (
                   <tr 
-                    key={report.id} 
-                    className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleReportSelect(report.id)}
+                    key={day.date} 
+                    className={`hover:bg-gray-50 ${day.hasReport ? 'cursor-pointer' : ''}`}
+                    onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
                   >
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <div className="text-sm font-medium text-gray-900">{report.date}</div>
+                        <div className="text-sm font-medium text-gray-900">{day.formattedDate}</div>
                         {/* 移动端显示星期和状态 */}
                         <div className="text-xs text-gray-500 mt-1 sm:hidden">
-                          {report.day} · {report.status}
+                          {day.day} · {day.hasReport ? '已提交' : '未提交'}
                         </div>
                       </div>
                     </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                      <div className="text-sm text-gray-900">{report.day}</div>
+                      <div className="text-sm text-gray-900">{day.day}</div>
                     </td>
                     <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {getReportProjects(report).map((project) => (
-                          <span
-                            key={project.id}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                          >
-                            {project.name}
-                          </span>
-                        ))}
-                      </div>
+                      {day.hasReport && day.report ? (
+                        <div className="flex flex-wrap gap-1">
+                          {getReportProjects(day.report).map((project) => (
+                            <span
+                              key={project.id}
+                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {project.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">-</span>
+                      )}
                     </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        {report.status}
-                      </span>
+                      {day.hasReport ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          已提交
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          未提交
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
-                        <button
-                          onClick={(e) => handleEditClick(e, report.date)}
+                        <Link
+                          href={`/dashboard/daily-reports/new?date=${day.date}`}
                           className="text-blue-600 hover:text-blue-900"
-                          title="编辑日报"
+                          title={day.hasReport ? "编辑日报" : "创建日报"}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={(e) => handleCopyReport(e, report)}
-                          className="text-gray-600 hover:text-gray-900"
-                          title="复制日报"
-                        >
-                          <CopyIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteClick(e, report.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="删除日报"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        </Link>
+                        {day.hasReport && day.report && (
+                          <>
+                            <button
+                              onClick={(e) => handleCopyReport(e, day.report!)}
+                              className="text-gray-600 hover:text-gray-900"
+                              title="复制日报"
+                            >
+                              <CopyIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteClick(e, day.report!.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="删除日报"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -601,30 +736,34 @@ export default function DailyReportsPage() {
         )}
       </div>
 
-      {/* 分页控件 - 移动端优化 */}
-      {reports.length > 0 && (
+      {/* 周切换分页控件 */}
+      {weekData.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
           <div className="text-sm text-gray-700">
-            显示 <span className="font-medium">1</span> 到 <span className="font-medium">{reports.length}</span> 条，共 <span className="font-medium">{reports.length}</span> 条记录
+            {currentWeekData && (
+              <>
+                显示 <span className="font-medium">{currentWeekData.year}年第{currentWeekData.weekNumber}周</span> 的日报
+              </>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
+              onClick={handlePreviousWeek}
+              disabled={currentWeekIndex >= weekData.length - 1}
               className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className="sr-only">上一页</span>
+              <span className="sr-only">上一周</span>
               <ChevronLeftIcon className="h-5 w-5" />
             </button>
             <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-              第 {currentPage} 页
+              {currentWeekIndex + 1} / {weekData.length}
             </span>
             <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={true} // 假设只有一页
+              onClick={handleNextWeek}
+              disabled={currentWeekIndex <= 0}
               className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className="sr-only">下一页</span>
+              <span className="sr-only">下一周</span>
               <ChevronRightIcon className="h-5 w-5" />
             </button>
           </div>
