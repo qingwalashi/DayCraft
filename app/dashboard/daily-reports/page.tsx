@@ -722,8 +722,8 @@ export default function DailyReportsPage() {
               />
             )}
           </div>
-        </div>
-        
+      </div>
+
         {isLoading ? (
           <div className="flex justify-center items-center p-12">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
@@ -736,14 +736,14 @@ export default function DailyReportsPage() {
         ) : (
           <div>
             <ul className="divide-y divide-gray-200">
-              {currentWeekData && currentWeekData.days.map((day) => {
-                const isCurrentDay = isToday(parseISO(day.date));
-                return (
+                {currentWeekData && currentWeekData.days.map((day) => {
+                  const isCurrentDay = isToday(parseISO(day.date));
+                  return (
                   <li 
-                    key={day.date} 
+                      key={day.date} 
                     className={`p-4 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay && !day.hasReport ? 'bg-blue-50' : ''}`}
-                    onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
-                  >
+                      onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
+                    >
                     <div className="flex items-center justify-between">
                       <div className="flex items-start">
                         <div className="flex-shrink-0">
@@ -785,53 +785,53 @@ export default function DailyReportsPage() {
                           
                           {day.hasReport && day.report && (
                             <div className="mt-2 flex flex-wrap gap-1">
-                              {getReportProjects(day.report).map((project) => (
-                                <span
-                                  key={project.id}
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                                >
-                                  {project.name}
-                                </span>
-                              ))}
-                            </div>
+                            {getReportProjects(day.report).map((project) => (
+                              <span
+                                key={project.id}
+                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                              >
+                                {project.name}
+                              </span>
+                            ))}
+                          </div>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Link
-                          href={`/dashboard/daily-reports/new?date=${day.date}`}
+                          <Link
+                            href={`/dashboard/daily-reports/new?date=${day.date}`}
                           className={`inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md ${isCurrentDay && !day.hasReport ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-300' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
-                          title={day.hasReport ? "编辑日报" : "创建日报"}
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                            title={day.hasReport ? "编辑日报" : "创建日报"}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                           <PencilIcon className="h-4 w-4 mr-1" />
                           {day.hasReport ? "编辑" : "填写"}
-                        </Link>
-                        {day.hasReport && day.report && (
-                          <>
-                            <button
-                              onClick={(e) => handleCopyReport(e, day.report!)}
+                          </Link>
+                          {day.hasReport && day.report && (
+                            <>
+                              <button
+                                onClick={(e) => handleCopyReport(e, day.report!)}
                               className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                              title="复制日报"
-                            >
+                                title="复制日报"
+                              >
                               <CopyIcon className="h-4 w-4 mr-1" />
                               复制
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteClick(e, day.report!.id)}
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteClick(e, day.report!.id)}
                               className="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
-                              title="删除日报"
-                            >
+                                title="删除日报"
+                              >
                               <TrashIcon className="h-4 w-4 mr-1" />
                               删除
-                            </button>
-                          </>
-                        )}
-                      </div>
+                              </button>
+                            </>
+                          )}
+                        </div>
                     </div>
                   </li>
-                );
-              })}
+                  );
+                })}
             </ul>
           </div>
         )}
@@ -877,13 +877,13 @@ export default function DailyReportsPage() {
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">日报详情 - {previewReport.date} ({previewReport.day})</h3>
-              <button 
-                onClick={closePreview}
+                <button
+                  onClick={closePreview}
                 className="text-gray-400 hover:text-gray-500"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
+                >
+                  <XIcon className="h-5 w-5" />
+                </button>
+              </div>
             
             <div className="flex items-center mb-4">
               {previewReport.is_plan ? (
@@ -930,19 +930,19 @@ export default function DailyReportsPage() {
                 <CopyIcon className="h-4 w-4 mr-1" />
                 复制内容
               </button>
-              <button
-                onClick={(e) => handleEditClick(e, previewReport.date)}
+                <button
+                  onClick={(e) => handleEditClick(e, previewReport.date)}
                 className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
-              >
-                <PencilIcon className="h-4 w-4 mr-1" />
+                >
+                  <PencilIcon className="h-4 w-4 mr-1" />
                 编辑日报
-              </button>
-              <button
-                onClick={closePreview}
+                </button>
+                <button
+                  onClick={closePreview}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                关闭
-              </button>
+                >
+                  关闭
+                </button>
             </div>
           </div>
         </div>

@@ -9,12 +9,19 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, g
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 
+interface DailyReportData {
+  date: string;
+  content?: string;
+  is_plan?: boolean;
+}
+
 type ReportType = "weekly" | "monthly";
 type ReportStatus = "generated" | "pending" | "generating" | "not_available";
 
 interface DailyReportStatus {
   date: string; // ISO格式日期
   hasReport: boolean;
+  is_plan?: boolean; // 是否为计划日报
 }
 
 interface WeekData {
@@ -327,7 +334,7 @@ export default function ReportsPage() {
   const [generatingReportId, setGeneratingReportId] = useState<string | null>(null);
   const [weeklyData, setWeeklyData] = useState<WeekData[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthData[]>([]);
-  const [dailyReports, setDailyReports] = useState<{date: string, content?: string}[]>([]);
+  const [dailyReports, setDailyReports] = useState<DailyReportData[]>([]);
   const [previewData, setPreviewData] = useState<{
     title: string;
     content: string;
@@ -394,6 +401,7 @@ export default function ReportsPage() {
           .from('daily_reports')
           .select(`
             date,
+            is_plan,
             report_items (
               content,
               projects:project_id (
@@ -411,6 +419,7 @@ export default function ReportsPage() {
         const processedData = data?.map((report: any) => {
           return {
             date: report.date as string,
+            is_plan: report.is_plan || false,
             content: report.report_items?.map((item: any) => 
               `[${item.projects?.name} (${item.projects?.code})] ${item.content}`
             ).join('\n')
@@ -522,7 +531,7 @@ export default function ReportsPage() {
   };
 
   // 生成周报数据
-  const generateWeeklyData = (reports: {date: string, content?: string}[]) => {
+  const generateWeeklyData = (reports: DailyReportData[]) => {
     const today = new Date();
     const weeks: WeekData[] = [];
     
@@ -539,7 +548,7 @@ export default function ReportsPage() {
       
       // 按日期降序排序这一周的日期
       const weekDates = eachDayOfInterval({ start: weekStartDate, end: weekEndDate })
-        .sort((a, b) => b.getTime() - a.getTime()); // 降序排序
+        .sort((a, b) => a.getTime() - b.getTime()); // 改为升序排序
       
       weekDates.forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -549,10 +558,12 @@ export default function ReportsPage() {
         });
         
         const hasReport = !!reportForDate;
+        const isPlan = reportForDate?.is_plan || false;
         
-        dailyStatus.push({ date: dateStr, hasReport });
+        dailyStatus.push({ date: dateStr, hasReport, is_plan: isPlan });
         
-        if (hasReport && reportForDate?.content) {
+        // 只有不是计划的日报才参与周报生成
+        if (hasReport && reportForDate?.content && !isPlan) {
           // 解析内容，按项目分组
           const contentLines = reportForDate.content.split('\n');
           contentLines.forEach(line => {
@@ -601,7 +612,7 @@ export default function ReportsPage() {
       Object.values(weeklyReportsByProject).forEach(project => {
         reportContent += `${project.projectName}\n`;
         
-        // 项目下的工作内容按日期降序排列
+        // 项目下的工作内容按日期升序排列
         project.items.forEach(item => {
           reportContent += `- ${item.date}: ${item.content}\n`;
         });
@@ -625,7 +636,7 @@ export default function ReportsPage() {
   };
 
   // 生成月报数据
-  const generateMonthlyData = (reports: {date: string, content?: string}[]) => {
+  const generateMonthlyData = (reports: DailyReportData[]) => {
     const today = new Date();
     const months: MonthData[] = [];
     
@@ -643,7 +654,7 @@ export default function ReportsPage() {
       
       // 按日期降序排序这个月的日期
       const monthDates = eachDayOfInterval({ start: monthStartDate, end: monthEndDate })
-        .sort((a, b) => b.getTime() - a.getTime()); // 降序排序
+        .sort((a, b) => a.getTime() - b.getTime()); // 改为升序排序
       
       monthDates.forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -653,10 +664,12 @@ export default function ReportsPage() {
         });
         
         const hasReport = !!reportForDate;
+        const isPlan = reportForDate?.is_plan || false;
         
-        dailyStatus.push({ date: dateStr, hasReport });
+        dailyStatus.push({ date: dateStr, hasReport, is_plan: isPlan });
         
-        if (hasReport && reportForDate?.content) {
+        // 只有不是计划的日报才参与月报生成
+        if (hasReport && reportForDate?.content && !isPlan) {
           // 解析内容，按项目分组
           const contentLines = reportForDate.content.split('\n');
           contentLines.forEach(line => {
@@ -711,7 +724,7 @@ export default function ReportsPage() {
       Object.values(monthlyReportsByProject).forEach(project => {
         reportContent += `${project.projectName}\n`;
         
-        // 项目下的工作内容按日期降序排列
+        // 项目下的工作内容按日期升序排列
         project.items.forEach(item => {
           reportContent += `- ${item.date}: ${item.content}\n`;
         });
@@ -748,11 +761,11 @@ export default function ReportsPage() {
         const weekData = weeklyData.find(w => w.formattedPeriod === period);
         if (!weekData) throw new Error('未找到周报数据');
         
-        // 收集该周的日报内容
+        // 收集该周的日报内容，过滤掉已计划的日报
         const dailyContents = dailyReports
           .filter(report => {
             const reportDate = parseISO(report.date);
-            return reportDate >= weekData.startDate && reportDate <= weekData.endDate;
+            return reportDate >= weekData.startDate && reportDate <= weekData.endDate && !report.is_plan;
           })
           .map(report => {
             return {
@@ -860,11 +873,11 @@ export default function ReportsPage() {
         const monthData = monthlyData.find(m => m.formattedPeriod === period);
         if (!monthData) throw new Error('未找到月报数据');
         
-        // 收集该月的日报内容
+        // 收集该月的日报内容，过滤掉已计划日报
         const dailyContents = dailyReports
           .filter(report => {
             const reportDate = parseISO(report.date);
-            return reportDate >= monthData.startDate && reportDate <= monthData.endDate;
+            return reportDate >= monthData.startDate && reportDate <= monthData.endDate && !report.is_plan;
           })
           .map(report => {
             return {
@@ -1145,17 +1158,32 @@ export default function ReportsPage() {
           const dayOfWeek = date.getDay();
           const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
           
-          // 周末使用不同的背景色
-          let bgColor = day.hasReport ? 'bg-green-500' : 'bg-gray-200';
+          // 已计划的日报使用蓝色
+          let bgColor = day.is_plan 
+            ? 'bg-blue-500'
+            : day.hasReport 
+              ? 'bg-green-500' 
+              : 'bg-gray-200';
+          
           if (isWeekend) {
-            bgColor = day.hasReport ? 'bg-green-400' : 'bg-gray-100';
+            bgColor = day.is_plan 
+              ? 'bg-blue-400'
+              : day.hasReport 
+                ? 'bg-green-400' 
+                : 'bg-gray-100';
+          }
+          
+          // 设置提示文本
+          let statusText = day.hasReport ? '已填报' : '未填报';
+          if (day.is_plan) {
+            statusText = '已计划';
           }
           
           return (
             <div 
               key={index}
               className={`w-3 h-3 rounded-sm ${bgColor}`}
-              title={`${day.date}${isWeekend ? ' (周末)' : ''}: ${day.hasReport ? '已填报' : '未填报'}`}
+              title={`${day.date}${isWeekend ? ' (周末)' : ''}: ${statusText}`}
             />
           );
         })}
@@ -1356,17 +1384,32 @@ export default function ReportsPage() {
                                   const dayOfWeek = date.getDay();
                                   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                                   
-                                  // 周末使用不同的背景色
-                                  let bgColor = day.hasReport ? 'bg-green-500' : 'bg-gray-200';
+                                  // 已计划的日报使用蓝色
+                                  let bgColor = day.is_plan 
+                                    ? 'bg-blue-500'
+                                    : day.hasReport 
+                                      ? 'bg-green-500' 
+                                      : 'bg-gray-200';
+                                  
                                   if (isWeekend) {
-                                    bgColor = day.hasReport ? 'bg-green-400' : 'bg-gray-100';
+                                    bgColor = day.is_plan 
+                                      ? 'bg-blue-400'
+                                      : day.hasReport 
+                                        ? 'bg-green-400' 
+                                        : 'bg-gray-100';
+                                  }
+                                  
+                                  // 设置提示文本
+                                  let statusText = day.hasReport ? '已填报' : '未填报';
+                                  if (day.is_plan) {
+                                    statusText = '已计划';
                                   }
                                   
                                   return (
                                     <div 
                                       key={day.date + '-' + index}
                                       className={`w-3 h-3 rounded-sm ${bgColor}`}
-                                      title={`${day.date}${isWeekend ? ' (周末)' : ''}: ${day.hasReport ? '已填报' : '未填报'}`}
+                                      title={`${day.date}${isWeekend ? ' (周末)' : ''}: ${statusText}`}
                                     />
                                   );
                                 })}
