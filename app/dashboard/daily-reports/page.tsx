@@ -80,23 +80,23 @@ const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   maxWeekIndex
 }) => {
   return (
-    <div className="flex items-center text-sm text-gray-500 mb-4">
+    <div className="flex items-center text-xs md:text-sm text-gray-500 mb-2 md:mb-4">
       <button 
         onClick={() => onWeekChange(currentWeekIndex + 1)}
         disabled={currentWeekIndex >= maxWeekIndex}
-        className="mr-2 p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mr-1 md:mr-2 p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label="上一周"
       >
-        <ChevronLeftIcon className="h-4 w-4" />
+        <ChevronLeftIcon className="h-3 w-3 md:h-4 md:w-4" />
       </button>
-      <span className="font-medium text-gray-700">{year}年第{month}月 (第{weekNumber}周)</span>
+      <span className="font-medium text-gray-700 whitespace-nowrap">{year}年{month}月<span className="hidden md:inline"> (第{weekNumber}周)</span></span>
       <button 
         onClick={() => onWeekChange(currentWeekIndex - 1)}
         disabled={currentWeekIndex <= 0}
-        className="ml-2 p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="ml-1 md:ml-2 p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label="下一周"
       >
-        <ChevronRightIcon className="h-4 w-4" />
+        <ChevronRightIcon className="h-3 w-3 md:h-4 md:w-4" />
       </button>
     </div>
   );
@@ -708,9 +708,9 @@ export default function DailyReportsPage() {
 
       {/* 日报列表 */}
       <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+        <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-medium">日报列表</h2>
+            <h2 className="text-base md:text-lg font-medium">日报列表</h2>
             {currentWeekData && (
               <Breadcrumbs 
                 year={currentYear}
@@ -725,13 +725,13 @@ export default function DailyReportsPage() {
       </div>
 
         {isLoading ? (
-          <div className="flex justify-center items-center p-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-            <span className="ml-2 text-gray-500">加载中...</span>
+          <div className="flex justify-center items-center p-6 md:p-12">
+            <div className="animate-spin rounded-full h-6 w-6 md:h-8 md:w-8 border-t-2 border-b-2 border-blue-500"></div>
+            <span className="ml-2 text-sm md:text-base text-gray-500">加载中...</span>
           </div>
         ) : weekData.length === 0 ? (
-          <div className="p-8 text-center">
-            <p className="text-gray-500">暂无日报数据</p>
+          <div className="p-4 md:p-8 text-center">
+            <p className="text-sm md:text-base text-gray-500">暂无日报数据</p>
           </div>
         ) : (
           <div>
@@ -741,54 +741,88 @@ export default function DailyReportsPage() {
                   return (
                   <li 
                       key={day.date} 
-                    className={`p-4 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay && !day.hasReport ? 'bg-blue-50' : ''}`}
+                      className={`p-3 md:p-4 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay && !day.hasReport ? 'bg-blue-50' : ''}`}
                       onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
                     >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-start">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start flex-grow">
                         <div className="flex-shrink-0">
-                          <FileTextIcon className={`h-6 w-6 ${day.hasReport ? 'text-blue-500' : 'text-gray-400'}`} />
+                          <FileTextIcon className={`h-5 w-5 md:h-6 md:w-6 ${day.hasReport ? 'text-blue-500' : 'text-gray-400'}`} />
                         </div>
-                        <div className="ml-4">
-                          <div className="flex items-center space-x-2">
-                            <h3 className={`font-medium ${isCurrentDay && !day.hasReport ? 'text-blue-700 font-bold' : 'text-gray-900'}`}>
-                              {day.formattedDate} ({day.day})
-                            </h3>
-                            {isCurrentDay && !day.hasReport && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                今天
-                              </span>
-                            )}
-                            {day.hasReport ? (
-                              <>
-                                {day.report?.is_plan ? (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    已计划
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                    已提交
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isCurrentDay ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
-                                {isCurrentDay ? '今日待填' : '未提交'}
-                              </span>
-                            )}
+                        <div className="ml-3 md:ml-4 flex-grow">
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex flex-wrap items-center gap-1 md:gap-2">
+                              <h3 className={`text-sm md:text-base font-medium ${isCurrentDay && !day.hasReport ? 'text-blue-700 font-bold' : 'text-gray-900'}`}>
+                                {format(parseISO(day.date), 'MM-dd')} <span className="hidden md:inline">({day.day})</span>
+                              </h3>
+                              {isCurrentDay && !day.hasReport && (
+                                <span className="inline-flex items-center px-1.5 md:px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                  今天
+                                </span>
+                              )}
+                              {day.hasReport ? (
+                                <>
+                                  {day.report?.is_plan ? (
+                                    <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      已计划
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      已提交
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className={`inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium ${isCurrentDay ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
+                                  {isCurrentDay ? '今日待填' : '未提交'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-1 md:space-x-2">
+                              <Link
+                                href={`/dashboard/daily-reports/new?date=${day.date}`}
+                                className={`inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md ${isCurrentDay && !day.hasReport ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-300' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
+                                title={day.hasReport ? "编辑日报" : "创建日报"}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                              <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                              {day.hasReport ? "编辑" : "填写"}
+                              </Link>
+                              {day.hasReport && day.report && (
+                                <>
+                                  <button
+                                    onClick={(e) => handleCopyReport(e, day.report!)}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                    title="复制日报"
+                                  >
+                                  <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                                  <span className="hidden md:inline">复制</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDeleteClick(e, day.report!.id)}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-red-300 text-xs md:text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
+                                    title="删除日报"
+                                  >
+                                  <TrashIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                                  <span className="hidden md:inline">删除</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                           
-                          <div className="mt-1 flex items-center text-sm text-gray-500">
-                            <CalendarIcon className="h-4 w-4 mr-1" />
-                            <span>{format(parseISO(day.date), 'yyyy年MM月dd日')}</span>
+                          <div className="mt-0.5 md:mt-1 flex items-center text-xs md:text-sm text-gray-500">
+                            <CalendarIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                            <span className="hidden md:inline">{format(parseISO(day.date), 'yyyy年MM月dd日')}</span>
+                            <span className="inline md:hidden">{format(parseISO(day.date), 'yyyy年MM月dd日')}</span>
                           </div>
                           
                           {day.hasReport && day.report && (
-                            <div className="mt-2 flex flex-wrap gap-1">
+                            <div className="mt-1 md:mt-2 flex flex-wrap gap-1">
                             {getReportProjects(day.report).map((project) => (
                               <span
                                 key={project.id}
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                                className="inline-flex items-center px-1.5 md:px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
                               >
                                 {project.name}
                               </span>
@@ -797,37 +831,6 @@ export default function DailyReportsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                          <Link
-                            href={`/dashboard/daily-reports/new?date=${day.date}`}
-                          className={`inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md ${isCurrentDay && !day.hasReport ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-300' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
-                            title={day.hasReport ? "编辑日报" : "创建日报"}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                          <PencilIcon className="h-4 w-4 mr-1" />
-                          {day.hasReport ? "编辑" : "填写"}
-                          </Link>
-                          {day.hasReport && day.report && (
-                            <>
-                              <button
-                                onClick={(e) => handleCopyReport(e, day.report!)}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                                title="复制日报"
-                              >
-                              <CopyIcon className="h-4 w-4 mr-1" />
-                              复制
-                              </button>
-                              <button
-                                onClick={(e) => handleDeleteClick(e, day.report!.id)}
-                              className="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
-                                title="删除日报"
-                              >
-                              <TrashIcon className="h-4 w-4 mr-1" />
-                              删除
-                              </button>
-                            </>
-                          )}
-                        </div>
                     </div>
                   </li>
                   );
@@ -839,33 +842,33 @@ export default function DailyReportsPage() {
 
       {/* 周切换分页控件 */}
       {weekData.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
-          <div className="text-sm text-gray-700">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 md:gap-4 mt-3 md:mt-4">
+          <div className="text-xs md:text-sm text-gray-700 text-center sm:text-left w-full sm:w-auto">
             {currentWeekData && (
               <>
                 显示 <span className="font-medium">{currentWeekData.year}年第{currentWeekData.weekNumber}周</span> 的日报
               </>
             )}
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 md:space-x-2">
             <button
               onClick={() => handleWeekChange(currentWeekIndex + 1)}
               disabled={currentWeekIndex >= weekData.length - 1}
-              className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="relative inline-flex items-center px-2 py-1.5 md:py-2 rounded-md border border-gray-300 bg-white text-xs md:text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="sr-only">上一周</span>
-              <ChevronLeftIcon className="h-5 w-5" />
+              <ChevronLeftIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
-            <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+            <span className="relative inline-flex items-center px-3 md:px-4 py-1.5 md:py-2 border border-gray-300 bg-white text-xs md:text-sm font-medium text-gray-700">
               {currentWeekIndex + 1} / {weekData.length}
             </span>
             <button
               onClick={() => handleWeekChange(currentWeekIndex - 1)}
               disabled={currentWeekIndex <= 0}
-              className="relative inline-flex items-center px-2 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="relative inline-flex items-center px-2 py-1.5 md:py-2 rounded-md border border-gray-300 bg-white text-xs md:text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="sr-only">下一周</span>
-              <ChevronRightIcon className="h-5 w-5" />
+              <ChevronRightIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         </div>
@@ -874,45 +877,47 @@ export default function DailyReportsPage() {
       {/* 日报预览弹窗 */}
       {isPreviewOpen && previewReport && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">日报详情 - {previewReport.date} ({previewReport.day})</h3>
-                <button
-                  onClick={closePreview}
+          <div className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-2 md:mb-4">
+              <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">
+                日报详情 - {previewReport.date} <span className="hidden md:inline">({previewReport.day})</span>
+              </h3>
+              <button
+                onClick={closePreview}
                 className="text-gray-400 hover:text-gray-500"
-                >
-                  <XIcon className="h-5 w-5" />
-                </button>
-              </div>
+              >
+                <XIcon className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </div>
             
-            <div className="flex items-center mb-4">
+            <div className="flex items-center mb-2 md:mb-4">
               {previewReport.is_plan ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                   工作计划
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   已提交
                 </span>
               )}
             </div>
             
             <div className="flex-grow overflow-auto">
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {getReportProjects(previewReport).map(project => (
-                  <div key={project.id} className="border-l-2 border-blue-500 pl-4 py-2">
-                    <div className="flex items-center mb-2">
-                      <div className="text-sm font-medium text-blue-600">
+                  <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
+                    <div className="flex items-center mb-1 md:mb-2">
+                      <div className="text-xs md:text-sm font-medium text-blue-600">
                         {project.name}
                       </div>
-                      <div className="text-xs text-gray-500 ml-2">
+                      <div className="text-xs text-gray-500 ml-1 md:ml-2">
                         ({project.code})
                       </div>
                     </div>
-                    <ul className="space-y-2">
+                    <ul className="space-y-1 md:space-y-2">
                       {getProjectItems(previewReport, project.id).map((item, idx) => (
-                        <li key={idx} className="text-sm text-gray-600 flex items-start">
-                          <span className="mr-2 text-blue-400 flex-shrink-0">•</span>
+                        <li key={idx} className="text-xs md:text-sm text-gray-600 flex items-start">
+                          <span className="mr-1 md:mr-2 text-blue-400 flex-shrink-0">•</span>
                           <span className="break-words">{item.content}</span>
                         </li>
                       ))}
@@ -922,27 +927,27 @@ export default function DailyReportsPage() {
               </div>
             </div>
             
-            <div className="flex justify-end space-x-3 mt-4">
+            <div className="flex justify-end space-x-1 md:space-x-3 mt-3 md:mt-4">
               <button
                 onClick={handlePreviewCopy}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
-                <CopyIcon className="h-4 w-4 mr-1" />
+                <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 复制内容
               </button>
-                <button
-                  onClick={(e) => handleEditClick(e, previewReport.date)}
-                className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
-                >
-                  <PencilIcon className="h-4 w-4 mr-1" />
+              <button
+                onClick={(e) => handleEditClick(e, previewReport.date)}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+              >
+                <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 编辑日报
-                </button>
-                <button
-                  onClick={closePreview}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  关闭
-                </button>
+              </button>
+              <button
+                onClick={closePreview}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                关闭
+              </button>
             </div>
           </div>
         </div>
@@ -951,29 +956,29 @@ export default function DailyReportsPage() {
       {/* 删除确认对话框 */}
       {confirmDeleteOpen && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="mb-4">
-              <h3 className="text-lg font-medium text-gray-900">确认删除</h3>
+          <div className="bg-white rounded-lg p-3 md:p-6 max-w-md w-full mx-3 md:mx-4">
+            <div className="mb-2 md:mb-4">
+              <h3 className="text-base md:text-lg font-medium text-gray-900">确认删除</h3>
             </div>
-            <div className="mb-6">
-              <p className="text-gray-700">确定要删除这份日报吗？此操作无法撤销。</p>
+            <div className="mb-4 md:mb-6">
+              <p className="text-xs md:text-sm text-gray-700">确定要删除这份日报吗？此操作无法撤销。</p>
             </div>
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-2 md:space-x-3">
               <button
                 onClick={handleCancelDelete}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 disabled={isDeletingReport}
               >
                 取消
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
                 disabled={isDeletingReport}
               >
                 {isDeletingReport ? (
                   <>
-                    <Loader2Icon className="h-4 w-4 mr-1 animate-spin" />
+                    <Loader2Icon className="h-3 w-3 md:h-4 md:w-4 mr-1 animate-spin" />
                     删除中...
                   </>
                 ) : (

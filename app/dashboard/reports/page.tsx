@@ -214,42 +214,42 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
   };
   
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-2 md:p-0">
+      <div className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center mb-2 md:mb-4">
+          <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">{title}</h3>
           <button 
             onClick={onClose}
             className="text-gray-400 hover:text-gray-500"
           >
-            <XIcon className="h-5 w-5" />
+            <XIcon className="h-4 w-4 md:h-5 md:w-5" />
           </button>
         </div>
         
         <div className="flex-grow overflow-auto">
           <textarea
             ref={textAreaRef}
-            className={`w-full h-full min-h-[400px] p-4 border border-gray-300 rounded-md font-mono text-sm ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
+            className={`w-full h-full min-h-[200px] md:min-h-[400px] p-2 md:p-4 border border-gray-300 rounded-md font-mono text-xs md:text-sm ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
             readOnly={readOnly || !isEditing}
           />
         </div>
         
-        <div className="flex justify-end space-x-3 mt-4">
+        <div className="flex flex-wrap justify-end gap-2 md:space-x-3 mt-3 md:mt-4">
           <button
             onClick={handleCopy}
-            className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
-            <CopyIcon className="h-4 w-4 mr-1" />
-            复制内容
+            <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+            复制
           </button>
           <button
             onClick={handleDownload}
-            className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
-            <DownloadIcon className="h-4 w-4 mr-1" />
-            下载报告
+            <DownloadIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+            下载
           </button>
           
           {!readOnly && (
@@ -257,40 +257,49 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
               <button
                 onClick={handlePolish}
                 disabled={isPolishing || isEditing}
-                className="inline-flex items-center px-3 py-1.5 border border-purple-300 text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
               >
-                <SparklesIcon className={`h-4 w-4 mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
-                {isPolishing ? 'AI润色中...' : 'AI润色'}
+                <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
+                {isPolishing ? '润色中...' : 'AI润色'}
               </button>
-              
+          
               {isEditing ? (
                 <>
                   <button
                     onClick={handleCancel}
-                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    disabled={isSaving}
+                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                   >
+                    <XIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                     取消
                   </button>
                   <button
                     onClick={handleSave}
-                    className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
                     disabled={isSaving}
+                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {isSaving ? '保存中...' : '保存修改'}
+                    {isSaving && <RefreshCwIcon className="animate-spin h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />}
+                    {!isSaving && <CheckCircleIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />}
+                    保存
                   </button>
                 </>
               ) : (
                 <button
                   onClick={handleEdit}
-                  className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
                 >
-                  <PencilIcon className="h-4 w-4 mr-1" />
-                  编辑报告
+                  <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                  编辑
                 </button>
               )}
             </>
           )}
+          
+          <button
+            onClick={onClose}
+            className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+          >
+            关闭
+          </button>
         </div>
       </div>
     </div>
@@ -306,21 +315,21 @@ interface BreadcrumbsProps {
 
 const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ year, month, onYearMonthChange }) => {
   return (
-    <div className="flex items-center text-sm text-gray-500 mb-4">
+    <div className="flex items-center text-xs md:text-sm text-gray-500 mb-2 md:mb-4">
       <button 
-        onClick={() => onYearMonthChange(year, month - 1)}
-        className="mr-2 p-1 rounded-full hover:bg-gray-100"
-        aria-label="上一月"
+        onClick={() => onYearMonthChange(year, month - 1 > 0 ? month - 1 : 12)}
+        className="mr-1 md:mr-2 p-1 rounded-full hover:bg-gray-100"
+        aria-label="上个月"
       >
-        <ChevronLeftIcon className="h-4 w-4" />
+        <ChevronLeftIcon className="h-3 w-3 md:h-4 md:w-4" />
       </button>
-      <span className="font-medium text-gray-700">{year}年第{month}月</span>
+      <span className="font-medium text-gray-700 whitespace-nowrap">{year}年{month}月</span>
       <button 
-        onClick={() => onYearMonthChange(year, month + 1)}
-        className="ml-2 p-1 rounded-full hover:bg-gray-100"
-        aria-label="下一月"
+        onClick={() => onYearMonthChange(year, month + 1 <= 12 ? month + 1 : 1)}
+        className="ml-1 md:ml-2 p-1 rounded-full hover:bg-gray-100"
+        aria-label="下个月"
       >
-        <ChevronRightIcon className="h-4 w-4" />
+        <ChevronRightIcon className="h-3 w-3 md:h-4 md:w-4" />
       </button>
     </div>
   );
@@ -1228,15 +1237,15 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">周报月报</h1>
+        <h1 className="text-xl md:text-2xl font-bold">周报月报</h1>
       </div>
 
       {/* 切换标签 */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-4 md:space-x-8">
           <button
             onClick={() => setActiveTab("weekly")}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+            className={`py-3 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm ${
               activeTab === "weekly"
                 ? "border-blue-500 text-blue-600"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -1246,7 +1255,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => setActiveTab("monthly")}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+            className={`py-3 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm ${
               activeTab === "monthly"
                 ? "border-blue-500 text-blue-600"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -1259,9 +1268,9 @@ export default function ReportsPage() {
 
       {/* 报告列表 */}
       <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+        <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-medium">
+            <h2 className="text-base md:text-lg font-medium">
               {activeTab === "weekly" ? "周报列表" : "月报列表"}
             </h2>
             {activeTab === "weekly" ? (
@@ -1271,21 +1280,21 @@ export default function ReportsPage() {
                 onYearMonthChange={handleYearMonthChange}
               />
             ) : (
-              <div className="flex items-center text-sm text-gray-500 mb-4">
+              <div className="flex items-center text-xs md:text-sm text-gray-500 mb-2 md:mb-4">
                 <button 
                   onClick={() => handleYearChange(currentYear - 1)}
-                  className="mr-2 p-1 rounded-full hover:bg-gray-100"
+                  className="mr-1 md:mr-2 p-1 rounded-full hover:bg-gray-100"
                   aria-label="上一年"
                 >
-                  <ChevronLeftIcon className="h-4 w-4" />
+                  <ChevronLeftIcon className="h-3 w-3 md:h-4 md:w-4" />
                 </button>
                 <span className="font-medium text-gray-700">{currentYear}年</span>
                 <button 
                   onClick={() => handleYearChange(currentYear + 1)}
-                  className="ml-2 p-1 rounded-full hover:bg-gray-100"
+                  className="ml-1 md:ml-2 p-1 rounded-full hover:bg-gray-100"
                   aria-label="下一年"
                 >
-                  <ChevronRightIcon className="h-4 w-4" />
+                  <ChevronRightIcon className="h-3 w-3 md:h-4 md:w-4" />
                 </button>
               </div>
             )}
@@ -1293,9 +1302,9 @@ export default function ReportsPage() {
         </div>
         
         {isLoading ? (
-          <div className="flex justify-center items-center p-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-            <span className="ml-2 text-gray-500">加载中...</span>
+          <div className="flex justify-center items-center p-6 md:p-12">
+            <div className="animate-spin rounded-full h-6 w-6 md:h-8 md:w-8 border-t-2 border-b-2 border-blue-500"></div>
+            <span className="ml-2 text-sm md:text-base text-gray-500">加载中...</span>
           </div>
         ) : (
           <div>
@@ -1303,57 +1312,60 @@ export default function ReportsPage() {
               <ul className="divide-y divide-gray-200">
                 {filteredWeeklyData.length > 0 ? (
                   filteredWeeklyData.map((week) => (
-                    <li key={`${week.year}-${week.weekNumber}`} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-start">
+                    <li key={`${week.year}-${week.weekNumber}`} className="p-3 md:p-4">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-start flex-grow">
                           <div className="flex-shrink-0">
-                            <FileTextIcon className="h-6 w-6 text-blue-500" />
+                            <FileTextIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
                           </div>
-                          <div className="ml-4">
-                            <div className="flex items-center space-x-2">
-                              <h3 className="font-medium">{week.year}年第{week.weekNumber}周</h3>
-                              {renderReportStatus(week.reportStatus)}
+                          <div className="ml-3 md:ml-4 flex-grow">
+                            <div className="flex flex-wrap items-center gap-1 md:gap-2 justify-between w-full">
+                              <div className="flex items-center gap-1 md:gap-2">
+                                <h3 className="text-sm md:text-base font-medium">{week.year}年第{week.weekNumber}周</h3>
+                                {renderReportStatus(week.reportStatus)}
+                              </div>
+                              <div className="flex items-center space-x-1 md:space-x-2">
+                                {week.reportStatus === "generated" && (
+                                  <button
+                                    onClick={() => handlePreviewReport("weekly", week.formattedPeriod)}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                  >
+                                    <EyeIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                                    预览
+                                  </button>
+                                )}
+                                {(week.reportStatus === "pending" || week.reportStatus === "generated") && (
+                                  <button
+                                    onClick={() => handleGenerateReport("weekly", week.formattedPeriod)}
+                                    disabled={generatingReportId === `weekly-${week.formattedPeriod}`}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
+                                  >
+                                    <RefreshCwIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${generatingReportId === `weekly-${week.formattedPeriod}` ? 'animate-spin' : ''}`} />
+                                    <span className="hidden md:inline">{generatingReportId === `weekly-${week.formattedPeriod}` ? '生成中...' : '生成周报'}</span>
+                                    <span className="inline md:hidden">{generatingReportId === `weekly-${week.formattedPeriod}` ? '生成中' : '生成'}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="mt-1 flex items-center text-sm text-gray-500">
-                              <CalendarIcon className="h-4 w-4 mr-1" />
+                            <div className="mt-0.5 md:mt-1 flex items-center text-xs md:text-sm text-gray-500">
+                              <CalendarIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />
                               <span>{week.formattedPeriod}</span>
                             </div>
-                            <div className="mt-2">
+                            <div className="mt-1 md:mt-2">
                               {renderDailyStatusIndicators(week.dailyReportStatus)}
                             </div>
                             {week.generatedAt && (
-                              <p className="mt-1 text-xs text-gray-500">
+                              <p className="mt-0.5 md:mt-1 text-xs text-gray-500">
                                 生成于 {week.generatedAt}
                               </p>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          {week.reportStatus === "generated" && (
-                            <button
-                              onClick={() => handlePreviewReport("weekly", week.formattedPeriod)}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                            >
-                              <EyeIcon className="h-4 w-4 mr-1" />
-                              预览
-                            </button>
-                          )}
-                          {(week.reportStatus === "pending" || week.reportStatus === "generated") && (
-                            <button
-                              onClick={() => handleGenerateReport("weekly", week.formattedPeriod)}
-                              disabled={generatingReportId === `weekly-${week.formattedPeriod}`}
-                              className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
-                            >
-                              <RefreshCwIcon className={`h-4 w-4 mr-1 ${generatingReportId === `weekly-${week.formattedPeriod}` ? 'animate-spin' : ''}`} />
-                              {generatingReportId === `weekly-${week.formattedPeriod}` ? '生成中...' : '生成周报'}
-                            </button>
-                          )}
-                        </div>
                       </div>
                     </li>
                   ))
                 ) : (
-                  <li className="p-4 text-center text-gray-500">
+                  <li className="p-3 md:p-4 text-center text-xs md:text-sm text-gray-500">
                     {currentYear}年第{currentMonth}月暂无周报记录
                   </li>
                 )}
@@ -1362,23 +1374,47 @@ export default function ReportsPage() {
               <ul className="divide-y divide-gray-200">
                 {filteredMonthlyData.length > 0 ? (
                   filteredMonthlyData.map((month) => (
-                    <li key={`${month.year}-${month.month}`} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-start">
+                    <li key={`${month.year}-${month.month}`} className="p-3 md:p-4">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-start flex-grow">
                           <div className="flex-shrink-0">
-                            <FileTextIcon className="h-6 w-6 text-blue-500" />
+                            <FileTextIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
                           </div>
-                          <div className="ml-4">
-                            <div className="flex items-center space-x-2">
-                              <h3 className="font-medium">{month.formattedPeriod}工作月报</h3>
-                              {renderReportStatus(month.reportStatus)}
+                          <div className="ml-3 md:ml-4 flex-grow">
+                            <div className="flex flex-wrap items-center gap-1 md:gap-2 justify-between w-full">
+                              <div className="flex items-center gap-1 md:gap-2">
+                                <h3 className="text-sm md:text-base font-medium">{month.formattedPeriod}工作月报</h3>
+                                {renderReportStatus(month.reportStatus)}
+                              </div>
+                              <div className="flex items-center space-x-1 md:space-x-2">
+                                {month.reportStatus === "generated" && (
+                                  <button
+                                    onClick={() => handlePreviewReport("monthly", month.formattedPeriod)}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                  >
+                                    <EyeIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                                    预览
+                                  </button>
+                                )}
+                                {(month.reportStatus === "pending" || month.reportStatus === "generated") && (
+                                  <button
+                                    onClick={() => handleGenerateReport("monthly", month.formattedPeriod)}
+                                    disabled={generatingReportId === `monthly-${month.formattedPeriod}`}
+                                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
+                                  >
+                                    <RefreshCwIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${generatingReportId === `monthly-${month.formattedPeriod}` ? 'animate-spin' : ''}`} />
+                                    <span className="hidden md:inline">{generatingReportId === `monthly-${month.formattedPeriod}` ? '生成中...' : '生成月报'}</span>
+                                    <span className="inline md:hidden">{generatingReportId === `monthly-${month.formattedPeriod}` ? '生成中' : '生成'}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="mt-1 flex items-center text-sm text-gray-500">
-                              <CalendarIcon className="h-4 w-4 mr-1" />
+                            <div className="mt-0.5 md:mt-1 flex items-center text-xs md:text-sm text-gray-500">
+                              <CalendarIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />
                               <span>{format(month.startDate, 'yyyy-MM-dd')} 至 {format(month.endDate, 'yyyy-MM-dd')}</span>
                             </div>
-                            <div className="mt-2">
-                              <div className="flex flex-wrap gap-1 max-w-md">
+                            <div className="mt-1 md:mt-2">
+                              <div className="flex flex-wrap gap-0.5 md:gap-1 max-w-md">
                                 {month.dailyReportStatus.map((day, index) => {
                                   const date = parseISO(day.date);
                                   const dayOfWeek = date.getDay();
@@ -1408,7 +1444,7 @@ export default function ReportsPage() {
                                   return (
                                     <div 
                                       key={day.date + '-' + index}
-                                      className={`w-3 h-3 rounded-sm ${bgColor}`}
+                                      className={`w-2 h-2 md:w-3 md:h-3 rounded-sm ${bgColor}`}
                                       title={`${day.date}${isWeekend ? ' (周末)' : ''}: ${statusText}`}
                                     />
                                   );
@@ -1416,38 +1452,17 @@ export default function ReportsPage() {
                               </div>
                             </div>
                             {month.generatedAt && (
-                              <p className="mt-1 text-xs text-gray-500">
+                              <p className="mt-0.5 md:mt-1 text-xs text-gray-500">
                                 生成于 {month.generatedAt}
                               </p>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          {month.reportStatus === "generated" && (
-                            <button
-                              onClick={() => handlePreviewReport("monthly", month.formattedPeriod)}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                            >
-                              <EyeIcon className="h-4 w-4 mr-1" />
-                              预览
-                            </button>
-                          )}
-                          {(month.reportStatus === "pending" || month.reportStatus === "generated") && (
-                            <button
-                              onClick={() => handleGenerateReport("monthly", month.formattedPeriod)}
-                              disabled={generatingReportId === `monthly-${month.formattedPeriod}`}
-                              className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
-                            >
-                              <RefreshCwIcon className={`h-4 w-4 mr-1 ${generatingReportId === `monthly-${month.formattedPeriod}` ? 'animate-spin' : ''}`} />
-                              {generatingReportId === `monthly-${month.formattedPeriod}` ? '生成中...' : '生成月报'}
-                            </button>
-                          )}
-                        </div>
                       </div>
                     </li>
                   ))
                 ) : (
-                  <li className="p-4 text-center text-gray-500">
+                  <li className="p-3 md:p-4 text-center text-xs md:text-sm text-gray-500">
                     {currentYear}年暂无月报记录
                   </li>
                 )}

@@ -269,7 +269,7 @@ export default function DashboardOverview() {
         name: "本周填写日报",
         value: stats.weeklyReportCount.toString(),
         unit: "天",
-        icon: <FileTextIcon className="h-6 w-6 text-blue-600" />,
+        icon: <FileTextIcon className="h-full w-full text-blue-600" />,
         description: `本周已填写${stats.weeklyReportCount}天日报`,
       },
       {
@@ -277,7 +277,7 @@ export default function DashboardOverview() {
         name: "待生成周报",
         value: stats.pendingWeeklyReports.toString(),
         unit: "份",
-        icon: <CalendarIcon className="h-6 w-6 text-green-600" />,
+        icon: <CalendarIcon className="h-full w-full text-green-600" />,
         description: `有${stats.pendingWeeklyReports}份周报待生成`,
       },
       {
@@ -285,7 +285,7 @@ export default function DashboardOverview() {
         name: "项目数量",
         value: stats.projectCount.toString(),
         unit: "个",
-        icon: <FolderIcon className="h-6 w-6 text-orange-600" />,
+        icon: <FolderIcon className="h-full w-full text-orange-600" />,
         description: `当前共有${stats.projectCount}个项目`,
       },
       {
@@ -293,7 +293,7 @@ export default function DashboardOverview() {
         name: "本月工作量",
         value: stats.monthlyWorkItemCount.toString(),
         unit: "项",
-        icon: <BarChart3Icon className="h-6 w-6 text-purple-600" />,
+        icon: <BarChart3Icon className="h-full w-full text-purple-600" />,
         description: `本月已完成${stats.monthlyWorkItemCount}项工作`,
       },
     ];
@@ -390,29 +390,34 @@ export default function DashboardOverview() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">欢迎回来，{user.name}</h1>
-        <p className="text-gray-500">今天是 {new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <h1 className="text-xl md:text-2xl font-bold">欢迎回来，{user.name}</h1>
+        <p className="text-xs md:text-sm text-gray-500">
+          <span className="hidden md:inline">今天是 {new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          <span className="inline md:hidden">今天是 {new Date().toLocaleDateString('zh-CN', { weekday: 'short', month: 'numeric', day: 'numeric' })}</span>
+        </p>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
         {generateStatsCards().map((stat) => (
           <div
             key={stat.id}
-            className="bg-white rounded-lg shadow p-6 flex items-start space-x-4"
+            className="bg-white rounded-lg shadow p-3 md:p-4 lg:p-6 flex items-start space-x-2 md:space-x-3"
           >
-            <div className="rounded-full p-3 bg-gray-50">
-              {stat.icon}
+            <div className="rounded-full p-1.5 md:p-2 lg:p-3 bg-gray-50 flex-shrink-0">
+              <div className="w-4 h-4 md:w-5 md:h-5 lg:h-6 lg:w-6">
+                {stat.icon}
+              </div>
             </div>
             <div>
-              <p className="text-gray-500 text-sm">{stat.name}</p>
-              <p className="text-2xl font-bold">
+              <p className="text-gray-500 text-xs md:text-sm">{stat.name}</p>
+              <p className="text-lg md:text-xl lg:text-2xl font-bold">
                 {stat.value}
-                <span className="text-sm font-normal text-gray-500 ml-1">
+                <span className="text-xs md:text-sm font-normal text-gray-500 ml-1">
                   {stat.unit}
                 </span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">{stat.description}</p>
+              <p className="text-xs text-gray-500 mt-0.5 md:mt-1 hidden md:block">{stat.description}</p>
             </div>
           </div>
         ))}
@@ -420,51 +425,51 @@ export default function DashboardOverview() {
 
       {/* 最近日报 */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-lg font-medium">最近日报</h2>
-          <Link href="/dashboard/daily-reports" className="text-sm text-blue-600 hover:text-blue-800">
+        <div className="px-3 px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 flex justify-between items-center">
+          <h2 className="text-base md:text-lg font-medium">最近日报</h2>
+          <Link href="/dashboard/daily-reports" className="text-xs md:text-sm text-blue-600 hover:text-blue-800">
             查看全部
           </Link>
         </div>
         <div className="divide-y divide-gray-200">
           {reports.length > 0 ? (
             reports.map((report) => (
-              <div key={report.id} className="p-6">
+              <div key={report.id} className="p-3 md:p-4 lg:p-6">
                 <div className="flex justify-between items-start">
                   <div className="w-full">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-medium">{format(parseISO(report.date), 'yyyy-MM-dd')}</h3>
-                      <div className="flex items-center space-x-2">
+                      <h3 className="text-sm md:text-base font-medium">{format(parseISO(report.date), 'yyyy-MM-dd')}</h3>
+                      <div className="flex items-center space-x-1 md:space-x-2">
                         <button 
                           onClick={(e) => handleCopyReport(e, report)}
-                          className="p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
+                          className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
                           title="复制日报内容"
                         >
-                          <CopyIcon className="h-4 w-4" />
+                          <CopyIcon className="h-3 w-3 md:h-4 md:w-4" />
                         </button>
                         {report.is_plan ? (
-                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-blue-100 text-blue-800">
                             已计划
                           </span>
                         ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-green-100 text-green-800">
                             {report.status}
                           </span>
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">今日工作内容</p>
+                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">今日工作内容</p>
                     
-                    <div className="mt-3 space-y-3">
+                    <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
                       {getReportProjects(report).map(project => (
-                        <div key={project.id} className="border-l-2 border-blue-500 pl-3">
-                          <div className="text-sm font-medium text-blue-600 mb-1">
+                        <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-3">
+                          <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
                             {project.name} ({project.code})
                           </div>
-                          <ul className="space-y-1">
+                          <ul className="space-y-0.5 md:space-y-1">
                             {getProjectWorkItems(report, project.id).map((item, idx) => (
-                              <li key={idx} className="text-sm text-gray-500 flex items-start">
-                                <span className="mr-2 text-gray-400">•</span>
+                              <li key={idx} className="text-xs md:text-sm text-gray-500 flex items-start">
+                                <span className="mr-1 md:mr-2 text-gray-400">•</span>
                                 <span>{item.content}</span>
                               </li>
                             ))}
@@ -477,7 +482,7 @@ export default function DashboardOverview() {
               </div>
             ))
           ) : (
-            <div className="p-6 text-center text-gray-500">
+            <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
               暂无日报记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
             </div>
           )}
