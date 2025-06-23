@@ -11,6 +11,41 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { setCurrentTenant } = useTenantStore()
+  const [tenantFetched, setTenantFetched] = useState(false)
+
+  const fetchTenantInfo = useCallback(async (userId: string) => {
+    if (typeof window !== 'undefined') {
+      const cachedTenant = sessionStorage.getItem(`tenant_info_${userId}`)
+      if (cachedTenant) {
+        try {
+          const tenant = JSON.parse(cachedTenant)
+          setCurrentTenant(tenant)
+          setTenantFetched(true)
+          return
+        } catch (e) {
+          console.error('解析缓存的租户信息失败:', e)
+        }
+      }
+    }
+
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('tenant_id, tenants:tenant_id(*)')
+      .eq('id', userId)
+      .single()
+    
+    if (data && data.tenants) {
+      const tenant = data.tenants as unknown as Tenant
+      setCurrentTenant(tenant)
+      
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`tenant_info_${userId}`, JSON.stringify(tenant))
+      }
+    }
+    
+    setTenantFetched(true)
+  }, [setCurrentTenant])
 
   useEffect(() => {
     const supabase = createClient()
@@ -18,20 +53,12 @@ export function useAuth() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user || null)
-      setLoading(false)
-
-      // 当用户登录时获取其租户信息
-      if (user) {
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('tenant_id, tenants:tenant_id(*)')
-          .eq('id', user.id)
-          .single()
-        
-        if (data && data.tenants) {
-          setCurrentTenant(data.tenants as unknown as Tenant)
-        }
+      
+      if (user && !tenantFetched) {
+        await fetchTenantInfo(user.id)
       }
+      
+      setLoading(false)
     }
 
     getUser()
@@ -39,34 +66,25 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setUser(session?.user || null)
-        setLoading(false)
-
-        // 当用户登录时获取其租户信息
-        if (session?.user) {
-          const { data } = await supabase
-            .from('user_profiles')
-            .select('tenant_id, tenants:tenant_id(*)')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (data && data.tenants) {
-            setCurrentTenant(data.tenants as unknown as Tenant)
-          }
+        
+        if (session?.user && !tenantFetched) {
+          await fetchTenantInfo(session.user.id)
         }
+        
+        setLoading(false)
       }
     )
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [setCurrentTenant])
+  }, [fetchTenantInfo, tenantFetched])
 
   const login = useCallback(async (email: string, password: string) => {
     try {
       setLoading(true)
       const supabase = createClient()
       
-      // 获取重定向URL
       const redirectUrl = getAuthCallbackUrl();
       
       const { error } = await supabase.auth.signInWithPassword({
@@ -98,7 +116,6 @@ export function useAuth() {
       setLoading(true)
       const supabase = createClient()
       
-      // 获取重定向URL
       const redirectUrl = getAuthCallbackUrl();
       
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -117,7 +134,6 @@ export function useAuth() {
       }
 
       if (authData.user) {
-        // 创建租户
         const { data: tenantData, error: tenantError } = await supabase
           .from('tenants')
           .insert([{ name: tenantName }])
@@ -130,7 +146,6 @@ export function useAuth() {
           return false
         }
         
-        // 创建用户资料
         const tenant = tenantData[0] as Tenant;
         await supabase
           .from('user_profiles')
@@ -142,7 +157,6 @@ export function useAuth() {
             role: 'admin'
           }])
         
-        // 设置当前租户
         setCurrentTenant(tenant)
         
         toast.success('注册成功', {
@@ -167,8 +181,15 @@ export function useAuth() {
     const supabase = createClient()
     await supabase.auth.signOut()
     setCurrentTenant(null)
+    setTenantFetched(false)
+    
+    if (user && typeof window !== 'undefined') {
+      sessionStorage.removeItem(`tenant_info_${user.id}`)
+      sessionStorage.removeItem(`user_profile_${user.id}`)
+    }
+    
     router.push('/')
-  }, [router, setCurrentTenant])
+  }, [router, setCurrentTenant, user])
 
   return { user, loading, login, signup, logout }
 } 

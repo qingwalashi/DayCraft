@@ -9,6 +9,7 @@ import { zhCN } from "date-fns/locale";
 import { Project } from "@/lib/supabase/client";
 import Link from "next/link";
 import { toast } from "sonner";
+import { usePersistentState } from '@/lib/utils/page-persistence';
 
 interface User {
   id: string;
@@ -39,16 +40,18 @@ interface Stats {
 export default function DashboardOverview() {
   const { user: authUser, loading } = useAuth();
   const supabase = createClient();
-  const [user, setUser] = useState<User | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [recentReports, setRecentReports] = useState<Report[]>([]);
+  
+  // 使用持久化状态替代普通状态
+  const [user, setUser] = usePersistentState<User | null>('dashboard-overview-user', null);
+  const [reports, setReports] = usePersistentState<Report[]>('dashboard-overview-reports', []);
+  const [projects, setProjects] = usePersistentState<Project[]>('dashboard-overview-projects', []);
+  const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<Stats>({
     weeklyReportCount: 0,
     pendingWeeklyReports: 0,
     projectCount: 0,
     monthlyWorkItemCount: 0
   });
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // 使用Supabase的用户信息
@@ -63,6 +66,24 @@ export default function DashboardOverview() {
       fetchData(authUser.id);
     }
   }, [authUser]);
+
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('概览页面恢复可见，检查数据状态');
+          // 可以在这里添加轻量级的数据验证，避免页面重载
+          // 但不执行完整数据请求
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, []);
 
   // 获取所有数据
   const fetchData = async (userId: string) => {
@@ -135,7 +156,7 @@ export default function DashboardOverview() {
         }))
       }));
       
-      setRecentReports(formattedReports);
+      setReports(formattedReports);
       return formattedReports;
     } catch (error) {
       console.error("获取最近日报失败", error);
@@ -403,8 +424,8 @@ export default function DashboardOverview() {
           </Link>
         </div>
         <div className="divide-y divide-gray-200">
-          {recentReports.length > 0 ? (
-            recentReports.map((report) => (
+          {reports.length > 0 ? (
+            reports.map((report) => (
               <div key={report.id} className="p-6">
                 <div className="flex justify-between items-start">
                   <div className="w-full">

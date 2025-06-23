@@ -9,6 +9,7 @@ import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, g
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { usePersistentState } from "@/lib/utils/page-persistence";
 
 interface ReportWithItems {
   id: string;
@@ -67,14 +68,16 @@ export default function DailyReportsPage() {
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reports, setReports] = useState<ReportWithItems[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [previewReport, setPreviewReport] = useState<ReportWithItems | null>(null);
+  
+  // 使用持久化状态钩子替代普通的useState
+  const [projects, setProjects] = usePersistentState<Project[]>('daily-reports-projects', []);
+  const [previewReport, setPreviewReport] = usePersistentState<ReportWithItems | null>('daily-reports-preview', null);
+  // 使用持久化状态钩子保存周数据
+  const [weekData, setWeekData] = usePersistentState<WeekData[]>('daily-reports-week-data', []);
+  const [currentWeekIndex, setCurrentWeekIndex] = usePersistentState<number>('daily-reports-current-week', 0);
+  
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   
-  // 新增周数据状态
-  const [weekData, setWeekData] = useState<WeekData[]>([]);
-  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
-
   // 新增今日日报提醒状态
   const [todayReportReminder, setTodayReportReminder] = useState<{
     date: string;

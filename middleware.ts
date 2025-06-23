@@ -1,45 +1,41 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  // 为每个请求创建一个新的响应对象
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req: request, res });
+  const response = NextResponse.next();
+
+  // 添加缓存控制头，防止浏览器刷新页面
+  response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+
+  const supabase = createMiddlewareClient({ req: request, res: response });
   
   // 检查用户会话
-  const { data: { session } } = await supabase.auth.getSession();
-  const hasSession = !!session;
-
-  const url = request.nextUrl.clone();
-  const searchParams = url.searchParams;
-
-  // 定义路径类型
-  const authRequiredPaths = ['/dashboard'];
-  const isAuthRoute = ['/login', '/signup', '/forgot-password', '/reset-password'].some(
-    path => request.nextUrl.pathname.startsWith(path)
-  );
-  
-  // 检查路径是否需要认证
-  const requiresAuth = authRequiredPaths.some(
-    path => request.nextUrl.pathname.startsWith(path)
-  );
-  
-  // 重定向规则
-  if (requiresAuth && !hasSession) {
-    // 1. 如果需要认证但没有会话，重定向到登录页
-    const redirectUrl = new URL('/login', request.url);
-    searchParams.set('redirect_to', request.nextUrl.pathname);
-    return NextResponse.redirect(redirectUrl);
-  }
-  
-  if (isAuthRoute && hasSession) {
-    // 2. 如果已登录但访问登录相关页面，重定向到仪表板
-    return NextResponse.redirect(new URL('/dashboard/overview', request.url));
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    
+    // 获取当前路径名
+    const { pathname } = request.nextUrl;
+    
+    // 如果用户未登录且访问受保护的路由，则重定向到登录页面
+    if (!session && pathname.startsWith('/dashboard')) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    
+    // 如果用户已登录且访问登录页面，则重定向到仪表盘
+    if (session && (pathname === '/login' || pathname === '/signup' || pathname === '/')) {
+      return NextResponse.redirect(new URL('/dashboard/overview', request.url));
+    }
+  } catch (error) {
+    console.error('中间件错误:', error);
   }
 
   // 返回修改后的响应
-  return res;
+  return response;
 }
 
 // 配置匹配的路径

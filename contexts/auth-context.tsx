@@ -110,7 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 pathname?.startsWith('/forgot-password') || pathname?.startsWith('/reset-password')) {
               router.push('/dashboard/overview');
             } else {
-              router.refresh(); // 仅刷新当前页面
+              // 不使用router.refresh()来减少页面重载
+              // 改为仅更新必要状态
+              setUser(currentSession?.user || null);
             }
           }
           
@@ -136,6 +138,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
   }, [router, supabase.auth, pathname, refreshSession, session]);
+
+  // 添加页面可见性监听，防止页面切换后重新加载
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        // 当页面重新变为可见时，不刷新页面，而是检查会话是否还有效
+        if (document.visibilityState === 'visible') {
+          // 静默刷新会话，不触发页面重载
+          refreshSession().catch(err => console.error('静默刷新会话失败:', err));
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [refreshSession]);
 
   const signOut = async () => {
     setLoading(true);

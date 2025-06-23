@@ -58,6 +58,9 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, signOut, loading: authLoading } = useAuth();
   const supabase = createClient();
+  
+  // 添加一个标记，避免重复获取用户资料
+  const [profileFetched, setProfileFetched] = useState(false);
 
   // 根据屏幕大小设置侧边栏默认状态
   useEffect(() => {
@@ -93,10 +96,15 @@ export default function DashboardLayout({
         return;
       }
       
-      // 用户已登录，获取用户资料
-      fetchUserProfile();
+      // 用户已登录，且用户资料未获取过，则获取用户资料
+      if (!profileFetched && !userProfile) {
+        fetchUserProfile();
+      } else if (userProfile) {
+        // 如果已有用户资料，直接结束加载状态
+        setIsLoading(false);
+      }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, profileFetched, userProfile]);
 
   // 从 Supabase 获取用户资料信息
   const fetchUserProfile = async () => {
@@ -104,7 +112,17 @@ export default function DashboardLayout({
     setIsLoading(true);
     
     try {
-      // 尝试获取用户资料
+      // 首先尝试从sessionStorage获取缓存的用户资料
+      const cachedProfile = sessionStorage.getItem(`user_profile_${user.id}`);
+      if (cachedProfile) {
+        const parsedProfile = JSON.parse(cachedProfile);
+        setUserProfile(parsedProfile);
+        setProfileFetched(true);
+        setIsLoading(false);
+        return;
+      }
+      
+      // 如果没有缓存，则从数据库获取
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -135,47 +153,65 @@ export default function DashboardLayout({
           if (insertError) {
             console.error('创建用户资料失败:', insertError);
             // 使用基本信息作为备选
-            setUserProfile({
+            const basicProfile = {
               id: user.id,
               name: user.email?.split('@')[0] || '用户',
               email: user.email || '',
-            });
+            };
+            setUserProfile(basicProfile);
+            // 缓存到sessionStorage
+            sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
           } else if (newProfile) {
             // 使用新创建的资料
-            setUserProfile({
+            const profile = {
               id: user.id,
               name: (newProfile.full_name as string) || user.email?.split('@')[0] || '用户',
               email: (newProfile.email as string) || user.email || '',
-            });
+            };
+            setUserProfile(profile);
+            // 缓存到sessionStorage
+            sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(profile));
           }
         } else {
           console.error('获取用户资料错误:', error);
           
           // 如果获取失败，使用基本用户信息
-          setUserProfile({
+          const basicProfile = {
             id: user.id,
             name: user.email?.split('@')[0] || '用户',
             email: user.email || '',
-          });
+          };
+          setUserProfile(basicProfile);
+          // 缓存到sessionStorage
+          sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
         }
       } else if (data) {
         // 成功获取资料
-        setUserProfile({
+        const profile = {
           id: user.id,
           name: (data.full_name as string) || user.email?.split('@')[0] || '用户',
           email: (data.email as string) || user.email || '',
-        });
+        };
+        setUserProfile(profile);
+        // 缓存到sessionStorage
+        sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(profile));
       }
+      
+      // 标记已获取用户资料
+      setProfileFetched(true);
     } catch (error) {
       console.error('处理用户资料时出错:', error);
       
       // 出现异常时，使用基本用户信息
       if (user) {
-        setUserProfile({
+        const basicProfile = {
           id: user.id,
           name: user.email?.split('@')[0] || '用户',
           email: user.email || '',
-        });
+        };
+        setUserProfile(basicProfile);
+        // 缓存到sessionStorage
+        sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
       }
     } finally {
       setIsLoading(false);
