@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { CalendarIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon, AlertCircleIcon, EyeIcon, CopyIcon, XIcon, PencilIcon, SparklesIcon } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { CalendarIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon, AlertCircleIcon, EyeIcon, CopyIcon, XIcon, PencilIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, DailyReport, ReportItem, UserAISettings } from "@/lib/supabase/client";
@@ -290,6 +290,35 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
   );
 };
 
+// 面包屑组件
+interface BreadcrumbsProps {
+  year: number;
+  month: number;
+  onYearMonthChange: (year: number, month: number) => void;
+}
+
+const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ year, month, onYearMonthChange }) => {
+  return (
+    <div className="flex items-center text-sm text-gray-500 mb-4">
+      <button 
+        onClick={() => onYearMonthChange(year, month - 1)}
+        className="mr-2 p-1 rounded-full hover:bg-gray-100"
+        aria-label="上一月"
+      >
+        <ChevronLeftIcon className="h-4 w-4" />
+      </button>
+      <span className="font-medium text-gray-700">{year}年第{month}月</span>
+      <button 
+        onClick={() => onYearMonthChange(year, month + 1)}
+        className="ml-2 p-1 rounded-full hover:bg-gray-100"
+        aria-label="下一月"
+      >
+        <ChevronRightIcon className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const supabase = createClient();
@@ -305,6 +334,54 @@ export default function ReportsPage() {
     type: ReportType;
     period: string;
   } | null>(null);
+  
+  // 分页控制
+  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth() + 1);
+
+  // 按年月筛选的周报数据
+  const filteredWeeklyData = useMemo(() => {
+    return weeklyData.filter(week => {
+      // 获取周起始日期所在的月份
+      const weekStartMonth = week.startDate.getMonth() + 1;
+      const weekStartYear = week.startDate.getFullYear();
+      
+      // 获取周结束日期所在的月份
+      const weekEndMonth = week.endDate.getMonth() + 1;
+      const weekEndYear = week.endDate.getFullYear();
+      
+      // 如果周跨月，只要有一部分在当前选择的月份就显示
+      return (
+        (weekStartYear === currentYear && weekStartMonth === currentMonth) ||
+        (weekEndYear === currentYear && weekEndMonth === currentMonth)
+      );
+    });
+  }, [weeklyData, currentYear, currentMonth]);
+  
+  // 按年筛选的月报数据
+  const filteredMonthlyData = useMemo(() => {
+    return monthlyData.filter(month => month.year === currentYear);
+  }, [monthlyData, currentYear]);
+  
+  // 处理年月切换
+  const handleYearMonthChange = (year: number, month: number) => {
+    // 处理月份溢出
+    if (month < 1) {
+      setCurrentYear(year - 1);
+      setCurrentMonth(12);
+    } else if (month > 12) {
+      setCurrentYear(year + 1);
+      setCurrentMonth(1);
+    } else {
+      setCurrentYear(year);
+      setCurrentMonth(month);
+    }
+  };
+
+  // 处理年份切换（用于月报）
+  const handleYearChange = (year: number) => {
+    setCurrentYear(year);
+  };
 
   // 获取日报数据
   useEffect(() => {
@@ -449,8 +526,8 @@ export default function ReportsPage() {
     const today = new Date();
     const weeks: WeekData[] = [];
     
-    // 生成最近12周的数据
-    for (let i = 0; i < 12; i++) {
+    // 生成最近24周的数据，以确保能显示更多历史周报
+    for (let i = 0; i < 24; i++) {
       const weekStartDate = startOfWeek(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7), { locale: zhCN });
       const weekEndDate = endOfWeek(weekStartDate, { locale: zhCN });
       const weekNumber = getWeek(weekStartDate, { locale: zhCN });
@@ -509,7 +586,7 @@ export default function ReportsPage() {
       const totalDays = dailyStatus.length;
       const completionRate = filledDays / totalDays;
       
-      // 确定报告状态
+      // 确定报告状态 - 无论是否有日报，都显示周
       let reportStatus: ReportStatus = "not_available";
       if (completionRate === 1) {
         reportStatus = "pending"; // 所有天都有日报，可以生成
@@ -552,8 +629,8 @@ export default function ReportsPage() {
     const today = new Date();
     const months: MonthData[] = [];
     
-    // 生成最近6个月的数据
-    for (let i = 0; i < 6; i++) {
+    // 生成最近24个月的数据，确保有更多历史数据
+    for (let i = 0; i < 24; i++) {
       const currentMonth = new Date(today.getFullYear(), today.getMonth() - i, 1);
       const monthStartDate = startOfMonth(currentMonth);
       const monthEndDate = endOfMonth(currentMonth);
@@ -642,6 +719,7 @@ export default function ReportsPage() {
         reportContent += '\n';
       });
       
+      // 无论是否有日报数据，都创建月报条目
       months.push({
         month,
         year,
@@ -1154,9 +1232,36 @@ export default function ReportsPage() {
       {/* 报告列表 */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-medium">
-            {activeTab === "weekly" ? "周报列表" : "月报列表"}
-          </h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-medium">
+              {activeTab === "weekly" ? "周报列表" : "月报列表"}
+            </h2>
+            {activeTab === "weekly" ? (
+              <Breadcrumbs 
+                year={currentYear}
+                month={currentMonth}
+                onYearMonthChange={handleYearMonthChange}
+              />
+            ) : (
+              <div className="flex items-center text-sm text-gray-500 mb-4">
+                <button 
+                  onClick={() => handleYearChange(currentYear - 1)}
+                  className="mr-2 p-1 rounded-full hover:bg-gray-100"
+                  aria-label="上一年"
+                >
+                  <ChevronLeftIcon className="h-4 w-4" />
+                </button>
+                <span className="font-medium text-gray-700">{currentYear}年</span>
+                <button 
+                  onClick={() => handleYearChange(currentYear + 1)}
+                  className="ml-2 p-1 rounded-full hover:bg-gray-100"
+                  aria-label="下一年"
+                >
+                  <ChevronRightIcon className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         {isLoading ? (
@@ -1168,8 +1273,8 @@ export default function ReportsPage() {
           <div>
             {activeTab === "weekly" ? (
               <ul className="divide-y divide-gray-200">
-                {weeklyData.length > 0 ? (
-                  weeklyData.map((week) => (
+                {filteredWeeklyData.length > 0 ? (
+                  filteredWeeklyData.map((week) => (
                     <li key={`${week.year}-${week.weekNumber}`} className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-start">
@@ -1221,14 +1326,14 @@ export default function ReportsPage() {
                   ))
                 ) : (
                   <li className="p-4 text-center text-gray-500">
-                    暂无周报记录
+                    {currentYear}年第{currentMonth}月暂无周报记录
                   </li>
                 )}
               </ul>
             ) : (
               <ul className="divide-y divide-gray-200">
-                {monthlyData.length > 0 ? (
-                  monthlyData.map((month) => (
+                {filteredMonthlyData.length > 0 ? (
+                  filteredMonthlyData.map((month) => (
                     <li key={`${month.year}-${month.month}`} className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-start">
@@ -1300,7 +1405,7 @@ export default function ReportsPage() {
                   ))
                 ) : (
                   <li className="p-4 text-center text-gray-500">
-                    暂无月报记录
+                    {currentYear}年暂无月报记录
                   </li>
                 )}
               </ul>
