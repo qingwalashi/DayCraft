@@ -238,19 +238,26 @@ export default function NewDailyReportPage() {
   };
 
   // 计算按项目分组的工作项，并确保每个项目都有一个稳定的唯一ID
-  const workItemsGroupedByProject = projects.map(project => {
-    const projectItems = workItems.filter(item => item.projectId === project.id)
-      .map((item, index) => ({
-        ...item,
-        tempId: item.id || `temp-${project.id}-${index}-${Math.random().toString(36).substring(2, 9)}` 
-      }));
-    
-    return {
-      projectId: project.id,
-      projectName: `${project.name} (${project.code})`,
-      items: projectItems
-    };
-  }).filter(group => group.items.length > 0);
+  const workItemsGroupedByProject = projects
+    .map(project => {
+      const projectItems = workItems.filter(item => item.projectId === project.id)
+        .map((item, index) => ({
+          ...item,
+          tempId: item.id || `temp-${project.id}-${index}-${Math.random().toString(36).substring(2, 9)}` 
+        }));
+      
+      // 计算项目的首次出现时间
+      const firstAppearanceIndex = workItems.findIndex(item => item.projectId === project.id);
+      
+      return {
+        projectId: project.id,
+        projectName: `${project.name} (${project.code})`,
+        sortIndex: firstAppearanceIndex === -1 ? Number.MAX_SAFE_INTEGER : firstAppearanceIndex, // 如果项目未被使用，放到最后
+        items: projectItems
+      };
+    })
+    .filter(group => group.items.length > 0)
+    .sort((a, b) => a.sortIndex - b.sortIndex); // 按项目在工作项中的首次出现顺序排序
   
   // 计算预览数据
   const projectWorkItems = projects.map(project => {
@@ -306,11 +313,10 @@ export default function NewDailyReportPage() {
     let yamlContent = '';
     
     projectMap.forEach(project => {
-      yamlContent += `${project.name} (${project.code}):\n`;
+      yamlContent += `${project.name}:\n`;
       project.items.forEach(content => {
         yamlContent += `  - ${content}\n`;
       });
-      yamlContent += '\n';
     });
     
     // 复制到剪贴板
@@ -329,16 +335,17 @@ export default function NewDailyReportPage() {
     setShowPreview(!showPreview);
   };
 
-  // 计算可用的项目（已选择的项目不再显示）
+  // 计算可用的项目（已选择的项目不再显示），并按项目名称排序
   const usedProjectIds = Array.from(new Set(workItems.map(item => item.projectId)))
     .filter(id => id !== ''); // 过滤空项目ID
   
-  const availableProjects = projects.filter(project => 
-    !usedProjectIds.includes(project.id) || 
-    workItemsGroupedByProject.some(group => 
-      group.projectId === project.id && group.items.length === 0
-    )
-  );
+  const availableProjects = projects
+    .filter(project => 
+      !usedProjectIds.includes(project.id) || 
+      workItemsGroupedByProject.some(group => 
+        group.projectId === project.id && group.items.length === 0
+      )
+    );
 
   // 通过tempId查找工作项索引
   const findWorkItemIndex = (tempId: string) => {
@@ -728,67 +735,7 @@ export default function NewDailyReportPage() {
                 <FileTextIcon className="mr-2 h-5 w-5" />今日工作内容
               </h3>
               <div className="space-y-4 mb-4">
-                {workItemsGroupedByProject.map((group, groupIndex) => (
-                  <div key={groupIndex} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-blue-600">{group.projectName}</h4>
-                      <button
-                        type="button"
-                        onClick={() => handleAddWorkItem(group.projectId)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
-                      >
-                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
-                      </button>
-                    </div>
-                    <div className="space-y-3">
-                      {group.items.map((item, itemIndex) => (
-                        <div key={itemIndex} className="flex items-start gap-2 bg-gray-50 p-3 rounded-md hover:bg-gray-100 transition-colors">
-                          <div className="flex-grow">
-                            <input
-                              type="text"
-                              value={item.content}
-                              onChange={(e) => {
-                                const index = workItems.findIndex(wi => 
-                                  (item.id && wi.id === item.id) || 
-                                  (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
-                                );
-                                
-                                if (index !== -1) {
-                                  handleWorkItemContentChange(index, e.target.value);
-                                }
-                              }}
-                              placeholder="请输入工作内容..."
-                              className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const index = workItems.findIndex(wi => 
-                                (item.id && wi.id === item.id) || 
-                                (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
-                              );
-                              
-                              if (index !== -1) {
-                                removeWorkItem(index);
-                              }
-                            }}
-                            className="text-gray-500 hover:text-red-600 transition-colors"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                          </button>
-                        </div>
-                      ))}
-                      {group.items.length === 0 && (
-                        <div className="text-center py-3 text-gray-500 text-sm">
-                          点击"添加"按钮开始添加工作内容
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {/* 添加新项目工作 */}
+                {/* 添加新项目工作 - 移到上方 */}
                 {projects && projects.length > 0 && (
                   <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
@@ -820,6 +767,66 @@ export default function NewDailyReportPage() {
                     </div>
                   </div>
                 )}
+
+                {workItemsGroupedByProject.map((group, groupIndex) => (
+                  <div key={groupIndex} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-blue-600">{group.projectName}</h4>
+                      <button
+                        type="button"
+                        onClick={() => handleAddWorkItem(group.projectId)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
+                      >
+                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {group.items.map((item, itemIndex) => (
+                        <div key={itemIndex} className="flex items-center gap-2 bg-gray-50 p-3 rounded-md hover:bg-gray-100 transition-colors">
+                          <div className="flex-grow">
+                            <input
+                              type="text"
+                              value={item.content}
+                              onChange={(e) => {
+                                const index = workItems.findIndex(wi => 
+                                  (item.id && wi.id === item.id) || 
+                                  (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
+                                );
+                                
+                                if (index !== -1) {
+                                  handleWorkItemContentChange(index, e.target.value);
+                                }
+                              }}
+                              placeholder="请输入工作内容..."
+                              className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const index = workItems.findIndex(wi => 
+                                (item.id && wi.id === item.id) || 
+                                (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
+                              );
+                              
+                              if (index !== -1) {
+                                removeWorkItem(index);
+                              }
+                            }}
+                            className="flex-shrink-0 h-10 w-10 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        </div>
+                      ))}
+                      {group.items.length === 0 && (
+                        <div className="text-center py-3 text-gray-500 text-sm">
+                          点击"添加"按钮开始添加工作内容
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
               {/* 项目管理提示 */}
               {(!projects || projects.length === 0) && (
@@ -860,7 +867,19 @@ export default function NewDailyReportPage() {
                   </div>
                 ) : (
                   <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                    {projectWorkItems.map(project => {
+                    {[...projectWorkItems]
+                      .sort((a, b) => {
+                        // 按添加顺序排序，获取项目在工作项中的首次出现位置
+                        const indexA = workItems.findIndex(item => item.projectId === a.id);
+                        const indexB = workItems.findIndex(item => item.projectId === b.id);
+                        
+                        // 如果项目未被使用，则放在最后
+                        const sortIndexA = indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA;
+                        const sortIndexB = indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB;
+                        
+                        return sortIndexA - sortIndexB;
+                      })
+                      .map(project => {
                       if (project.workItems.length === 0) return null;
                       
                       return (
@@ -891,24 +910,6 @@ export default function NewDailyReportPage() {
                 )}
               </div>
             </div>
-          </div>
-          
-          {/* 底部操作按钮 */}
-          <div className="flex justify-end space-x-3 pt-2">
-            <Link 
-              href="/dashboard/daily-reports"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
-            >
-              取消
-            </Link>
-            <button
-              type="submit"
-              disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
-              className="inline-flex items-center px-5 py-2 bg-blue-600 shadow-sm text-sm font-medium rounded-md text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <SaveIcon className="h-4 w-4 mr-2" />
-              {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
-            </button>
           </div>
         </form>
       )}

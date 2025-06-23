@@ -318,7 +318,7 @@ export default function DashboardOverview() {
         yamlContent += `  - ${item.content}\n`;
       });
       
-      yamlContent += '\n';
+      // 移除项目之间的换行
     });
     
     try {
