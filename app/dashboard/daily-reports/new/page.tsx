@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon } from "lucide-react";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -43,6 +43,7 @@ export default function NewDailyReportPage() {
   const [existingReportItems, setExistingReportItems] = useState<{id: string}[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [isPlan, setIsPlan] = useState(false); // 添加是否为工作计划的状态
+  const [selectedProjectId, setSelectedProjectId] = useState('');
 
   // 加载活跃项目数据
   useEffect(() => {
@@ -195,6 +196,8 @@ export default function NewDailyReportPage() {
 
   // 处理工作项内容变更
   const handleWorkItemContentChange = (index: number, content: string) => {
+    if (index < 0 || index >= workItems.length) return; // 安全检查
+    
     const newWorkItems = [...workItems];
     newWorkItems[index].content = content;
     setWorkItems(newWorkItems);
@@ -202,6 +205,8 @@ export default function NewDailyReportPage() {
 
   // 处理工作项项目变更
   const handleWorkItemProjectChange = (index: number, projectId: string) => {
+    if (index < 0 || index >= workItems.length) return; // 安全检查
+    
     const newWorkItems = [...workItems];
     newWorkItems[index].projectId = projectId;
     setWorkItems(newWorkItems);
@@ -209,16 +214,60 @@ export default function NewDailyReportPage() {
 
   // 添加新的工作项
   const addWorkItem = () => {
-    // 获取最后一个工作项的项目ID作为默认值
-    const lastItemProjectId = workItems.length > 0 
+    // 使用选择的项目ID，如果没有则获取最后一个工作项的项目ID作为默认值
+    const projectId = selectedProjectId || (workItems.length > 0 
       ? workItems[workItems.length - 1].projectId 
-      : (projects.length > 0 ? projects[0].id : '');
+      : (projects.length > 0 ? projects[0].id : ''));
     
-    setWorkItems([...workItems, { content: '', projectId: lastItemProjectId }]);
+    if (projectId === '') {
+      toast.error('请先选择一个项目');
+      return;
+    }
+    
+    setWorkItems([...workItems, { content: '', projectId }]);
+    
+    // 重置选择的项目ID
+    setSelectedProjectId('');
   };
+  
+  // 添加特定项目的工作项
+  const handleAddWorkItem = (projectId: string) => {
+    if (!projectId) return; // 安全检查
+    
+    setWorkItems([...workItems, { content: '', projectId }]);
+  };
+
+  // 计算按项目分组的工作项，并确保每个项目都有一个稳定的唯一ID
+  const workItemsGroupedByProject = projects.map(project => {
+    const projectItems = workItems.filter(item => item.projectId === project.id)
+      .map((item, index) => ({
+        ...item,
+        tempId: item.id || `temp-${project.id}-${index}-${Math.random().toString(36).substring(2, 9)}` 
+      }));
+    
+    return {
+      projectId: project.id,
+      projectName: `${project.name} (${project.code})`,
+      items: projectItems
+    };
+  }).filter(group => group.items.length > 0);
+  
+  // 计算预览数据
+  const projectWorkItems = projects.map(project => {
+    return {
+      id: project.id,
+      name: project.name,
+      code: project.code,
+      workItems: workItems.filter(item => 
+        item.projectId === project.id && item.content.trim() !== ''
+      )
+    };
+  });
 
   // 删除工作项
   const removeWorkItem = (index: number) => {
+    if (index < 0 || index >= workItems.length) return; // 安全检查
+    
     const newWorkItems = [...workItems];
     newWorkItems.splice(index, 1);
     setWorkItems(newWorkItems);
@@ -278,6 +327,35 @@ export default function NewDailyReportPage() {
   // 切换预览模式
   const togglePreview = () => {
     setShowPreview(!showPreview);
+  };
+
+  // 计算可用的项目（已选择的项目不再显示）
+  const usedProjectIds = Array.from(new Set(workItems.map(item => item.projectId)))
+    .filter(id => id !== ''); // 过滤空项目ID
+  
+  const availableProjects = projects.filter(project => 
+    !usedProjectIds.includes(project.id) || 
+    workItemsGroupedByProject.some(group => 
+      group.projectId === project.id && group.items.length === 0
+    )
+  );
+
+  // 通过tempId查找工作项索引
+  const findWorkItemIndex = (tempId: string) => {
+    return workItems.findIndex((item, index) => {
+      if (item.id && item.id === tempId) return true;
+      
+      // 如果没有id，则通过项目组查找
+      for (const group of workItemsGroupedByProject) {
+        const foundItemIndex = group.items.findIndex(groupItem => 
+          groupItem.tempId === tempId
+        );
+        if (foundItemIndex !== -1) {
+          return true;
+        }
+      }
+      return false;
+    });
   };
 
   // 提交日报
@@ -471,15 +549,25 @@ export default function NewDailyReportPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <Link href="/dashboard/daily-reports" className="mr-4 text-gray-500 hover:text-gray-700">
+          <Link href="/dashboard/daily-reports" className="mr-4 p-2 rounded-full text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <h1 className="text-2xl font-bold">{existingReport ? '编辑日报' : '新建日报'}</h1>
+          {existingReport && (
+            <span className="ml-3 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              已有日报
+            </span>
+          )}
+          {isPlan && (
+            <span className="ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+              工作计划
+            </span>
+          )}
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-3">
           <button
             onClick={togglePreview}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 min-w-[100px] justify-center"
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors min-w-[110px] justify-center"
           >
             <EyeIcon className="h-4 w-4 mr-2" />
             {showPreview ? '返回编辑' : '预览日报'}
@@ -487,7 +575,7 @@ export default function NewDailyReportPage() {
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 min-w-[100px] justify-center"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 shadow-sm text-sm font-medium rounded-md text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-w-[110px] justify-center"
           >
             <SaveIcon className="h-4 w-4 mr-2" />
             {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
@@ -496,43 +584,49 @@ export default function NewDailyReportPage() {
       </div>
 
       {projects.length === 0 ? (
-        <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200 shadow-sm">
           <p className="text-yellow-800">
             您目前没有活跃的项目。请先在 
-            <Link href="/dashboard/projects" className="text-blue-600 hover:underline">
+            <Link href="/dashboard/projects" className="text-blue-600 hover:underline font-medium">
               项目管理
             </Link> 
             中创建并激活项目后再创建日报。
           </p>
         </div>
       ) : showPreview ? (
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">日报预览</h2>
+        <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
+          <div className="flex justify-between items-center mb-4 pb-3 border-b">
+            <div>
+              <h2 className="text-lg font-medium">日报预览</h2>
+              <p className="text-sm text-gray-500 mt-1">查看格式化后的日报内容</p>
+            </div>
             <button
               onClick={handleCopyPreview}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
             >
               <CopyIcon className="h-4 w-4 mr-1" />
               复制内容
             </button>
           </div>
           
-          <div className="border-b pb-2 mb-4">
-            <p className="font-medium">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 inline-block">
+          <div className="border-b pb-3 mb-4">
+            <div className="flex items-center">
+              <CalendarIcon className="h-5 w-5 text-gray-500 mr-2" />
+              <p className="font-medium text-gray-800">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className={`px-2.5 py-1 text-xs rounded-full inline-flex items-center ${existingReport ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                 {existingReport ? '已提交' : '未提交'}
               </span>
               {isPlan && (
-                <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 inline-block">
+                <span className="px-2.5 py-1 text-xs rounded-full bg-blue-100 text-blue-800 inline-flex items-center">
                   工作计划
                 </span>
               )}
             </div>
           </div>
           
-          <div className="space-y-4">
+          <div className="space-y-5">
             {projects.map(project => {
               const projectWorkItems = workItems.filter(item => 
                 item.projectId === project.id && item.content.trim() !== ''
@@ -541,14 +635,15 @@ export default function NewDailyReportPage() {
               if (projectWorkItems.length === 0) return null;
               
               return (
-                <div key={project.id} className="border-l-2 border-blue-500 pl-3">
-                  <div className="text-sm font-medium text-blue-600 mb-1">
-                    {project.name} ({project.code})
+                <div key={project.id} className="border-l-3 border-blue-500 pl-4 py-1 rounded bg-blue-50/30">
+                  <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
+                    <FileTextIcon className="h-4 w-4 mr-1.5" />
+                    {project.name} <span className="mx-1.5 text-blue-300">|</span> <span className="text-blue-600">{project.code}</span>
                   </div>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {projectWorkItems.map((item, idx) => (
-                      <li key={idx} className="text-sm text-gray-500 flex items-start">
-                        <span className="mr-2">•</span>
+                      <li key={idx} className="text-sm text-gray-600 flex items-start">
+                        <span className="mr-2 text-blue-500">•</span>
                         <span>{item.content}</span>
                       </li>
                     ))}
@@ -558,8 +653,11 @@ export default function NewDailyReportPage() {
             })}
             
             {workItems.every(item => item.content.trim() === '') && (
-              <div className="text-center text-gray-500 py-8">
-                请添加至少一项工作内容
+              <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                <div className="flex flex-col items-center">
+                  <FileTextIcon className="h-8 w-8 text-gray-300 mb-2" />
+                  <p>请添加至少一项工作内容</p>
+                </div>
               </div>
             )}
           </div>
@@ -567,177 +665,250 @@ export default function NewDailyReportPage() {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 日期选择 */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="mb-4">
-              <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-                日报日期
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+          <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="md:col-span-2">
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
+                  日报日期
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <CalendarIcon className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="date"
+                    id="date"
+                    name="date"
+                    value={date}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                    required
+                    disabled={isLoadingExistingReport}
+                  />
                 </div>
-                <input
-                  type="date"
-                  id="date"
-                  name="date"
-                  value={date}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  required
-                  disabled={isLoadingExistingReport}
-                />
+                {existingReport && (
+                  <div className="mt-2 flex items-center">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      已有日报
+                    </span>
+                    <span className="ml-2 text-sm text-gray-600">
+                      已加载该日期的日报内容，可以直接编辑
+                    </span>
+                  </div>
+                )}
               </div>
-              {existingReport && (
-                <div className="mt-2 flex items-center">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    已有日报
-                  </span>
-                  <span className="ml-2 text-sm text-gray-600">
-                    已加载该日期的日报内容，可以直接编辑
-                  </span>
-                </div>
-              )}
               
-              {/* 添加工作计划单选框 */}
-              <div className="mt-4">
-                <div className="flex items-center">
+              {/* 工作计划区域 */}
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center mb-2">
                   <input
                     id="is-plan"
                     name="is-plan"
                     type="checkbox"
                     checked={isPlan}
                     onChange={(e) => setIsPlan(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-colors"
                   />
-                  <label htmlFor="is-plan" className="ml-2 block text-sm text-gray-700">
-                    这是工作计划（而非工作日报）
+                  <label htmlFor="is-plan" className="ml-2 block text-sm font-medium text-gray-700">
+                    标记为工作计划
                   </label>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  选中此项表示这是一份工作计划，而不是已完成的工作日报
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  计划任务将显示蓝色标签，且不会被统计到周报或月报中
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 工作内容 */}
+          {/* 工作内容和预览区域 */}
           <div className="flex flex-col lg:flex-row gap-6">
-            {/* 工作内容 - 占2/3 */}
-            <div className="lg:w-2/3 bg-white shadow rounded-lg p-6">
-              <h2 className="text-lg font-medium mb-4">今日工作内容</h2>
-              {isLoadingExistingReport ? (
-                <div className="flex justify-center items-center p-12">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-                  <span className="ml-2 text-sm text-gray-500">加载日报内容...</span>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {workItems.map((item, index) => (
-                    <div key={index} className="space-y-2 p-3 bg-gray-50 rounded-md">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-sm font-medium text-gray-700">
-                          工作项 {index + 1}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => removeWorkItem(index)}
-                          className="p-1 text-gray-400 hover:text-red-500"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                        <div className="md:col-span-3">
-                          <label htmlFor={`content-${index}`} className="block text-xs text-gray-500 mb-1">
-                            工作内容
-                          </label>
-                          <input
-                            id={`content-${index}`}
-                            type="text"
-                            value={item.content}
-                            onChange={(e) => handleWorkItemContentChange(index, e.target.value)}
-                            placeholder="描述您完成的工作内容"
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                          />
-                        </div>
-                        <div className="md:col-span-1">
-                          <label htmlFor={`project-${index}`} className="block text-xs text-gray-500 mb-1">
-                            所属项目
-                          </label>
-                          <select
-                            id={`project-${index}`}
-                            value={item.projectId}
-                            onChange={(e) => handleWorkItemProjectChange(index, e.target.value)}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            required
+            {/* 工作内容区域 - 占2/3 */}
+            <div className="lg:w-2/3">
+              <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center">
+                <FileTextIcon className="mr-2 h-5 w-5" />今日工作内容
+              </h3>
+              <div className="space-y-4 mb-4">
+                {workItemsGroupedByProject.map((group, groupIndex) => (
+                  <div key={groupIndex} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-blue-600">{group.projectName}</h4>
+                      <button
+                        type="button"
+                        onClick={() => handleAddWorkItem(group.projectId)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
+                      >
+                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {group.items.map((item, itemIndex) => (
+                        <div key={itemIndex} className="flex items-start gap-2 bg-gray-50 p-3 rounded-md hover:bg-gray-100 transition-colors">
+                          <div className="flex-grow">
+                            <input
+                              type="text"
+                              value={item.content}
+                              onChange={(e) => {
+                                const index = workItems.findIndex(wi => 
+                                  (item.id && wi.id === item.id) || 
+                                  (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
+                                );
+                                
+                                if (index !== -1) {
+                                  handleWorkItemContentChange(index, e.target.value);
+                                }
+                              }}
+                              placeholder="请输入工作内容..."
+                              className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const index = workItems.findIndex(wi => 
+                                (item.id && wi.id === item.id) || 
+                                (!item.id && !wi.id && wi.content === item.content && wi.projectId === item.projectId)
+                              );
+                              
+                              if (index !== -1) {
+                                removeWorkItem(index);
+                              }
+                            }}
+                            className="text-gray-500 hover:text-red-600 transition-colors"
                           >
-                            <option value="" disabled>选择项目</option>
-                            {projects.map((project) => (
-                              <option key={project.id} value={project.id}>
-                                {project.name} ({project.code})
-                              </option>
-                            ))}
-                          </select>
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
                         </div>
-                      </div>
+                      ))}
+                      {group.items.length === 0 && (
+                        <div className="text-center py-3 text-gray-500 text-sm">
+                          点击"添加"按钮开始添加工作内容
+                        </div>
+                      )}
                     </div>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={addWorkItem}
-                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <PlusIcon className="h-4 w-4 mr-2" />
-                    添加工作项
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 日报预览 - 占1/3 */}
-            <div className="lg:w-1/3 bg-white shadow rounded-lg p-6">
-              <h2 className="text-lg font-medium mb-4">日报预览</h2>
-              {isLoadingExistingReport ? (
-                <div className="flex justify-center items-center p-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-                  <span className="ml-2 text-sm text-gray-500">加载中...</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {projects.map(project => {
-                    const projectWorkItems = workItems.filter(item => 
-                      item.projectId === project.id && item.content.trim() !== ''
-                    );
-                    
-                    if (projectWorkItems.length === 0) return null;
-                    
-                    return (
-                      <div key={project.id} className="border-l-2 border-blue-500 pl-3">
-                        <div className="text-sm font-medium text-blue-600 mb-1">
-                          {project.name} ({project.code})
-                        </div>
-                        <ul className="space-y-1">
-                          {projectWorkItems.map((item, idx) => (
-                            <li key={idx} className="text-sm text-gray-500 flex items-start">
-                              <span className="mr-2">•</span>
-                              <span>{item.content}</span>
-                            </li>
+                  </div>
+                ))}
+                
+                {/* 添加新项目工作 */}
+                {projects && projects.length > 0 && (
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-gray-700">添加新项目工作</h4>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-grow">
+                        <select
+                          value={selectedProjectId}
+                          onChange={(e) => setSelectedProjectId(e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        >
+                          <option value="">选择项目...</option>
+                          {availableProjects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name} ({project.code})
+                            </option>
                           ))}
-                        </ul>
+                        </select>
                       </div>
-                    );
-                  })}
-                  
-                  {workItems.every(item => item.content.trim() === '') && (
-                    <div className="text-center text-gray-500 py-8">
-                      请添加至少一项工作内容
+                      <button
+                        type="button"
+                        onClick={addWorkItem}
+                        disabled={!selectedProjectId}
+                        className="px-4 py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
+                      >
+                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
+                      </button>
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+              {/* 项目管理提示 */}
+              {(!projects || projects.length === 0) && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertTriangleIcon className="h-5 w-5 text-yellow-400" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        请先在"项目管理"中创建并激活项目，然后才能添加工作内容。
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
+            
+            {/* 预览区域 - 占1/3 */}
+            <div className="lg:w-1/3">
+              <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center justify-between">
+                <div className="flex items-center">
+                  <EyeIcon className="mr-2 h-5 w-5" />实时预览
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyPreview}
+                  className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                >
+                  <CopyIcon className="h-4 w-4 mr-1" />复制内容
+                </button>
+              </h3>
+              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 h-full">
+                {isLoadingExistingReport ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                    <span className="ml-3 text-sm text-gray-600">加载中...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                    {projectWorkItems.map(project => {
+                      if (project.workItems.length === 0) return null;
+                      
+                      return (
+                        <div key={project.id} className="border-l-2 border-blue-500 pl-3 py-2 bg-blue-50/30 rounded">
+                          <div className="text-sm font-medium text-blue-700 mb-1.5 flex items-center">
+                            <FileTextIcon className="h-3.5 w-3.5 mr-1.5" />
+                            {project.name} <span className="mx-1 text-blue-300 text-xs">|</span> <span className="text-blue-600 text-xs">{project.code}</span>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {project.workItems.map((item, idx) => (
+                              <li key={idx} className="text-sm text-gray-600 flex items-start">
+                                <span className="mr-1.5 text-blue-500">•</span>
+                                <span>{item.content}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                    
+                    {workItems.every(item => item.content.trim() === '') && (
+                      <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <p>预览将在此处显示</p>
+                        <p className="text-xs mt-1">添加工作内容后查看</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* 底部操作按钮 */}
+          <div className="flex justify-end space-x-3 pt-2">
+            <Link 
+              href="/dashboard/daily-reports"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+            >
+              取消
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
+              className="inline-flex items-center px-5 py-2 bg-blue-600 shadow-sm text-sm font-medium rounded-md text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <SaveIcon className="h-4 w-4 mr-2" />
+              {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
+            </button>
           </div>
         </form>
       )}
