@@ -17,6 +17,7 @@ interface ReportWithItems {
   day: string;
   status: string;
   items: ReportItemWithProject[];
+  is_plan?: boolean; // 是否为工作计划
 }
 
 interface ReportItemWithProject {
@@ -32,6 +33,7 @@ interface DailyReportData {
   user_id: string;
   created_at: string;
   updated_at: string;
+  is_plan?: boolean; // 是否为工作计划
 }
 
 interface ReportItemData {
@@ -284,7 +286,8 @@ export default function DailyReportsPage() {
           date: formattedDate,
           day,
           status: '已提交', // 日报状态，目前只有一种状态
-          items
+          items,
+          is_plan: report.is_plan
         });
       }
       
@@ -757,9 +760,17 @@ export default function DailyReportsPage() {
                               </span>
                             )}
                             {day.hasReport ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                已提交
-                              </span>
+                              <>
+                                {day.report?.is_plan ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    已计划
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    已提交
+                                  </span>
+                                )}
+                              </>
                             ) : (
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isCurrentDay ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                                 {isCurrentDay ? '今日待填' : '未提交'}
@@ -872,6 +883,18 @@ export default function DailyReportsPage() {
               >
                 <XIcon className="h-5 w-5" />
               </button>
+            </div>
+            
+            <div className="flex items-center mb-4">
+              {previewReport.is_plan ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  工作计划
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  已提交
+                </span>
+              )}
             </div>
             
             <div className="flex-grow overflow-auto">

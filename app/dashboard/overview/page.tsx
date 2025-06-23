@@ -28,6 +28,7 @@ interface Report {
   date: string;
   status: string;
   workItems: WorkItem[];
+  is_plan?: boolean; // 是否为工作计划
 }
 
 interface Stats {
@@ -128,6 +129,7 @@ export default function DashboardOverview() {
         .select(`
           id,
           date,
+          is_plan,
           report_items (
             id,
             content,
@@ -150,6 +152,7 @@ export default function DashboardOverview() {
         id: report.id as string,
         date: report.date as string,
         status: '已提交',
+        is_plan: report.is_plan as boolean,
         workItems: ((report.report_items || []) as unknown as any[]).map((item: any) => ({
           content: item.content as string,
           project: item.projects as Project
@@ -439,9 +442,15 @@ export default function DashboardOverview() {
                         >
                           <CopyIcon className="h-4 w-4" />
                         </button>
-                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                          {report.status}
-                        </span>
+                        {report.is_plan ? (
+                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                            已计划
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                            {report.status}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <p className="text-sm text-gray-500 mt-1">今日工作内容</p>

@@ -29,6 +29,7 @@ CREATE TABLE public.daily_reports (
   date DATE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  is_plan BOOLEAN DEFAULT FALSE,
   UNIQUE (user_id, date)
 );
 

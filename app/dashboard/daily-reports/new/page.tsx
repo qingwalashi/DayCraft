@@ -19,6 +19,7 @@ interface WorkItem {
 // 添加一些类型定义
 interface DailyReportData {
   id: string;
+  is_plan?: boolean; // 添加是否为工作计划字段
 }
 
 interface ReportItemData {
@@ -41,6 +42,7 @@ export default function NewDailyReportPage() {
   const [existingReportId, setExistingReportId] = useState<string | null>(null);
   const [existingReportItems, setExistingReportItems] = useState<{id: string}[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [isPlan, setIsPlan] = useState(false); // 添加是否为工作计划的状态
 
   // 加载活跃项目数据
   useEffect(() => {
@@ -106,7 +108,7 @@ export default function NewDailyReportPage() {
       
       const { data, error } = await supabase
         .from('daily_reports')
-        .select('id')
+        .select('id, is_plan')
         .eq('user_id', user.id)
         .eq('date', selectedDate)
         .single();
@@ -123,6 +125,7 @@ export default function NewDailyReportPage() {
       if (typedData && typedData.id) {
         setExistingReport(true);
         setExistingReportId(typedData.id);
+        setIsPlan(typedData.is_plan || false); // 设置是否为工作计划
         
         // 如果找到现有日报，加载它的内容
         await loadExistingReportContent(typedData.id);
@@ -366,7 +369,10 @@ export default function NewDailyReportPage() {
         // 更新日报记录
         const { error: updateError } = await supabase
           .from('daily_reports')
-          .update({ updated_at: new Date().toISOString() })
+          .update({ 
+            updated_at: new Date().toISOString(),
+            is_plan: isPlan // 更新是否为工作计划
+          })
           .eq('id', reportId as string);
         
         if (updateError) {
@@ -380,7 +386,8 @@ export default function NewDailyReportPage() {
           .from('daily_reports')
           .insert({
             user_id: user.id,
-            date: date
+            date: date,
+            is_plan: isPlan // 添加是否为工作计划
           })
           .select()
           .single();
@@ -472,7 +479,7 @@ export default function NewDailyReportPage() {
         <div className="flex space-x-2">
           <button
             onClick={togglePreview}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 min-w-[100px] justify-center"
           >
             <EyeIcon className="h-4 w-4 mr-2" />
             {showPreview ? '返回编辑' : '预览日报'}
@@ -480,7 +487,7 @@ export default function NewDailyReportPage() {
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 min-w-[100px] justify-center"
           >
             <SaveIcon className="h-4 w-4 mr-2" />
             {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
@@ -513,9 +520,16 @@ export default function NewDailyReportPage() {
           
           <div className="border-b pb-2 mb-4">
             <p className="font-medium">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
-            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 mt-1 inline-block">
-              {existingReport ? '已提交' : '未提交'}
-            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 inline-block">
+                {existingReport ? '已提交' : '未提交'}
+              </span>
+              {isPlan && (
+                <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 inline-block">
+                  工作计划
+                </span>
+              )}
+            </div>
           </div>
           
           <div className="space-y-4">
@@ -583,6 +597,26 @@ export default function NewDailyReportPage() {
                   </span>
                 </div>
               )}
+              
+              {/* 添加工作计划单选框 */}
+              <div className="mt-4">
+                <div className="flex items-center">
+                  <input
+                    id="is-plan"
+                    name="is-plan"
+                    type="checkbox"
+                    checked={isPlan}
+                    onChange={(e) => setIsPlan(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is-plan" className="ml-2 block text-sm text-gray-700">
+                    这是工作计划（而非工作日报）
+                  </label>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  选中此项表示这是一份工作计划，而不是已完成的工作日报
+                </p>
+              </div>
             </div>
           </div>
 
