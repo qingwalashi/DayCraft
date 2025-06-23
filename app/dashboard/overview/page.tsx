@@ -307,7 +307,7 @@ export default function DashboardOverview() {
     
     // 按项目组织工作内容
     reportProjects.forEach(project => {
-      yamlContent += `${project.name} (${project.code}):\n`;
+      yamlContent += `${project.name}:\n`;
       
       // 获取该项目下的所有工作项
       const projectItems = getProjectWorkItems(report, project.id);
