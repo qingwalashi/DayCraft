@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon, XIcon, PencilIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
@@ -47,67 +47,26 @@ export default function DashboardOverview() {
   const [reports, setReports] = usePersistentState<Report[]>('dashboard-overview-reports', []);
   const [projects, setProjects] = usePersistentState<Project[]>('dashboard-overview-projects', []);
   const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState<Stats>({
+  const [stats, setStats] = usePersistentState<Stats>('dashboard-overview-stats', {
     weeklyReportCount: 0,
     pendingWeeklyReports: 0,
     projectCount: 0,
     monthlyWorkItemCount: 0
   });
+  
   // 添加预览相关状态
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
 
-  useEffect(() => {
-    // 使用Supabase的用户信息
-    if (authUser) {
-      setUser({
-        id: authUser.id,
-        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || '用户',
-        email: authUser.email || '',
-        role: 'user'
-      });
-      
-      fetchData(authUser.id);
-    }
-  }, [authUser]);
-
-  // 添加页面可见性监听
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          console.log('概览页面恢复可见，检查数据状态');
-          // 可以在这里添加轻量级的数据验证，避免页面重载
-          // 但不执行完整数据请求
-        }
-      };
-      
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, []);
-
-  // 获取所有数据
-  const fetchData = async (userId: string) => {
-    setIsLoading(true);
-    try {
-      // 并行请求数据
-      await Promise.all([
-        fetchProjects(),
-        fetchRecentReports(userId),
-        fetchStats(userId)
-      ]);
-    } catch (error) {
-      console.error("获取数据失败", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // 添加数据已加载的引用
+  const dataLoadedRef = useRef(false);
+  // 添加最后数据加载时间戳
+  const lastLoadTimeRef = useRef<number>(0);
+  // 数据刷新间隔（毫秒），设置为5分钟
+  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
 
   // 获取项目数据
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -122,10 +81,10 @@ export default function DashboardOverview() {
       console.error("获取项目数据失败", error);
       return [];
     }
-  };
+  }, [supabase, setProjects]);
 
   // 获取最近日报
-  const fetchRecentReports = async (userId: string) => {
+  const fetchRecentReports = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('daily_reports')
@@ -168,10 +127,10 @@ export default function DashboardOverview() {
       console.error("获取最近日报失败", error);
       return [];
     }
-  };
+  }, [supabase, setReports]);
 
   // 获取统计数据
-  const fetchStats = async (userId: string) => {
+  const fetchStats = useCallback(async (userId: string) => {
     try {
       // 获取本周日报数量
       const today = new Date();
@@ -244,7 +203,80 @@ export default function DashboardOverview() {
     } catch (error) {
       console.error("获取统计数据失败", error);
     }
-  };
+  }, [supabase, setStats]);
+
+  // 获取所有数据
+  const fetchData = useCallback(async (userId: string) => {
+    if (dataLoadedRef.current) {
+      console.log('数据已加载，跳过重新获取');
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // 并行请求数据
+      await Promise.all([
+        fetchProjects(),
+        fetchRecentReports(userId),
+        fetchStats(userId)
+      ]);
+      
+      // 标记数据已加载
+      dataLoadedRef.current = true;
+    } catch (error) {
+      console.error("获取数据失败", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchProjects, fetchRecentReports, fetchStats]);
+
+  useEffect(() => {
+    // 使用Supabase的用户信息
+    if (authUser && !dataLoadedRef.current) {
+      setUser({
+        id: authUser.id,
+        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || '用户',
+        email: authUser.email || '',
+        role: 'user'
+      });
+      
+      // 检查数据是否需要重新加载
+      const now = Date.now();
+      const timeSinceLastLoad = now - lastLoadTimeRef.current;
+      
+      // 如果数据未加载或超过刷新间隔，则加载数据
+      if (!dataLoadedRef.current || timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+        fetchData(authUser.id);
+        lastLoadTimeRef.current = now;
+      } else {
+        // 如果数据已加载且未超过刷新间隔，则直接设置加载状态为false
+        setIsLoading(false);
+      }
+    }
+  }, [authUser, setUser, fetchData]);
+
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('概览页面恢复可见，检查数据状态');
+          // 只检查数据是否存在，不重新加载
+          if (authUser && (!user || reports.length === 0)) {
+            console.log('数据不存在，重新加载');
+            dataLoadedRef.current = false;
+            fetchData(authUser.id);
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [authUser, user, reports, fetchData]);
 
   // 获取报告涉及的所有项目
   const getReportProjects = (report: Report) => {
