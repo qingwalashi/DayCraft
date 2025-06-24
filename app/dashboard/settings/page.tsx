@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { createClient, UserAISettings } from "@/lib/supabase/client";
+import { createClient, UserAISettings, UserDingTalkSettings } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell } from "lucide-react";
+import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell, Link, Smartphone } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -23,9 +23,11 @@ export default function SettingsPage() {
   const [isCustomModel, setIsCustomModel] = useState(false);
   const [customModelName, setCustomModelName] = useState("");
   const [activeTab, setActiveTab] = useState("ai");
+  const [isDingTalkSaving, setIsDingTalkSaving] = useState(false);
   
   // 表单状态
   const [settings, setSettings] = useState<UserAISettings | null>(null);
+  const [dingTalkSettings, setDingTalkSettings] = useState<UserDingTalkSettings | null>(null);
   const [formData, setFormData] = useState({
     api_url: "https://api.openai.com/v1",
     api_key: "",
@@ -33,6 +35,10 @@ export default function SettingsPage() {
     system_prompt: "你是一个专业的工作报告助手，负责帮助用户整理和生成日报、周报和月报。",
     user_prompt: "请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}",
     is_enabled: true
+  });
+  const [dingTalkFormData, setDingTalkFormData] = useState({
+    is_enabled: false,
+    ios_url_scheme: "dingtalk://dingtalkclient/page/link?url=",
   });
 
   // 模型选项
@@ -65,19 +71,30 @@ export default function SettingsPage() {
       
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from("user_ai_settings")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
+        const [aiResult, dingTalkResult] = await Promise.all([
+          supabase
+            .from("user_ai_settings")
+            .select("*")
+            .eq("user_id", user.id)
+            .single(),
+          supabase
+            .from("user_dingtalk_settings")
+            .select("*")
+            .eq("user_id", user.id)
+            .single()
+        ]);
           
-        if (error) {
-          console.error("加载AI设置失败:", error);
-          return;
+        if (aiResult.error) {
+          console.error("加载AI设置失败:", aiResult.error);
         }
         
-        if (data) {
-          const userSettings = data as UserAISettings;
+        if (dingTalkResult.error && dingTalkResult.error.code !== 'PGRST116') {
+          // PGRST116是未找到记录的错误，这种情况可以忽略
+          console.error("加载钉钉设置失败:", dingTalkResult.error);
+        }
+        
+        if (aiResult.data) {
+          const userSettings = aiResult.data as UserAISettings;
           setSettings(userSettings);
           
           // 检查是否是自定义模型
@@ -99,8 +116,17 @@ export default function SettingsPage() {
             is_enabled: userSettings.is_enabled !== undefined ? userSettings.is_enabled : true
           });
         }
+        
+        if (dingTalkResult.data) {
+          const userDingTalkSettings = dingTalkResult.data as UserDingTalkSettings;
+          setDingTalkSettings(userDingTalkSettings);
+          setDingTalkFormData({
+            is_enabled: userDingTalkSettings.is_enabled !== undefined ? userDingTalkSettings.is_enabled : false,
+            ios_url_scheme: userDingTalkSettings.ios_url_scheme || "dingtalk://dingtalkclient/page/link?url=",
+          });
+        }
       } catch (error) {
-        console.error("加载AI设置时出错:", error);
+        console.error("加载设置时出错:", error);
       } finally {
         setIsLoading(false);
       }
@@ -184,6 +210,28 @@ export default function SettingsPage() {
   // 处理开关状态变化
   const handleSwitchChange = (checked: boolean) => {
     setFormData(prev => ({ ...prev, is_enabled: checked }));
+    
+    // 立即保存AI开关状态到数据库
+    if (user && settings) {
+      const supabase = createClient();
+      supabase
+        .from("user_ai_settings")
+        .update({
+          is_enabled: checked,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", settings.id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("更新AI开关状态失败:", error);
+            toast.error(`更新失败: ${error.message || "未知错误"}`);
+            // 回滚状态
+            setFormData(prev => ({ ...prev, is_enabled: !checked }));
+          } else {
+            toast.success(checked ? "AI功能已启用" : "AI功能已禁用");
+          }
+        });
+    }
   };
   
   // 处理自定义模型名称变化
@@ -282,6 +330,82 @@ export default function SettingsPage() {
       }));
     }
   }, [formData.model_name]);
+
+  // 处理钉钉表单提交
+  const handleDingTalkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    setIsDingTalkSaving(true);
+    
+    try {
+      const supabase = createClient();
+      
+      // 如果已有设置则更新，否则创建新设置
+      if (dingTalkSettings) {
+        const { error } = await supabase
+          .from("user_dingtalk_settings")
+          .update({
+            ios_url_scheme: dingTalkFormData.ios_url_scheme,
+            is_enabled: dingTalkFormData.is_enabled,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", dingTalkSettings.id);
+          
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("user_dingtalk_settings")
+          .insert({
+            user_id: user.id,
+            ios_url_scheme: dingTalkFormData.ios_url_scheme,
+            is_enabled: dingTalkFormData.is_enabled
+          });
+          
+        if (error) throw error;
+      }
+      
+      toast.success("钉钉设置已保存");
+    } catch (error: any) {
+      console.error("保存钉钉设置失败:", error);
+      toast.error(`保存失败: ${error.message || "未知错误"}`);
+    } finally {
+      setIsDingTalkSaving(false);
+    }
+  };
+  
+  // 处理钉钉表单输入变化
+  const handleDingTalkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setDingTalkFormData(prev => ({ ...prev, [name]: value }));
+  };
+  
+  // 处理钉钉开关状态变化
+  const handleDingTalkSwitchChange = (checked: boolean) => {
+    setDingTalkFormData(prev => ({ ...prev, is_enabled: checked }));
+    
+    // 立即保存钉钉开关状态到数据库
+    if (user && dingTalkSettings) {
+      const supabase = createClient();
+      supabase
+        .from("user_dingtalk_settings")
+        .update({
+          is_enabled: checked,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", dingTalkSettings.id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("更新钉钉开关状态失败:", error);
+            toast.error(`更新失败: ${error.message || "未知错误"}`);
+            // 回滚状态
+            setDingTalkFormData(prev => ({ ...prev, is_enabled: !checked }));
+          } else {
+            toast.success(checked ? "钉钉功能已启用" : "钉钉功能已禁用");
+          }
+        });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -519,13 +643,63 @@ export default function SettingsPage() {
         
         <TabsContent value="dingtalk">
           <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <Bell className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">钉钉配置</h3>
-              <p className="text-gray-500 max-w-md">
-                此功能正在开发中，敬请期待。钉钉集成将支持自动推送日报、周报和月报到钉钉群组。
-              </p>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">钉钉集成设置</h2>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="dingtalk-enabled" className={dingTalkFormData.is_enabled ? "text-blue-600" : "text-gray-500"}>
+                  {dingTalkFormData.is_enabled ? "已启用" : "已禁用"}
+                </Label>
+                <Switch 
+                  id="dingtalk-enabled" 
+                  checked={dingTalkFormData.is_enabled} 
+                  onCheckedChange={handleDingTalkSwitchChange}
+                />
+              </div>
             </div>
+            
+            <form onSubmit={handleDingTalkSubmit} className="space-y-6">
+              <div className={!dingTalkFormData.is_enabled ? "opacity-50 pointer-events-none" : ""}>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">iOS跳转钉钉设置</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="ios_url_scheme" className="block text-sm font-medium text-gray-700 mb-1">
+                      URL Scheme
+                    </label>
+                    <div className="flex items-center">
+                      <Link className="h-4 w-4 text-gray-400 mr-2" />
+                      <input
+                        id="ios_url_scheme"
+                        name="ios_url_scheme"
+                        type="text"
+                        value={dingTalkFormData.ios_url_scheme}
+                        onChange={handleDingTalkChange}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        placeholder="dingtalk://dingtalkclient/page/link?url="
+                        disabled={!dingTalkFormData.is_enabled}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center text-sm text-amber-600">
+                      <Smartphone className="h-4 w-4 mr-1" />
+                      <p>此功能仅支持iOS客户端</p>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      配置用于从应用跳转到钉钉的URL Scheme，用于快速分享工作日志到钉钉
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isDingTalkSaving || !dingTalkFormData.is_enabled}
+                  className={`px-4 py-2 ${!dingTalkFormData.is_enabled ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md text-sm font-medium flex items-center`}
+                >
+                  {isDingTalkSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  保存设置
+                </button>
+              </div>
+            </form>
           </div>
         </TabsContent>
       </Tabs>

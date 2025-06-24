@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon, AlertCircleIcon, CalendarIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
-import { createClient, Project, DailyReport, ReportItem } from "@/lib/supabase/client";
+import { createClient, Project, DailyReport, ReportItem, UserDingTalkSettings } from "@/lib/supabase/client";
 import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, getYear, addWeeks, subWeeks, isSameDay, isToday } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
@@ -110,6 +110,8 @@ export default function DailyReportsPage() {
   const [isDeletingReport, setIsDeletingReport] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [dingTalkSettings, setDingTalkSettings] = useState<UserDingTalkSettings | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
   
   // 使用持久化状态替代普通状态
   const [reports, setReports] = usePersistentState<ReportWithItems[]>('daily-reports-reports', []);
@@ -582,10 +584,15 @@ export default function DailyReportsPage() {
       setReports(prev => prev.filter(report => report.id !== reportToDelete));
       toast.success('日报删除成功');
       
-      // 刷新数据，确保UI显示正确
-      setTimeout(() => {
-        fetchWeekReports(weekData[currentWeekIndex]);
-      }, 1000);
+      // 立即刷新当前周的数据，确保UI显示正确
+      if (currentWeekData) {
+        // 重置该周的加载状态，确保重新获取数据
+        const weekKey = `${currentWeekData.year}-${currentWeekData.weekNumber}`;
+        weekDataLoadedRef.current[weekKey] = false;
+        
+        // 立即获取最新数据
+        fetchWeekReports(currentWeekData);
+      }
       
     } catch (error) {
       console.error('删除日报时出错', error);
@@ -756,6 +763,128 @@ export default function DailyReportsPage() {
     } catch (err) {
       console.error('复制失败:', err);
       toast.error('复制失败，请重试');
+    }
+  };
+
+  // 检测平台是否为iOS
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+  }, []);
+
+  // 加载钉钉设置
+  useEffect(() => {
+    async function loadDingTalkSettings() {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from("user_dingtalk_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+          
+        if (error && error.code !== 'PGRST116') {
+          console.error("加载钉钉设置失败:", error);
+          return;
+        }
+        
+        if (data) {
+          setDingTalkSettings(data);
+        }
+      } catch (error) {
+        console.error("加载钉钉设置时出错:", error);
+      }
+    }
+    
+    loadDingTalkSettings();
+  }, [user, supabase]);
+
+  // 复制到钉钉
+  const handleCopyToDingTalk = () => {
+    if (!previewReport || !dingTalkSettings || !dingTalkSettings.is_enabled) return;
+    
+    // 获取报告中涉及的所有项目
+    const reportProjects = getReportProjects(previewReport);
+    
+    let yamlContent = '';
+    
+    // 按项目组织工作内容
+    reportProjects.forEach(project => {
+      yamlContent += `${project.name}:\n`;
+      
+      // 获取该项目下的所有工作项
+      const projectItems = getProjectItems(previewReport, project.id);
+      projectItems.forEach(item => {
+        yamlContent += `  - ${item.content}\n`;
+      });
+    });
+    
+    try {
+      // 判断是否是iOS设备
+      if (isIOS) {
+        try {
+          // 先尝试复制内容到剪贴板
+          fallbackCopyTextToClipboard(yamlContent);
+          toast.success('内容已复制到剪贴板');
+          
+          // 延迟一下再跳转，确保复制操作完成
+          setTimeout(() => {
+            try {
+              // 构建URL Scheme，确保URL编码正确
+              const encodedContent = encodeURIComponent(yamlContent);
+              
+              // 检查URL scheme格式是否正确，确保以正确的格式结尾
+              let dingTalkUrl = dingTalkSettings.ios_url_scheme;
+              if (!dingTalkUrl.endsWith('=')) {
+                // 如果URL不是以=结尾，确保有合适的连接符
+                if (!dingTalkUrl.endsWith('/') && !dingTalkUrl.endsWith('=') && !dingTalkUrl.endsWith('?')) {
+                  dingTalkUrl += '?url=';
+                }
+              }
+              
+              // 构建最终URL
+              const finalUrl = `${dingTalkUrl}${encodedContent}`;
+              console.log('跳转到钉钉URL:', finalUrl);
+              
+              // 使用iframe方式跳转，这在iOS上更可靠
+              const iframe = document.createElement('iframe');
+              iframe.style.display = 'none';
+              iframe.src = finalUrl;
+              document.body.appendChild(iframe);
+              
+              // 短暂延迟后移除iframe
+              setTimeout(() => {
+                document.body.removeChild(iframe);
+                
+                // 作为备用，也尝试直接跳转
+                window.location.href = finalUrl;
+              }, 100);
+            } catch (err) {
+              console.error('钉钉跳转失败:', err);
+              toast.error('跳转到钉钉失败，请手动粘贴内容');
+            }
+          }, 300);
+        } catch (err) {
+          console.error('复制或跳转失败:', err);
+          toast.error('操作失败，请重试');
+        }
+      } else {
+        // 非iOS设备只复制内容并提示
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，此功能仅支持iOS客户端直接跳转到钉钉');
+      }
+    } catch (err) {
+      console.error('操作失败:', err);
+      toast.error('操作失败，请重试');
+      
+      // 作为最后的备用方案，至少尝试复制内容
+      try {
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，但跳转失败');
+      } catch (e) {
+        console.error('备用复制也失败:', e);
+      }
     }
   };
 
@@ -1030,19 +1159,30 @@ export default function DailyReportsPage() {
                 <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 复制内容
               </button>
+              {dingTalkSettings && dingTalkSettings.is_enabled && (
                 <button
-                  onClick={(e) => handleEditClick(e, previewReport.date)}
-                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                  onClick={handleCopyToDingTalk}
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
                 >
+                  <svg viewBox="0 0 1024 1024" width="16" height="16" className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 fill-current">
+                    <path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm227.1 309.7c-2.8 39.8-16.3 74.7-40.2 104.8-24.8 30.9-56.9 55.6-96.4 74.3l-3.4 1.6 92.8 152.1-33.4 20.6-96.5-156.9c-45.7 14.2-94.4 21.7-146.4 22.7V727h-64.2v-134c-51.4-1.2-99.4-8.6-144.1-22.2L102 728.6l-32.3-20.8 93.5-152.3-3.5-1.7c-39.5-18.8-71.5-43.5-96.2-74.5-23.9-30.1-37.4-65-40.2-104.8-.9-13.4 11.7-23.3 25.1-20.8 42.1 7.7 82.9 29.8 121.5 66 39.1 36.7 68.8 79.9 89.2 130.2 19.1-46.7 45.7-86.3 80.1-119.3 34.4-33.2 72.9-55.7 115.5-67.5 13-3.6 25.9 6.3 25 19.8z" />
+                  </svg>
+                  复制到钉钉
+                </button>
+              )}
+              <button
+                onClick={(e) => handleEditClick(e, previewReport.date)}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+              >
                 <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 编辑日报
-                </button>
-                <button
-                  onClick={closePreview}
+              </button>
+              <button
+                onClick={closePreview}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  关闭
-                </button>
+              >
+                关闭
+              </button>
             </div>
           </div>
         </div>

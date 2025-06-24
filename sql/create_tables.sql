@@ -235,3 +235,46 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_user_profile_created
   AFTER INSERT ON public.user_profiles
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_ai_settings();
+
+-- 用户钉钉设置表
+CREATE TABLE public.user_dingtalk_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL UNIQUE,
+  ios_url_scheme TEXT DEFAULT 'dingtalk://dingtalkclient/page/link?url=',
+  is_enabled BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 为用户钉钉设置表启用行级安全策略
+ALTER TABLE public.user_dingtalk_settings ENABLE ROW LEVEL SECURITY;
+
+-- 用户钉钉设置的RLS策略
+CREATE POLICY "用户可以查看自己的钉钉设置" ON public.user_dingtalk_settings
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以创建自己的钉钉设置" ON public.user_dingtalk_settings
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "用户可以更新自己的钉钉设置" ON public.user_dingtalk_settings
+  FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以删除自己的钉钉设置" ON public.user_dingtalk_settings
+  FOR DELETE USING (user_id = auth.uid());
+
+-- 创建触发器函数，在创建用户资料时自动创建默认钉钉设置
+CREATE OR REPLACE FUNCTION public.handle_new_user_dingtalk_settings()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- 创建用户钉钉设置
+  INSERT INTO public.user_dingtalk_settings (user_id)
+  VALUES (NEW.id);
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 添加触发器，自动为新用户创建钉钉设置
+CREATE TRIGGER on_user_profile_created_dingtalk
+  AFTER INSERT ON public.user_profiles
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_dingtalk_settings();

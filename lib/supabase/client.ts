@@ -168,4 +168,14 @@ export type UserAISettings = {
   is_enabled: boolean;
   created_at: string;
   updated_at: string;
+};
+
+// 用户钉钉设置类型
+export type UserDingTalkSettings = {
+  id: string;
+  user_id: string;
+  ios_url_scheme: string;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }; 
