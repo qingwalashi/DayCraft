@@ -1,6 +1,7 @@
 # DayCraft - 智能日报管理系统
 
 <div align="center">
+  <img src="public/icons/icon-512x512.png" alt="DayCraft Logo" width="120" height="120" />
   <h3>高效记录工作，智能生成报告</h3>
   <p>基于 Next.js 14 和 Supabase 构建的现代化日报管理平台</p>
 </div>
@@ -19,6 +20,7 @@ DayCraft 是一个专为职场人士设计的智能日报管理系统，帮助�
 - **响应式设计**：完美适配桌面和移动设备
 - **安全可靠**：基于 Supabase 的行级安全策略，确保数据安全
 - **现代化界面**：采用渐变背景、响应式布局和交互式元素的精美首页设计
+- **PWA支持**：支持作为渐进式Web应用安装到桌面和移动设备
 
 ## 🚀 快速开始
 
@@ -67,30 +69,6 @@ yarn dev
 
 应用将在 [http://localhost:3000](http://localhost:3000) 启动。
 
-## 📝 最近更新
-
-### 2023年4月更新
-
-1. **首页重新设计**：
-   - 添加了现代化渐变背景和响应式布局
-   - 优化了导航栏和用户体验
-   - 新增功能特性展示和数据统计区域
-   - 添加用户评价轮播和行动号召区域
-
-2. **类型系统优化**：
-   - 修复了多个组件中的类型错误
-   - 增强了类型安全性，提高代码质量
-   - 优化了状态管理的类型定义
-
-3. **认证系统改进**：
-   - 重构了认证钩子，优化了用户登录体验
-   - 修复了Supabase客户端的导入和使用方式
-   - 优化了错误处理和提示信息
-
-4. **文档更新**：
-   - 更新了README文档，添加了新功能说明
-   - 完善了项目结构和核心功能描述
-
 ## 🔧 技术架构
 
 - **前端框架**: Next.js 14 (App Router)
@@ -98,6 +76,7 @@ yarn dev
 - **状态管理**: React Context API
 - **数据库**: Supabase PostgreSQL
 - **认证系统**: Supabase Auth
+- **PWA支持**: next-pwa
 - **日期处理**: date-fns
 - **通知组件**: Sonner
 - **AI 集成**: OpenAI / Anthropic / DeepSeek API
@@ -105,24 +84,21 @@ yarn dev
 ## 📁 项目结构
 
 ```
-/app
+/app                   # Next.js App Router目录
   /api                 # API 路由
   /(auth)              # 认证相关页面
-    /login             # 登录页面
-    /signup            # 注册页面
   /dashboard           # 受保护的仪表盘页面
-    /overview          # 总览页面
-    /projects          # 项目管理
-    /daily-reports     # 日报管理
-    /reports           # 周报月报管理
-    /settings          # 用户设置
-  /components          # 可复用组件
-  /contexts            # React Context
-  /lib                 # 工具库
-    /supabase          # Supabase 客户端配置
-    /utils             # 工具函数
-  /providers           # 全局 Provider 组件
+  /_offline            # 离线页面
+/components            # 可复用组件
+/contexts              # React Context
+/lib                   # 工具库
+  /supabase            # Supabase 客户端配置
+  /utils               # 工具函数
+  /validators          # 数据验证
+/providers             # 全局 Provider 组件
 /public                # 静态资源
+  /icons               # PWA图标
+  favicon.ico          # 网站图标
 /sql                   # 数据库脚本
 ```
 
@@ -130,8 +106,6 @@ yarn dev
 
 ### 首页设计
 
-- 现代化渐变背景，营造专业科技感
-- 固定导航栏，方便用户快速访问各个功能
 - 引人注目的英雄区域，清晰传达产品价值
 - 功能特性展示，直观呈现产品核心优势
 - 数据统计展示，增强产品可信度
@@ -164,3 +138,25 @@ yarn dev
 - 配置 AI 服务提供商和模型
 - 自定义系统提示词和用户提示词
 - 一键润色报告内容
+
+## 📱 PWA 图标指南
+
+为确保DayCraft应用在各种设备上显示正确的图标，我们已配置了以下图标文件：
+
+### 已配置图标文件
+
+在`public/icons`目录中包含以下图标文件：
+
+1. **标准图标**
+   - `icon-192x192.png` - 192x192像素，用于Android和其他平台
+   - `icon-384x384.png` - 384x384像素，用于高分辨率设备
+   - `icon-512x512.png` - 512x512像素，用于高分辨率设备和应用商店
+
+2. **可遮罩图标**（支持自适应形状）
+   - `maskable-icon-512x512.png` - 512x512像素，带有足够的安全区域
+   
+3. **苹果设备图标**
+   - `apple-icon-180x180.png` - 180x180像素，用于iOS设备
+
+4. **浏览器标签图标**
+   - `favicon.ico` - 包含16x16、32x32和48x48像素的多尺寸图标
