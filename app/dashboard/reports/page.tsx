@@ -263,7 +263,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
                 <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
                 {isPolishing ? '润色中...' : 'AI润色'}
               </button>
-          
+              
               {isEditing ? (
                 <>
                   <button
@@ -469,11 +469,12 @@ export default function ReportsPage() {
       eachDayOfInterval({ start: weekStartDate, end: weekEndDate }).forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
         const report = reports.find(r => r.date === dateStr && !r.is_plan);
+        const planReport = reports.find(r => r.date === dateStr && r.is_plan);
         
         dailyStatus.push({
-          date: dateStr,
-          hasReport: !!report,
-          is_plan: false
+                date: dateStr,
+          hasReport: !!report || !!planReport,
+          is_plan: !report && !!planReport
         });
       });
       
@@ -1305,8 +1306,8 @@ export default function ReportsPage() {
         <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
             <h2 className="text-base md:text-lg font-medium">
-              {activeTab === "weekly" ? "周报列表" : "月报列表"}
-            </h2>
+            {activeTab === "weekly" ? "周报列表" : "月报列表"}
+          </h2>
             {activeTab === "weekly" ? (
               <Breadcrumbs 
                 year={currentYear}
@@ -1356,29 +1357,29 @@ export default function ReportsPage() {
                             <div className="flex flex-wrap items-center gap-1 md:gap-2 justify-between w-full">
                               <div className="flex items-center gap-1 md:gap-2">
                                 <h3 className="text-sm md:text-base font-medium">{week.year}年第{week.weekNumber}周</h3>
-                                {renderReportStatus(week.reportStatus)}
-                              </div>
+                              {renderReportStatus(week.reportStatus)}
+                            </div>
                               <div className="flex items-center space-x-1 md:space-x-2">
-                                {week.reportStatus === "generated" && (
-                                  <button
-                                    onClick={() => handlePreviewReport("weekly", week.formattedPeriod)}
+                          {week.reportStatus === "generated" && (
+                            <button
+                              onClick={() => handlePreviewReport("weekly", week.formattedPeriod)}
                                     className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                                  >
+                            >
                                     <EyeIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
-                                    预览
-                                  </button>
-                                )}
-                                {(week.reportStatus === "pending" || week.reportStatus === "generated") && (
-                                  <button
-                                    onClick={() => handleGenerateReport("weekly", week.formattedPeriod)}
-                                    disabled={generatingReportId === `weekly-${week.formattedPeriod}`}
+                              预览
+                            </button>
+                          )}
+                          {(week.reportStatus === "pending" || week.reportStatus === "generated") && (
+                            <button
+                              onClick={() => handleGenerateReport("weekly", week.formattedPeriod)}
+                              disabled={generatingReportId === `weekly-${week.formattedPeriod}`}
                                     className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
-                                  >
+                            >
                                     <RefreshCwIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${generatingReportId === `weekly-${week.formattedPeriod}` ? 'animate-spin' : ''}`} />
                                     <span className="hidden md:inline">{generatingReportId === `weekly-${week.formattedPeriod}` ? '生成中...' : '生成周报'}</span>
                                     <span className="inline md:hidden">{generatingReportId === `weekly-${week.formattedPeriod}` ? '生成中' : '生成'}</span>
-                                  </button>
-                                )}
+                            </button>
+                          )}
                               </div>
                             </div>
                             <div className="mt-0.5 md:mt-1 flex items-center text-xs md:text-sm text-gray-500">
@@ -1418,8 +1419,8 @@ export default function ReportsPage() {
                             <div className="flex flex-wrap items-center gap-1 md:gap-2 justify-between w-full">
                               <div className="flex items-center gap-1 md:gap-2">
                                 <h3 className="text-sm md:text-base font-medium">{month.formattedPeriod}工作月报</h3>
-                                {renderReportStatus(month.reportStatus)}
-                              </div>
+                              {renderReportStatus(month.reportStatus)}
+                            </div>
                               <div className="flex items-center space-x-1 md:space-x-2">
                                 {month.reportStatus === "generated" && (
                                   <button
