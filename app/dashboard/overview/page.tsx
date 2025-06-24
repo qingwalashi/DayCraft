@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon, XIcon, PencilIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +54,9 @@ export default function DashboardOverview() {
     monthlyWorkItemCount: 0
   });
   
+  // 添加报告标签切换状态
+  const [activeReportTab, setActiveReportTab] = usePersistentState<'reports' | 'plans'>('dashboard-overview-report-tab', 'reports');
+  
   // 添加预览相关状态
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
@@ -105,7 +108,7 @@ export default function DashboardOverview() {
         `)
         .eq('user_id', userId)
         .order('date', { ascending: false })
-        .limit(3);
+        .limit(6); // 增加获取的数量，以便有足够的日报和计划
       
       if (error) throw error;
       
@@ -425,6 +428,23 @@ export default function DashboardOverview() {
     setPreviewReport(null);
   };
 
+  // 根据当前标签过滤报告
+  const filteredReports = useMemo(() => {
+    return reports.filter(report => {
+      if (activeReportTab === 'reports') {
+        return !report.is_plan;
+      } else {
+        return !!report.is_plan;
+      }
+    }).slice(0, 3); // 只显示前3条
+  }, [reports, activeReportTab]);
+
+  // 检查是否为今天的日报
+  const isToday = useCallback((dateString: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    return dateString === today;
+  }, []);
+
   if (loading || isLoading || !user) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -473,23 +493,57 @@ export default function DashboardOverview() {
       {/* 最近日报 */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-3 px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-base md:text-lg font-medium">最近日报</h2>
+          <h2 className="text-base md:text-lg font-medium">最近工作记录</h2>
           <Link href="/dashboard/daily-reports" className="text-xs md:text-sm text-blue-600 hover:text-blue-800">
             查看全部
           </Link>
         </div>
+        
+        {/* 切换标签 */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-4 md:space-x-8 px-4 md:px-6">
+            <button
+              onClick={() => setActiveReportTab("reports")}
+              className={`py-3 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm ${
+                activeReportTab === "reports"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              最近日报
+            </button>
+            <button
+              onClick={() => setActiveReportTab("plans")}
+              className={`py-3 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm ${
+                activeReportTab === "plans"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              最近计划
+            </button>
+          </nav>
+        </div>
+        
         <div className="divide-y divide-gray-200">
-          {reports.length > 0 ? (
-            reports.map((report) => (
+          {filteredReports.length > 0 ? (
+            filteredReports.map((report) => (
               <div 
                 key={report.id} 
-                className="p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50"
+                className={`p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 ${isToday(report.date) ? 'bg-blue-50' : ''}`}
                 onClick={() => handleReportSelect(report)}
               >
                 <div className="flex justify-between items-start">
                   <div className="w-full">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm md:text-base font-medium">{format(parseISO(report.date), 'yyyy-MM-dd')}</h3>
+                      <h3 className={`text-sm md:text-base font-medium ${isToday(report.date) ? 'text-blue-700' : ''}`}>
+                        {format(parseISO(report.date), 'yyyy-MM-dd')}
+                        {isToday(report.date) && (
+                          <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
+                            今日
+                          </span>
+                        )}
+                      </h3>
                       <div className="flex items-center space-x-1 md:space-x-2">
                         <button 
                           onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
@@ -509,11 +563,13 @@ export default function DashboardOverview() {
                         )}
                       </div>
                     </div>
-                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">今日工作内容</p>
+                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">
+                      {report.is_plan ? '计划工作内容' : '今日工作内容'}
+                    </p>
                     
                     <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
                       {getReportProjects(report).map(project => (
-                        <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-3">
+                        <div key={project.id} className={`border-l-2 ${isToday(report.date) ? 'border-blue-600' : 'border-blue-500'} pl-2 md:pl-3`}>
                           <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
                             {project.name} ({project.code})
                           </div>
@@ -534,7 +590,7 @@ export default function DashboardOverview() {
             ))
           ) : (
             <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
-              暂无日报记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
+              暂无{activeReportTab === 'reports' ? '日报' : '计划'}记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
             </div>
           )}
         </div>
