@@ -36,7 +36,7 @@ const navigation: NavItem[] = [
   { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
   { 
     name: "报告", 
-    href: "/dashboard/reports", 
+    href: "#",
     icon: FileTextIcon,
     subItems: [
       { name: "日报", href: "/dashboard/daily-reports" },

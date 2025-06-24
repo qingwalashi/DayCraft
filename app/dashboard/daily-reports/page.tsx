@@ -741,7 +741,7 @@ export default function DailyReportsPage() {
                   return (
                   <li 
                       key={day.date} 
-                      className={`p-3 md:p-4 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay && !day.hasReport ? 'bg-blue-50' : ''}`}
+                      className={`p-3 md:p-4 ${day.hasReport ? 'cursor-pointer' : ''} ${isCurrentDay ? 'bg-blue-50' : ''}`}
                       onClick={() => day.hasReport && day.report && handleReportSelect(day.report.id)}
                     >
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -752,63 +752,63 @@ export default function DailyReportsPage() {
                         <div className="ml-3 md:ml-4 flex-grow">
                           <div className="flex items-center justify-between w-full">
                             <div className="flex flex-wrap items-center gap-1 md:gap-2">
-                              <h3 className={`text-sm md:text-base font-medium ${isCurrentDay && !day.hasReport ? 'text-blue-700 font-bold' : 'text-gray-900'}`}>
+                              <h3 className={`text-sm md:text-base font-medium ${isCurrentDay ? 'text-blue-700 font-bold' : 'text-gray-900'}`}>
                                 {format(parseISO(day.date), 'MM-dd')} <span className="hidden md:inline">({day.day})</span>
                               </h3>
-                              {isCurrentDay && !day.hasReport && (
+                              {isCurrentDay && (
                                 <span className="inline-flex items-center px-1.5 md:px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                  今天
-                                </span>
-                              )}
+                                今天
+                              </span>
+                            )}
                               {day.hasReport ? (
                                 <>
                                   {day.report?.is_plan ? (
                                     <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                       已计划
-                                    </span>
+                              </span>
                                   ) : (
                                     <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      已提交
-                                    </span>
+                            已提交
+                          </span>
                                   )}
                                 </>
-                              ) : (
+                        ) : (
                                 <span className={`inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium ${isCurrentDay ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
-                                  {isCurrentDay ? '今日待填' : '未提交'}
-                                </span>
-                              )}
+                            {isCurrentDay ? '今日待填' : '未提交'}
+                          </span>
+                        )}
                             </div>
                             <div className="flex items-center space-x-1 md:space-x-2">
-                              <Link
-                                href={`/dashboard/daily-reports/new?date=${day.date}`}
-                                className={`inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md ${isCurrentDay && !day.hasReport ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-300' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
-                                title={day.hasReport ? "编辑日报" : "创建日报"}
-                                onClick={(e) => e.stopPropagation()}
-                              >
+                          <Link
+                            href={`/dashboard/daily-reports/new?date=${day.date}`}
+                                className={`inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md ${isCurrentDay ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-300' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
+                            title={day.hasReport ? "编辑日报" : "创建日报"}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                               <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                               {day.hasReport ? "编辑" : "填写"}
-                              </Link>
-                              {day.hasReport && day.report && (
-                                <>
-                                  <button
-                                    onClick={(e) => handleCopyReport(e, day.report!)}
+                          </Link>
+                          {day.hasReport && day.report && (
+                            <>
+                              <button
+                                onClick={(e) => handleCopyReport(e, day.report!)}
                                     className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                                    title="复制日报"
-                                  >
+                                title="复制日报"
+                              >
                                   <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                                   <span className="hidden md:inline">复制</span>
-                                  </button>
-                                  <button
-                                    onClick={(e) => handleDeleteClick(e, day.report!.id)}
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteClick(e, day.report!.id)}
                                     className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-red-300 text-xs md:text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
-                                    title="删除日报"
-                                  >
+                                title="删除日报"
+                              >
                                   <TrashIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                                   <span className="hidden md:inline">删除</span>
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                              </button>
+                            </>
+                          )}
+                        </div>
                           </div>
                           
                           <div className="mt-0.5 md:mt-1 flex items-center text-xs md:text-sm text-gray-500">
@@ -818,16 +818,30 @@ export default function DailyReportsPage() {
                           </div>
                           
                           {day.hasReport && day.report && (
-                            <div className="mt-1 md:mt-2 flex flex-wrap gap-1">
-                            {getReportProjects(day.report).map((project) => (
-                              <span
-                                key={project.id}
-                                className="inline-flex items-center px-1.5 md:px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                              >
-                                {project.name}
-                              </span>
-                            ))}
-                          </div>
+                            <div className="mt-1 md:mt-2 space-y-2">
+                              {getReportProjects(day.report).map(project => {
+                                // 使用非空断言确保TypeScript知道day.report不为null
+                                const report = day.report!;
+                                
+                                return (
+                                  <div key={project.id} className="border-l-2 border-blue-500 pl-2 py-0.5">
+                                    <div className="flex items-center mb-0.5">
+                                      <div className="text-sm font-medium text-blue-600">
+                                        {project.name}
+                                      </div>
+                                      <div className="text-sm text-gray-500 ml-1">
+                                        ({project.code})
+                                      </div>
+                                    </div>
+                                    <div className="text-sm text-gray-600 line-clamp-1">
+                                      {getProjectItems(report, project.id)
+                                        .map(item => item.content)
+                                        .join('；')}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -882,13 +896,13 @@ export default function DailyReportsPage() {
               <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">
                 日报详情 - {previewReport.date} <span className="hidden md:inline">({previewReport.day})</span>
               </h3>
-              <button
-                onClick={closePreview}
+                <button
+                  onClick={closePreview}
                 className="text-gray-400 hover:text-gray-500"
-              >
+                >
                 <XIcon className="h-4 w-4 md:h-5 md:w-5" />
-              </button>
-            </div>
+                </button>
+              </div>
             
             <div className="flex items-center mb-2 md:mb-4">
               {previewReport.is_plan ? (
@@ -907,10 +921,10 @@ export default function DailyReportsPage() {
                 {getReportProjects(previewReport).map(project => (
                   <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
                     <div className="flex items-center mb-1 md:mb-2">
-                      <div className="text-xs md:text-sm font-medium text-blue-600">
+                      <div className="text-sm font-medium text-blue-600">
                         {project.name}
                       </div>
-                      <div className="text-xs text-gray-500 ml-1 md:ml-2">
+                      <div className="text-sm text-gray-500 ml-1">
                         ({project.code})
                       </div>
                     </div>
@@ -935,19 +949,19 @@ export default function DailyReportsPage() {
                 <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 复制内容
               </button>
-              <button
-                onClick={(e) => handleEditClick(e, previewReport.date)}
+                <button
+                  onClick={(e) => handleEditClick(e, previewReport.date)}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
-              >
+                >
                 <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 编辑日报
-              </button>
-              <button
-                onClick={closePreview}
+                </button>
+                <button
+                  onClick={closePreview}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                关闭
-              </button>
+                >
+                  关闭
+                </button>
             </div>
           </div>
         </div>

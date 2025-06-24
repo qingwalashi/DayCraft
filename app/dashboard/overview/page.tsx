@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon } from "lucide-react";
+import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon, XIcon, PencilIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import { format, startOfWeek, endOfWeek, startOfMonth, parseISO, getWeek } from "date-fns";
@@ -53,6 +53,9 @@ export default function DashboardOverview() {
     projectCount: 0,
     monthlyWorkItemCount: 0
   });
+  // 添加预览相关状态
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewReport, setPreviewReport] = useState<Report | null>(null);
 
   useEffect(() => {
     // 使用Supabase的用户信息
@@ -378,6 +381,18 @@ export default function DashboardOverview() {
     }
   };
 
+  // 处理日报选择，显示预览
+  const handleReportSelect = (report: Report) => {
+    setPreviewReport(report);
+    setIsPreviewOpen(true);
+  };
+
+  // 关闭预览
+  const closePreview = () => {
+    setIsPreviewOpen(false);
+    setPreviewReport(null);
+  };
+
   if (loading || isLoading || !user) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -434,14 +449,18 @@ export default function DashboardOverview() {
         <div className="divide-y divide-gray-200">
           {reports.length > 0 ? (
             reports.map((report) => (
-              <div key={report.id} className="p-3 md:p-4 lg:p-6">
+              <div 
+                key={report.id} 
+                className="p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50"
+                onClick={() => handleReportSelect(report)}
+              >
                 <div className="flex justify-between items-start">
                   <div className="w-full">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm md:text-base font-medium">{format(parseISO(report.date), 'yyyy-MM-dd')}</h3>
                       <div className="flex items-center space-x-1 md:space-x-2">
                         <button 
-                          onClick={(e) => handleCopyReport(e, report)}
+                          onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
                           className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
                           title="复制日报内容"
                         >
@@ -488,6 +507,86 @@ export default function DashboardOverview() {
           )}
         </div>
       </div>
+      
+      {/* 日报预览弹窗 */}
+      {isPreviewOpen && previewReport && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-2 md:mb-4">
+              <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">
+                日报详情 - {previewReport.date}
+              </h3>
+              <button
+                onClick={closePreview}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <XIcon className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </div>
+            
+            <div className="flex items-center mb-2 md:mb-4">
+              {previewReport.is_plan ? (
+                <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  工作计划
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-1.5 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  已提交
+                </span>
+              )}
+            </div>
+            
+            <div className="flex-grow overflow-auto">
+              <div className="space-y-3 md:space-y-4">
+                {getReportProjects(previewReport).map(project => (
+                  <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
+                    <div className="flex items-center mb-1 md:mb-2">
+                      <div className="text-sm font-medium text-blue-600">
+                        {project.name}
+                      </div>
+                      <div className="text-sm text-gray-500 ml-1">
+                        ({project.code})
+                      </div>
+                    </div>
+                    <ul className="space-y-1 md:space-y-2">
+                      {getProjectWorkItems(previewReport, project.id).map((item, idx) => (
+                        <li key={idx} className="text-xs md:text-sm text-gray-600 flex items-start">
+                          <span className="mr-1 md:mr-2 text-blue-400 flex-shrink-0">•</span>
+                          <span className="break-words">{item.content}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-1 md:space-x-3 mt-3 md:mt-4">
+              <button
+                onClick={(e) => {e.stopPropagation(); handleCopyReport(e, previewReport);}}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                复制内容
+              </button>
+              <Link
+                href={`/dashboard/daily-reports/new?date=${previewReport.date}`}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                编辑日报
+              </Link>
+              <button
+                onClick={closePreview}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
