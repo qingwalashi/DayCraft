@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { PlusIcon, SearchIcon, PencilIcon, TrashIcon, CheckIcon, XIcon, Loader2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { projectSchema, type ProjectFormValues } from "@/lib/validators/projects";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { usePersistentState } from '@/lib/utils/page-persistence';
 
 interface ProjectFormData {
   name: string;
@@ -19,17 +20,26 @@ interface ProjectFormData {
 export default function ProjectsPage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isAddingProject, setIsAddingProject] = useState(false);
+  
+  // 使用持久化状态替代普通状态
+  const [projects, setProjects] = usePersistentState<Project[]>('projects-page-projects', []);
+  const [searchTerm, setSearchTerm] = usePersistentState<string>('projects-page-search', "");
+  const [isAddingProject, setIsAddingProject] = usePersistentState<boolean>('projects-page-adding', false);
   const [isLoading, setIsLoading] = useState(true);
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [editProject, setEditProject] = useState<ProjectFormData>({ 
+  const [editingProjectId, setEditingProjectId] = usePersistentState<string | null>('projects-page-editing-id', null);
+  const [editProject, setEditProject] = usePersistentState<ProjectFormData>('projects-page-edit-form', { 
     name: "", 
     code: "",
     description: "", 
     is_active: true 
   });
+  
+  // 添加数据已加载的引用
+  const dataLoadedRef = useRef(false);
+  // 添加最后数据加载时间戳
+  const lastLoadTimeRef = useRef<number>(0);
+  // 数据刷新间隔（毫秒），设置为5分钟
+  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
   
   const {
     register,
@@ -47,32 +57,72 @@ export default function ProjectsPage() {
   });
 
   // 加载项目数据
+  const fetchProjects = useCallback(async () => {
+    if (dataLoadedRef.current) {
+      console.log('项目数据已加载，跳过重新获取');
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      setProjects(data as Project[] || []);
+      dataLoadedRef.current = true;
+    } catch (error) {
+      console.error('获取项目失败', error);
+      toast.error('获取项目失败');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabase, setProjects]);
+
   useEffect(() => {
     if (!user) return;
     
-    const fetchProjects = async () => {
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          throw error;
-        }
-        
-        setProjects(data as Project[] || []);
-      } catch (error) {
-        console.error('获取项目失败', error);
-        toast.error('获取项目失败');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    // 检查数据是否需要重新加载
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimeRef.current;
+    
+    // 如果数据未加载或超过刷新间隔，则加载数据
+    if (!dataLoadedRef.current || timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+      fetchProjects();
+      lastLoadTimeRef.current = now;
+    } else {
+      // 如果数据已加载且未超过刷新间隔，则直接设置加载状态为false
+      setIsLoading(false);
+    }
+  }, [user, fetchProjects]);
 
-    fetchProjects();
-  }, [user, supabase]);
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('项目页面恢复可见，检查数据状态');
+          // 只检查数据是否存在，不重新加载
+          if (user && projects.length === 0) {
+            console.log('项目数据不存在，重新加载');
+            dataLoadedRef.current = false;
+            fetchProjects();
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [user, projects, fetchProjects]);
 
   // 搜索过滤项目
   const filteredProjects = projects.filter(
