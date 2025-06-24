@@ -790,7 +790,7 @@ export default function DailyReportsPage() {
         }
         
         if (data) {
-          setDingTalkSettings(data);
+          setDingTalkSettings(data as UserDingTalkSettings);
         }
       } catch (error) {
         console.error("加载钉钉设置时出错:", error);
