@@ -96,6 +96,11 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
     loadAISettings();
   }, [user, supabase]);
   
+  // 检查AI功能是否启用
+  const isAIEnabled = useMemo(() => {
+    return aiSettings?.is_enabled === true;
+  }, [aiSettings]);
+  
   const handleCopy = () => {
     if (textAreaRef.current) {
       textAreaRef.current.select();
@@ -255,14 +260,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
           
           {!readOnly && (
             <>
+              {isAIEnabled && (
               <button
                 onClick={handlePolish}
                 disabled={isPolishing || isEditing}
-                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
               >
-                <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
-                {isPolishing ? '润色中...' : 'AI润色'}
+                  <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
+                  {isPolishing ? '润色中...' : 'AI润色'}
               </button>
+              )}
               
               {isEditing ? (
                 <>

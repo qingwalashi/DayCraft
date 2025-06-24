@@ -920,8 +920,8 @@ export default function DailyReportsPage() {
                                         .join('；')}
                                     </div>
                                   </div>
-                                );
-                              })}
+                  );
+                })}
                             </div>
                           )}
                         </div>

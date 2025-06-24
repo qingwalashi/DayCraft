@@ -165,6 +165,7 @@ export type UserAISettings = {
   model_name: string;
   system_prompt: string;
   user_prompt: string;
+  is_enabled: boolean;
   created_at: string;
   updated_at: string;
 }; 

@@ -4,7 +4,10 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, UserAISettings } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff, TestTube, PlusCircle } from "lucide-react";
+import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface ModelOption {
   value: string;
@@ -19,6 +22,7 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [isCustomModel, setIsCustomModel] = useState(false);
   const [customModelName, setCustomModelName] = useState("");
+  const [activeTab, setActiveTab] = useState("ai");
   
   // 表单状态
   const [settings, setSettings] = useState<UserAISettings | null>(null);
@@ -27,7 +31,8 @@ export default function SettingsPage() {
     api_key: "",
     model_name: "gpt-3.5-turbo",
     system_prompt: "你是一个专业的工作报告助手，负责帮助用户整理和生成日报、周报和月报。",
-    user_prompt: "请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}"
+    user_prompt: "请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}",
+    is_enabled: true
   });
 
   // 模型选项
@@ -90,7 +95,8 @@ export default function SettingsPage() {
             api_key: userSettings.api_key || "",
             model_name: isCustom ? "custom" : (userSettings.model_name || "gpt-3.5-turbo"),
             system_prompt: userSettings.system_prompt || "你是一个专业的工作报告助手，负责帮助用户整理和生成日报、周报和月报。",
-            user_prompt: userSettings.user_prompt || "请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}"
+            user_prompt: userSettings.user_prompt || "请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}",
+            is_enabled: userSettings.is_enabled !== undefined ? userSettings.is_enabled : true
           });
         }
       } catch (error) {
@@ -133,6 +139,7 @@ export default function SettingsPage() {
             model_name: modelNameToSave,
             system_prompt: formData.system_prompt,
             user_prompt: formData.user_prompt,
+            is_enabled: formData.is_enabled,
             updated_at: new Date().toISOString()
           })
           .eq("id", settings.id);
@@ -147,7 +154,8 @@ export default function SettingsPage() {
             api_key: formData.api_key,
             model_name: modelNameToSave,
             system_prompt: formData.system_prompt,
-            user_prompt: formData.user_prompt
+            user_prompt: formData.user_prompt,
+            is_enabled: formData.is_enabled
           });
           
         if (error) throw error;
@@ -171,6 +179,11 @@ export default function SettingsPage() {
     }
     
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+  
+  // 处理开关状态变化
+  const handleSwitchChange = (checked: boolean) => {
+    setFormData(prev => ({ ...prev, is_enabled: checked }));
   };
   
   // 处理自定义模型名称变化
@@ -281,192 +294,241 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">AI设置</h1>
+        <h1 className="text-2xl font-bold">系统设置</h1>
       </div>
       
-      <div className="bg-white shadow rounded-lg p-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">API设置</h2>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label htmlFor="api_url" className="block text-sm font-medium text-gray-700 mb-1">
-                  API URL
-                </label>
-                <input
-                  id="api_url"
-                  name="api_url"
-                  type="text"
-                  value={formData.api_url}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="https://api.openai.com/v1"
+      <Tabs defaultValue="ai" value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="ai" className="flex items-center">
+            <Settings className="h-4 w-4 mr-2" />
+            AI设置
+          </TabsTrigger>
+          <TabsTrigger value="dingtalk" className="flex items-center">
+            <Bell className="h-4 w-4 mr-2" />
+            钉钉配置
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="ai" className="space-y-4">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">AI功能设置</h2>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="ai-enabled" className={formData.is_enabled ? "text-blue-600" : "text-gray-500"}>
+                  {formData.is_enabled ? "已启用" : "已禁用"}
+                </Label>
+                <Switch 
+                  id="ai-enabled" 
+                  checked={formData.is_enabled} 
+                  onCheckedChange={handleSwitchChange}
                 />
-              </div>
-              
-              <div>
-                <label htmlFor="api_key" className="block text-sm font-medium text-gray-700 mb-1">
-                  API Key
-                </label>
-                <div className="relative">
-                  <input
-                    id="api_key"
-                    name="api_key"
-                    type={showApiKey ? "text" : "password"}
-                    value={formData.api_key}
-                    onChange={handleChange}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder={settings?.api_key ? "••••••••" : "sk-..."}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  >
-                    {showApiKey ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
-                  </button>
-                </div>
               </div>
             </div>
             
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={testApiConnection}
-                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-md text-sm font-medium shadow-sm hover:shadow transition-all duration-200 flex items-center"
-              >
-                <TestTube className="h-4 w-4 mr-2" />
-                测试API连接
-              </button>
-            </div>
-          </div>
-          
-          <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">模型设置</h2>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="model_name" className="block text-sm font-medium text-gray-700 mb-1">
-                  模型选择
-                </label>
-                <select
-                  id="model_name"
-                  name="model_name"
-                  value={formData.model_name}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                >
-                  <optgroup label="OpenAI 模型">
-                    {modelOptions.filter(option => option.provider === "OpenAI").map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="DeepSeek 模型">
-                    {modelOptions.filter(option => option.provider === "DeepSeek").map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Anthropic 模型">
-                    {modelOptions.filter(option => option.provider === "Anthropic").map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="其他">
-                    {modelOptions.filter(option => !option.provider).map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
-              
-              {isCustomModel && (
-                <div>
-                  <label htmlFor="custom_model" className="block text-sm font-medium text-gray-700 mb-1">
-                    自定义模型名称
-                  </label>
-                  <div className="flex items-center">
-                    <PlusCircle className="h-4 w-4 text-gray-400 mr-2" />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className={!formData.is_enabled ? "opacity-50 pointer-events-none" : ""}>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">API设置</h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="api_url" className="block text-sm font-medium text-gray-700 mb-1">
+                      API URL
+                    </label>
                     <input
-                      id="custom_model"
+                      id="api_url"
+                      name="api_url"
                       type="text"
-                      value={customModelName}
-                      onChange={handleCustomModelChange}
+                      value={formData.api_url}
+                      onChange={handleChange}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      placeholder="输入模型名称，例如：gemini-pro"
+                      placeholder="https://api.openai.com/v1"
+                      disabled={!formData.is_enabled}
                     />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    请输入模型的准确名称，确保与API提供商的模型标识符一致。
-                  </p>
+                  
+                  <div>
+                    <label htmlFor="api_key" className="block text-sm font-medium text-gray-700 mb-1">
+                      API Key
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="api_key"
+                        name="api_key"
+                        type={showApiKey ? "text" : "password"}
+                        value={formData.api_key}
+                        onChange={handleChange}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        placeholder={settings?.api_key ? "••••••••" : "sk-..."}
+                        disabled={!formData.is_enabled}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        disabled={!formData.is_enabled}
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-          
-          <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">提示词设置</h2>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="system_prompt" className="block text-sm font-medium text-gray-700 mb-1">
-                  系统提示词
-                </label>
-                <textarea
-                  id="system_prompt"
-                  name="system_prompt"
-                  rows={3}
-                  value={formData.system_prompt}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="你是一个专业的工作报告助手..."
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  系统提示词用于设置AI助手的角色和行为方式。
-                </p>
+                
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={testApiConnection}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-md text-sm font-medium shadow-sm hover:shadow transition-all duration-200 flex items-center"
+                    disabled={!formData.is_enabled}
+                  >
+                    <TestTube className="h-4 w-4 mr-2" />
+                    测试API连接
+                  </button>
+                </div>
               </div>
               
-              <div>
-                <label htmlFor="user_prompt" className="block text-sm font-medium text-gray-700 mb-1">
-                  用户提示词模板
-                </label>
-                <textarea
-                  id="user_prompt"
-                  name="user_prompt"
-                  rows={5}
-                  value={formData.user_prompt}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="请根据我的工作内容，生成一份专业的{report_type}..."
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  用户提示词模板用于生成报告时的指令。可以使用 {"{report_type}"} 和 {"{report_content}"} 作为占位符。
-                </p>
+              <div className={!formData.is_enabled ? "opacity-50 pointer-events-none" : ""}>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">模型设置</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="model_name" className="block text-sm font-medium text-gray-700 mb-1">
+                      模型选择
+                    </label>
+                    <select
+                      id="model_name"
+                      name="model_name"
+                      value={formData.model_name}
+                      onChange={handleChange}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      disabled={!formData.is_enabled}
+                    >
+                      <optgroup label="OpenAI 模型">
+                        {modelOptions.filter(option => option.provider === "OpenAI").map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="DeepSeek 模型">
+                        {modelOptions.filter(option => option.provider === "DeepSeek").map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Anthropic 模型">
+                        {modelOptions.filter(option => option.provider === "Anthropic").map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="其他">
+                        {modelOptions.filter(option => !option.provider).map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                  
+                  {isCustomModel && (
+                    <div>
+                      <label htmlFor="custom_model" className="block text-sm font-medium text-gray-700 mb-1">
+                        自定义模型名称
+                      </label>
+                      <div className="flex items-center">
+                        <PlusCircle className="h-4 w-4 text-gray-400 mr-2" />
+                        <input
+                          id="custom_model"
+                          type="text"
+                          value={customModelName}
+                          onChange={handleCustomModelChange}
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          placeholder="输入模型名称，例如：gemini-pro"
+                          disabled={!formData.is_enabled}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        请输入模型的准确名称，确保与API提供商的模型标识符一致。
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
+              
+              <div className={!formData.is_enabled ? "opacity-50 pointer-events-none" : ""}>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">提示词设置</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="system_prompt" className="block text-sm font-medium text-gray-700 mb-1">
+                      系统提示词
+                    </label>
+                    <textarea
+                      id="system_prompt"
+                      name="system_prompt"
+                      rows={3}
+                      value={formData.system_prompt}
+                      onChange={handleChange}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      placeholder="你是一个专业的工作报告助手..."
+                      disabled={!formData.is_enabled}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      系统提示词用于设置AI助手的角色和行为方式。
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="user_prompt" className="block text-sm font-medium text-gray-700 mb-1">
+                      用户提示词模板
+                    </label>
+                    <textarea
+                      id="user_prompt"
+                      name="user_prompt"
+                      rows={5}
+                      value={formData.user_prompt}
+                      onChange={handleChange}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      placeholder="请根据我的工作内容，生成一份专业的{report_type}..."
+                      disabled={!formData.is_enabled}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      用户提示词模板用于生成报告时的指令。可以使用 {"{report_type}"} 和 {"{report_content}"} 作为占位符。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSaving || !formData.is_enabled}
+                  className={`px-4 py-2 ${!formData.is_enabled ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md text-sm font-medium flex items-center`}
+                >
+                  {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  保存设置
+                </button>
+              </div>
+            </form>
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="dingtalk">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex flex-col items-center justify-center p-8 text-center">
+              <Bell className="h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">钉钉配置</h3>
+              <p className="text-gray-500 max-w-md">
+                此功能正在开发中，敬请期待。钉钉集成将支持自动推送日报、周报和月报到钉钉群组。
+              </p>
             </div>
           </div>
-          
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 flex items-center"
-            >
-              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              保存设置
-            </button>
-          </div>
-        </form>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 
