@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { createClient, Project } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { usePersistentState } from "@/lib/utils/page-persistence";
 
 interface WorkItem {
   id?: string; // 添加可选的id字段，用于跟踪已有工作项
@@ -32,114 +33,30 @@ export default function NewDailyReportPage() {
   const router = useRouter();
   const { user } = useAuth();
   const supabase = createClient();
+  
+  // 使用持久化状态替代普通状态
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingExistingReport, setIsLoadingExistingReport] = useState(false);
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [workItems, setWorkItems] = useState<WorkItem[]>([{ content: '', projectId: '' }]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [existingReport, setExistingReport] = useState<boolean>(false);
-  const [existingReportId, setExistingReportId] = useState<string | null>(null);
-  const [existingReportItems, setExistingReportItems] = useState<{id: string}[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
-  const [isPlan, setIsPlan] = useState(false); // 添加是否为工作计划的状态
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [date, setDate] = usePersistentState<string>('new-daily-report-date', format(new Date(), 'yyyy-MM-dd'));
+  const [workItems, setWorkItems] = usePersistentState<WorkItem[]>('new-daily-report-work-items', [{ content: '', projectId: '' }]);
+  const [projects, setProjects] = usePersistentState<Project[]>('new-daily-report-projects', []);
+  const [existingReport, setExistingReport] = usePersistentState<boolean>('new-daily-report-existing', false);
+  const [existingReportId, setExistingReportId] = usePersistentState<string | null>('new-daily-report-id', null);
+  const [existingReportItems, setExistingReportItems] = usePersistentState<{id: string}[]>('new-daily-report-items', []);
+  const [showPreview, setShowPreview] = usePersistentState<boolean>('new-daily-report-preview', false);
+  const [isPlan, setIsPlan] = usePersistentState<boolean>('new-daily-report-is-plan', false); // 添加是否为工作计划的状态
+  const [selectedProjectId, setSelectedProjectId] = usePersistentState<string>('new-daily-report-selected-project', '');
 
-  // 加载活跃项目数据
-  useEffect(() => {
-    if (!user) return;
+  // 添加数据加载状态引用
+  const dataLoadedRef = useRef(false);
+  const lastLoadTimeRef = useRef<number>(0);
+  const urlParamsCheckedRef = useRef(false);
+  // 数据刷新间隔（毫秒），设置为10分钟
+  const DATA_REFRESH_INTERVAL = 10 * 60 * 1000;
 
-    const fetchProjects = async () => {
-      setIsLoading(true);
-      try {
-        // 获取所有活跃的项目
-        const { data: projectsData, error: projectsError } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .order('name');
-
-        if (projectsError) {
-          throw projectsError;
-        }
-
-        // 添加类型断言确保类型匹配
-        setProjects(projectsData as Project[] || []);
-        
-        // 如果有可用项目，设置第一个工作项的默认项目
-        if (projectsData && projectsData.length > 0) {
-          // 添加类型断言确保id的类型为string
-          const firstProject = projectsData[0] as Project;
-          setWorkItems([{ content: '', projectId: firstProject.id }]);
-        }
-        
-        // 检查URL参数中是否有日期
-        const urlParams = new URLSearchParams(window.location.search);
-        const dateParam = urlParams.get('date');
-        
-        if (dateParam) {
-          console.log(`从URL参数获取日期: ${dateParam}`);
-          setDate(dateParam);
-          await checkExistingReport(dateParam);
-        } else {
-          // 检查所选日期是否已存在日报
-          await checkExistingReport(date);
-        }
-      } catch (error) {
-        console.error('获取项目失败', error);
-        toast.error('获取项目数据失败');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [user, supabase]);
-
-  // 检查所选日期是否已存在日报
-  const checkExistingReport = async (selectedDate: string) => {
-    if (!user) return;
-    
-    try {
-      // 重置已有日报状态
-      setExistingReportId(null);
-      setExistingReport(false);
-      setExistingReportItems([]);
-      
-      const { data, error } = await supabase
-        .from('daily_reports')
-        .select('id, is_plan')
-        .eq('user_id', user.id)
-        .eq('date', selectedDate)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') { // 没有找到记录
-          return;
-        }
-        throw error;
-      }
-      
-      // 使用类型断言
-      const typedData = data as DailyReportData;
-      if (typedData && typedData.id) {
-        setExistingReport(true);
-        setExistingReportId(typedData.id);
-        setIsPlan(typedData.is_plan || false); // 设置是否为工作计划
-        
-        // 如果找到现有日报，加载它的内容
-        await loadExistingReportContent(typedData.id);
-      }
-      
-    } catch (error) {
-      console.error('检查日报是否存在时出错', error);
-    }
-  };
-  
-  // 加载已有日报的内容
-  const loadExistingReportContent = async (reportId: string) => {
-    setIsLoadingExistingReport(true);
+  // 加载已有日报的内容 - 使用useCallback包装
+  const loadExistingReportContent = useCallback(async (reportId: string) => {
     try {
       console.log(`正在加载日报ID: ${reportId} 的内容`);
       const { data, error } = await supabase
@@ -183,16 +100,180 @@ export default function NewDailyReportPage() {
     } catch (error) {
       console.error('加载日报内容失败', error);
       toast.error('加载日报内容失败');
+    }
+  }, [supabase, projects, setWorkItems, setExistingReportItems]);
+
+  // 检查所选日期是否已存在日报 - 使用useCallback包装
+  const checkExistingReport = useCallback(async (selectedDate: string) => {
+    if (!user) return;
+    
+    try {
+      setIsLoadingExistingReport(true);
+      // 重置已有日报状态
+      setExistingReportId(null);
+      setExistingReport(false);
+      setExistingReportItems([]);
+      
+      const { data, error } = await supabase
+        .from('daily_reports')
+        .select('id, is_plan')
+        .eq('user_id', user.id)
+        .eq('date', selectedDate)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGRST116') { // 没有找到记录
+          setIsLoadingExistingReport(false);
+          return;
+        }
+        throw error;
+      }
+      
+      // 使用类型断言
+      const typedData = data as DailyReportData;
+      if (typedData && typedData.id) {
+        setExistingReport(true);
+        setExistingReportId(typedData.id);
+        setIsPlan(typedData.is_plan || false); // 设置是否为工作计划
+        
+        // 如果找到现有日报，加载它的内容
+        await loadExistingReportContent(typedData.id);
+      }
+      
+    } catch (error) {
+      console.error('检查日报是否存在时出错', error);
     } finally {
       setIsLoadingExistingReport(false);
     }
-  };
+  }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent]);
+
+  // 加载活跃项目数据 - 使用useCallback包装
+  const loadActiveProjects = useCallback(async () => {
+    if (!user) return;
+    
+    // 检查是否已加载过数据
+    if (dataLoadedRef.current && projects.length > 0) {
+      console.log('已有项目数据，跳过重新获取');
+      setIsLoading(false);
+      return;
+    }
+    
+    // 检查是否超过刷新间隔
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimeRef.current;
+    if (lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
+      console.log(`数据加载间隔小于${DATA_REFRESH_INTERVAL/1000}秒，跳过重新获取`);
+      setIsLoading(false);
+      return;
+    }
+    
+    console.log('加载项目数据');
+    setIsLoading(true);
+    try {
+      // 获取所有活跃的项目
+      const { data: projectsData, error: projectsError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('name');
+
+      if (projectsError) {
+        throw projectsError;
+      }
+
+      // 添加类型断言确保类型匹配
+      const typedProjects = projectsData as Project[] || [];
+      setProjects(typedProjects);
+      
+      // 如果有可用项目并且没有工作项，设置第一个工作项的默认项目
+      if (typedProjects.length > 0 && (!workItems.length || workItems.every(item => !item.projectId))) {
+        // 添加类型断言确保id的类型为string
+        const firstProject = typedProjects[0] as Project;
+        setWorkItems([{ content: '', projectId: firstProject.id }]);
+      }
+      
+      // 更新加载状态和时间戳
+      dataLoadedRef.current = true;
+      lastLoadTimeRef.current = now;
+    } catch (error) {
+      console.error('获取项目失败', error);
+      toast.error('获取项目数据失败');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, supabase, projects.length, workItems, setProjects, setWorkItems]);
+
+  // 检查URL参数
+  const checkUrlParams = useCallback(async () => {
+    if (urlParamsCheckedRef.current) return;
+    
+    try {
+      // 检查URL参数中是否有日期
+      const urlParams = new URLSearchParams(window.location.search);
+      const dateParam = urlParams.get('date');
+      
+      if (dateParam) {
+        console.log(`从URL参数获取日期: ${dateParam}`);
+        setDate(dateParam);
+        await checkExistingReport(dateParam);
+      } else if (date) {
+        // 检查所选日期是否已存在日报
+        await checkExistingReport(date);
+      }
+      
+      urlParamsCheckedRef.current = true;
+    } catch (error) {
+      console.error('检查URL参数时出错', error);
+    }
+  }, [date, setDate, checkExistingReport]);
 
   // 处理日期变更
-  const handleDateChange = async (newDate: string) => {
+  const handleDateChange = useCallback(async (newDate: string) => {
     setDate(newDate);
     await checkExistingReport(newDate);
-  };
+  }, [setDate, checkExistingReport]);
+
+  // 初始加载数据
+  useEffect(() => {
+    if (user) {
+      loadActiveProjects();
+      checkUrlParams();
+    }
+  }, [user, loadActiveProjects, checkUrlParams]);
+
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('日报编辑页面恢复可见，检查数据状态');
+          
+          // 检查是否需要重新加载数据
+          const now = Date.now();
+          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          
+          // 如果超过刷新间隔，重新加载数据
+          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+            console.log('数据超过刷新间隔，重新加载');
+            // 重置数据加载状态
+            dataLoadedRef.current = false;
+            loadActiveProjects();
+          } else {
+            console.log('数据在刷新间隔内，保持现有数据');
+          }
+          
+          // 每次恢复可见时，都检查一下URL参数
+          checkUrlParams();
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [loadActiveProjects, checkUrlParams]);
 
   // 处理工作项内容变更
   const handleWorkItemContentChange = (index: number, content: string) => {

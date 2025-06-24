@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { CalendarIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon, AlertCircleIcon, EyeIcon, CopyIcon, XIcon, PencilIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -8,6 +8,7 @@ import { createClient, DailyReport, ReportItem, UserAISettings } from "@/lib/sup
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, getYear, parseISO, isSameDay, startOfMonth, endOfMonth } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
+import { usePersistentState } from "@/lib/utils/page-persistence";
 
 interface DailyReportData {
   date: string;
@@ -338,33 +339,45 @@ const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ year, month, onYearMonthChang
 export default function ReportsPage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [activeTab, setActiveTab] = useState<ReportType>("weekly");
+  
+  // 替换普通状态为持久化状态
+  const [activeTab, setActiveTab] = usePersistentState<ReportType>("reports-active-tab", "weekly");
   const [isLoading, setIsLoading] = useState(true);
-  const [generatingReportId, setGeneratingReportId] = useState<string | null>(null);
-  const [weeklyData, setWeeklyData] = useState<WeekData[]>([]);
-  const [monthlyData, setMonthlyData] = useState<MonthData[]>([]);
-  const [dailyReports, setDailyReports] = useState<DailyReportData[]>([]);
-  const [previewData, setPreviewData] = useState<{
+  const [generatingReportId, setGeneratingReportId] = usePersistentState<string | null>("reports-generating-id", null);
+  const [weeklyData, setWeeklyData] = usePersistentState<WeekData[]>("reports-weekly-data", []);
+  const [monthlyData, setMonthlyData] = usePersistentState<MonthData[]>("reports-monthly-data", []);
+  const [dailyReports, setDailyReports] = usePersistentState<DailyReportData[]>("reports-daily-reports", []);
+  const [previewData, setPreviewData] = usePersistentState<{
     title: string;
     content: string;
     type: ReportType;
     period: string;
-  } | null>(null);
+  } | null>("reports-preview-data", null);
   
-  // 分页控制
-  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
-  const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth() + 1);
+  // 分页控制 - 持久化
+  const [currentYear, setCurrentYear] = usePersistentState<number>("reports-current-year", new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = usePersistentState<number>("reports-current-month", new Date().getMonth() + 1);
+
+  // 添加数据加载状态引用
+  const dataLoadedRef = useRef(false);
+  const lastLoadTimeRef = useRef<number>(0);
+  // 数据刷新间隔（毫秒），设置为5分钟
+  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
 
   // 按年月筛选的周报数据
   const filteredWeeklyData = useMemo(() => {
     return weeklyData.filter(week => {
+      // 确保日期是Date对象
+      const startDate = week.startDate instanceof Date ? week.startDate : new Date(week.startDate);
+      const endDate = week.endDate instanceof Date ? week.endDate : new Date(week.endDate);
+      
       // 获取周起始日期所在的月份
-      const weekStartMonth = week.startDate.getMonth() + 1;
-      const weekStartYear = week.startDate.getFullYear();
+      const weekStartMonth = startDate.getMonth() + 1;
+      const weekStartYear = startDate.getFullYear();
       
       // 获取周结束日期所在的月份
-      const weekEndMonth = week.endDate.getMonth() + 1;
-      const weekEndYear = week.endDate.getFullYear();
+      const weekEndMonth = endDate.getMonth() + 1;
+      const weekEndYear = endDate.getFullYear();
       
       // 如果周跨月，只要有一部分在当前选择的月份就显示
       return (
@@ -376,11 +389,48 @@ export default function ReportsPage() {
   
   // 按年筛选的月报数据
   const filteredMonthlyData = useMemo(() => {
-    return monthlyData.filter(month => month.year === currentYear);
+    return monthlyData.filter(month => {
+      // 确保日期是Date对象
+      const startDate = month.startDate instanceof Date ? month.startDate : new Date(month.startDate);
+      return startDate.getFullYear() === currentYear;
+    });
   }, [monthlyData, currentYear]);
-  
-  // 处理年月切换
-  const handleYearMonthChange = (year: number, month: number) => {
+
+  // 处理数据恢复，确保日期字段正确转换为Date对象
+  useEffect(() => {
+    if (weeklyData.length > 0) {
+      const processedWeeklyData = weeklyData.map(week => ({
+        ...week,
+        startDate: week.startDate instanceof Date ? week.startDate : new Date(week.startDate),
+        endDate: week.endDate instanceof Date ? week.endDate : new Date(week.endDate)
+      }));
+      
+      // 只有当数据需要转换时才更新
+      if (processedWeeklyData.some((week, index) => 
+        !(weeklyData[index].startDate instanceof Date) || 
+        !(weeklyData[index].endDate instanceof Date))) {
+        setWeeklyData(processedWeeklyData);
+      }
+    }
+    
+    if (monthlyData.length > 0) {
+      const processedMonthlyData = monthlyData.map(month => ({
+        ...month,
+        startDate: month.startDate instanceof Date ? month.startDate : new Date(month.startDate),
+        endDate: month.endDate instanceof Date ? month.endDate : new Date(month.endDate)
+      }));
+      
+      // 只有当数据需要转换时才更新
+      if (processedMonthlyData.some((month, index) => 
+        !(monthlyData[index].startDate instanceof Date) || 
+        !(monthlyData[index].endDate instanceof Date))) {
+        setMonthlyData(processedMonthlyData);
+      }
+    }
+  }, [weeklyData, monthlyData, setWeeklyData, setMonthlyData]);
+
+  // 处理年月切换 - 使用useCallback包装
+  const handleYearMonthChange = useCallback((year: number, month: number) => {
     // 处理月份溢出
     if (month < 1) {
       setCurrentYear(year - 1);
@@ -392,241 +442,39 @@ export default function ReportsPage() {
       setCurrentYear(year);
       setCurrentMonth(month);
     }
-  };
+  }, [setCurrentYear, setCurrentMonth]);
 
-  // 处理年份切换（用于月报）
-  const handleYearChange = (year: number) => {
+  // 处理年份切换（用于月报）- 使用useCallback包装
+  const handleYearChange = useCallback((year: number) => {
     setCurrentYear(year);
-  };
+  }, [setCurrentYear]);
 
-  // 获取日报数据
-  useEffect(() => {
-    const fetchDailyReports = async () => {
-      if (!user) return;
-      
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('daily_reports')
-          .select(`
-            date,
-            is_plan,
-            report_items (
-              content,
-              projects:project_id (
-                name, code
-              )
-            )
-          `)
-          .eq('user_id', user.id);
-        
-        if (error) {
-          throw error;
-        }
-        
-        // 处理日报数据，添加内容字段
-        const processedData = data?.map((report: any) => {
-          return {
-            date: report.date as string,
-            is_plan: report.is_plan || false,
-            content: report.report_items?.map((item: any) => 
-              `[${item.projects?.name} (${item.projects?.code})] ${item.content}`
-            ).join('\n')
-          };
-        }) || [];
-        
-        setDailyReports(processedData);
-        
-        // 生成周报和月报数据
-        generateWeeklyData(processedData);
-        generateMonthlyData(processedData);
-        
-        // 加载已保存的周报和月报
-        await Promise.all([
-          fetchSavedWeeklyReports(),
-          fetchSavedMonthlyReports()
-        ]);
-      } catch (error) {
-        console.error('获取日报数据失败', error);
-        toast.error('获取日报数据失败');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDailyReports();
-  }, [user, supabase]);
-
-  // 获取已保存的周报
-  const fetchSavedWeeklyReports = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('weekly_reports')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('year', { ascending: false })
-        .order('week_number', { ascending: false });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (data && data.length > 0) {
-        // 更新周报数据
-        setWeeklyData(prevData => {
-          const updatedData = [...prevData];
-          
-          data.forEach((report: any) => {
-            const index = updatedData.findIndex(
-              week => week.year === report.year && week.weekNumber === report.week_number
-            );
-            
-            if (index !== -1) {
-              updatedData[index].reportStatus = 'generated';
-              updatedData[index].reportContent = report.content as string;
-              updatedData[index].generatedAt = format(new Date(report.updated_at as string), 'yyyy-MM-dd HH:mm:ss');
-            }
-          });
-          
-          return updatedData;
-        });
-      }
-    } catch (error) {
-      console.error('获取周报数据失败', error);
-    }
-  };
-  
-  // 获取已保存的月报
-  const fetchSavedMonthlyReports = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('monthly_reports')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('year', { ascending: false })
-        .order('month', { ascending: false });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (data && data.length > 0) {
-        // 更新月报数据
-        setMonthlyData(prevData => {
-          const updatedData = [...prevData];
-          
-          data.forEach((report: any) => {
-            const index = updatedData.findIndex(
-              month => month.year === report.year && month.month === report.month
-            );
-            
-            if (index !== -1) {
-              updatedData[index].reportStatus = 'generated';
-              updatedData[index].reportContent = report.content as string;
-              updatedData[index].generatedAt = format(new Date(report.updated_at as string), 'yyyy-MM-dd HH:mm:ss');
-            }
-          });
-          
-          return updatedData;
-        });
-      }
-    } catch (error) {
-      console.error('获取月报数据失败', error);
-    }
-  };
-
-  // 生成周报数据
-  const generateWeeklyData = (reports: DailyReportData[]) => {
+  // 生成周报数据 - 使用useCallback包装
+  const generateWeeklyData = useCallback((reports: DailyReportData[]) => {
     const today = new Date();
     const weeks: WeekData[] = [];
     
-    // 生成最近24周的数据，以确保能显示更多历史周报
-    for (let i = 0; i < 24; i++) {
-      const weekStartDate = startOfWeek(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7), { locale: zhCN });
+    // 生成最近12周的数据
+    for (let i = 0; i < 12; i++) {
+      const currentWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7);
+      const weekStartDate = startOfWeek(currentWeek, { locale: zhCN });
       const weekEndDate = endOfWeek(weekStartDate, { locale: zhCN });
       const weekNumber = getWeek(weekStartDate, { locale: zhCN });
       const year = getYear(weekStartDate);
       
-      // 获取这一周每天的日报状态和内容
+      // 获取这一周的日报状态
       const dailyStatus: DailyReportStatus[] = [];
-      const weeklyReportsByProject: Record<string, {projectName: string, projectCode: string, items: {date: string, content: string}[]}> = {};
       
-      // 按日期降序排序这一周的日期
-      const weekDates = eachDayOfInterval({ start: weekStartDate, end: weekEndDate })
-        .sort((a, b) => a.getTime() - b.getTime()); // 改为升序排序
-      
-      weekDates.forEach(date => {
+      // 生成周期内每天的日报状态
+      eachDayOfInterval({ start: weekStartDate, end: weekEndDate }).forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        const reportForDate = reports.find(report => {
-          const reportDate = format(parseISO(report.date), 'yyyy-MM-dd');
-          return reportDate === dateStr;
+        const report = reports.find(r => r.date === dateStr && !r.is_plan);
+        
+        dailyStatus.push({
+          date: dateStr,
+          hasReport: !!report,
+          is_plan: false
         });
-        
-        const hasReport = !!reportForDate;
-        const isPlan = reportForDate?.is_plan || false;
-        
-        dailyStatus.push({ date: dateStr, hasReport, is_plan: isPlan });
-        
-        // 只有不是计划的日报才参与周报生成
-        if (hasReport && reportForDate?.content && !isPlan) {
-          // 解析内容，按项目分组
-          const contentLines = reportForDate.content.split('\n');
-          contentLines.forEach(line => {
-            // 匹配 [项目名称 (项目编号)] 内容
-            const match = line.match(/\[(.*?) \((.*?)\)\] (.*)/);
-            if (match) {
-              const projectName = match[1];
-              const projectCode = match[2];
-              const content = match[3];
-              const projectKey = `${projectName}-${projectCode}`;
-              
-              if (!weeklyReportsByProject[projectKey]) {
-                weeklyReportsByProject[projectKey] = {
-                  projectName,
-                  projectCode,
-                  items: []
-                };
-              }
-              
-              weeklyReportsByProject[projectKey].items.push({
-                date: dateStr,
-                content
-              });
-            }
-          });
-        }
-      });
-      
-      // 计算填报完整度
-      const filledDays = dailyStatus.filter(day => day.hasReport).length;
-      const totalDays = dailyStatus.length;
-      const completionRate = filledDays / totalDays;
-      
-      // 确定报告状态 - 无论是否有日报，都显示周
-      let reportStatus: ReportStatus = "not_available";
-      if (completionRate === 1) {
-        reportStatus = "pending"; // 所有天都有日报，可以生成
-      } else if (completionRate > 0) {
-        reportStatus = "pending"; // 部分天有日报，可以生成但不完整
-      }
-      
-      // 生成周报内容
-      let reportContent = '';
-      
-      // 添加项目分组内容
-      Object.values(weeklyReportsByProject).forEach(project => {
-        reportContent += `${project.projectName}\n`;
-        
-        // 项目下的工作内容按日期升序排列
-        project.items.forEach(item => {
-          reportContent += `- ${item.date}: ${item.content}\n`;
-        });
-        
-        reportContent += '\n';
       });
       
       weeks.push({
@@ -635,17 +483,16 @@ export default function ReportsPage() {
         startDate: weekStartDate,
         endDate: weekEndDate,
         formattedPeriod: `${format(weekStartDate, 'yyyy-MM-dd')} 至 ${format(weekEndDate, 'yyyy-MM-dd')}`,
-        reportStatus,
+        reportStatus: 'pending',
         dailyReportStatus: dailyStatus,
-        reportContent: reportContent.trim()
       });
     }
     
     setWeeklyData(weeks);
-  };
+  }, [setWeeklyData]);
 
-  // 生成月报数据
-  const generateMonthlyData = (reports: DailyReportData[]) => {
+  // 生成月报数据 - 使用useCallback包装
+  const generateMonthlyData = useCallback((reports: DailyReportData[]) => {
     const today = new Date();
     const months: MonthData[] = [];
     
@@ -663,7 +510,7 @@ export default function ReportsPage() {
       
       // 按日期降序排序这个月的日期
       const monthDates = eachDayOfInterval({ start: monthStartDate, end: monthEndDate })
-        .sort((a, b) => a.getTime() - b.getTime()); // 改为升序排序
+        .sort((a, b) => a.getTime() - b.getTime());
       
       monthDates.forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -707,23 +554,17 @@ export default function ReportsPage() {
         }
       });
       
-      // 计算填报完整度（工作日）
-      const workDays = dailyStatus.filter(day => {
-        const date = parseISO(day.date);
-        const dayOfWeek = date.getDay();
-        return dayOfWeek !== 0 && dayOfWeek !== 6; // 排除周六周日
-      });
-      
-      const filledWorkDays = workDays.filter(day => day.hasReport).length;
-      const totalWorkDays = workDays.length;
-      const completionRate = filledWorkDays / totalWorkDays;
+      // 计算填报完整度
+      const filledDays = dailyStatus.filter(day => day.hasReport).length;
+      const totalWorkDays = dailyStatus.length;
+      const completionRate = filledDays / totalWorkDays;
       
       // 确定报告状态
       let reportStatus: ReportStatus = "not_available";
-      if (completionRate >= 0.9) {
-        reportStatus = "pending"; // 90%以上的工作日都有日报，可以生成
+      if (completionRate >= 0.5) {
+        reportStatus = "pending"; // 一半以上工作日有日报，可以生成
       } else if (completionRate > 0) {
-        reportStatus = "pending"; // 部分天有日报，可以生成但不完整
+        reportStatus = "pending"; // 部分工作日有日报，可以生成但不完整
       }
       
       // 生成月报内容
@@ -733,7 +574,7 @@ export default function ReportsPage() {
       Object.values(monthlyReportsByProject).forEach(project => {
         reportContent += `${project.projectName}\n`;
         
-        // 项目下的工作内容按日期升序排列
+        // 项目下的工作内容
         project.items.forEach(item => {
           reportContent += `- ${item.date}: ${item.content}\n`;
         });
@@ -741,13 +582,12 @@ export default function ReportsPage() {
         reportContent += '\n';
       });
       
-      // 无论是否有日报数据，都创建月报条目
       months.push({
-        month,
+        month: month + 1,
         year,
         startDate: monthStartDate,
         endDate: monthEndDate,
-        formattedPeriod: `${year}年${month + 1}月`,
+        formattedPeriod: format(monthStartDate, 'yyyy年MM月'),
         reportStatus,
         dailyReportStatus: dailyStatus,
         reportContent: reportContent.trim()
@@ -755,7 +595,201 @@ export default function ReportsPage() {
     }
     
     setMonthlyData(months);
-  };
+  }, [setMonthlyData]);
+
+  // 获取已保存的周报 - 使用useCallback包装
+  const fetchSavedWeeklyReports = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('weekly_reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('year', { ascending: false })
+        .order('week_number', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        // 更新周报数据
+        setWeeklyData(prevData => {
+          const updatedData = [...prevData];
+          
+          data.forEach((report: any) => {
+            const index = updatedData.findIndex(
+              week => week.year === report.year && week.weekNumber === report.week_number
+            );
+            
+            if (index !== -1) {
+              updatedData[index].reportStatus = 'generated';
+              updatedData[index].reportContent = report.content as string;
+              updatedData[index].generatedAt = format(new Date(report.updated_at as string), 'yyyy-MM-dd HH:mm:ss');
+            }
+          });
+          
+          return updatedData;
+        });
+      }
+    } catch (error) {
+      console.error('获取周报数据失败', error);
+    }
+  }, [user, supabase, setWeeklyData]);
+  
+  // 获取已保存的月报 - 使用useCallback包装
+  const fetchSavedMonthlyReports = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('monthly_reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('year', { ascending: false })
+        .order('month', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        // 更新月报数据
+        setMonthlyData(prevData => {
+          const updatedData = [...prevData];
+          
+          data.forEach((report: any) => {
+            const index = updatedData.findIndex(
+              month => month.year === report.year && month.month === report.month
+            );
+            
+            if (index !== -1) {
+              updatedData[index].reportStatus = 'generated';
+              updatedData[index].reportContent = report.content as string;
+              updatedData[index].generatedAt = format(new Date(report.updated_at as string), 'yyyy-MM-dd HH:mm:ss');
+            }
+          });
+          
+          return updatedData;
+        });
+      }
+    } catch (error) {
+      console.error('获取月报数据失败', error);
+    }
+  }, [user, supabase, setMonthlyData]);
+
+  // 获取日报数据 - 使用useCallback包装
+  const fetchDailyReports = useCallback(async () => {
+    if (!user) return;
+    
+    // 检查是否已加载过数据
+    if (dataLoadedRef.current && dailyReports.length > 0) {
+      console.log('已有日报数据，跳过重新获取');
+      setIsLoading(false);
+      return;
+    }
+    
+    // 检查是否超过刷新间隔
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimeRef.current;
+    if (lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
+      console.log(`数据加载间隔小于${DATA_REFRESH_INTERVAL/1000}秒，跳过重新获取`);
+      setIsLoading(false);
+      return;
+    }
+    
+    console.log('加载日报数据');
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('daily_reports')
+        .select(`
+          date,
+          is_plan,
+          report_items (
+            content,
+            projects:project_id (
+              name, code
+            )
+          )
+        `)
+        .eq('user_id', user.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // 处理日报数据，添加内容字段
+      const processedData = data?.map((report: any) => {
+        return {
+          date: report.date as string,
+          is_plan: report.is_plan || false,
+          content: report.report_items?.map((item: any) => 
+            `[${item.projects?.name} (${item.projects?.code})] ${item.content}`
+          ).join('\n')
+        };
+      }) || [];
+      
+      setDailyReports(processedData);
+      
+      // 生成周报和月报数据
+      generateWeeklyData(processedData);
+      generateMonthlyData(processedData);
+      
+      // 加载已保存的周报和月报
+      await Promise.all([
+        fetchSavedWeeklyReports(),
+        fetchSavedMonthlyReports()
+      ]);
+      
+      // 更新加载状态和时间戳
+      dataLoadedRef.current = true;
+      lastLoadTimeRef.current = now;
+    } catch (error) {
+      console.error('获取日报数据失败', error);
+      toast.error('获取日报数据失败');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, supabase, dailyReports.length, setDailyReports, generateWeeklyData, generateMonthlyData, fetchSavedWeeklyReports, fetchSavedMonthlyReports]);
+
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('周报月报页面恢复可见，检查数据状态');
+          
+          // 检查是否需要重新加载数据
+          const now = Date.now();
+          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          
+          // 如果超过刷新间隔，重新加载数据
+          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+            console.log('数据超过刷新间隔，重新加载');
+            // 重置数据加载状态
+            dataLoadedRef.current = false;
+            fetchDailyReports();
+          } else {
+            console.log('数据在刷新间隔内，保持现有数据');
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [fetchDailyReports]);
+
+  // 初始加载数据
+  useEffect(() => {
+    if (user) {
+      fetchDailyReports();
+    }
+  }, [user, fetchDailyReports]);
 
   // 处理报告生成
   const handleGenerateReport = async (type: ReportType, period: string) => {
