@@ -4,6 +4,35 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 // 创建一个单例客户端实例，避免多次创建
 let supabaseClient: ReturnType<typeof createClientComponentClient> | null = null;
+// 添加请求计数和时间窗口追踪
+const requestCounts: {[key: string]: number} = {};
+const REQUEST_LIMIT = 50; // 每个时间窗口的最大请求数
+const TIME_WINDOW = 10000; // 时间窗口大小（毫秒）
+
+// 限制请求频率的装饰器函数
+const limitRequests = async (key: string, operation: () => Promise<any>) => {
+  const now = Date.now();
+  const windowKey = `${key}_${Math.floor(now / TIME_WINDOW)}`;
+  
+  // 初始化或重置过期的计数器
+  Object.keys(requestCounts).forEach(k => {
+    if (!k.startsWith(`${key}_`) || parseInt(k.split('_')[1]) < Math.floor(now / TIME_WINDOW) - 1) {
+      delete requestCounts[k];
+    }
+  });
+  
+  // 检查当前窗口的请求数
+  requestCounts[windowKey] = (requestCounts[windowKey] || 0) + 1;
+  
+  if (requestCounts[windowKey] > REQUEST_LIMIT) {
+    console.warn(`请求频率过高: ${key}, 当前窗口请求数: ${requestCounts[windowKey]}`);
+    // 对于超过限制的请求，添加延迟
+    const delay = Math.min(100 * (requestCounts[windowKey] - REQUEST_LIMIT), 2000);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  return operation();
+};
 
 export const createClient = () => {
   if (supabaseClient) {
@@ -14,13 +43,46 @@ export const createClient = () => {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 
     (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
-  // 创建客户端
-  supabaseClient = createClientComponentClient();
+  try {
+    // 创建客户端
+    supabaseClient = createClientComponentClient({
+      options: {
+        // 添加请求超时设置
+        global: {
+          fetch: (url, options) => {
+            return fetch(url, {
+              ...options,
+              // 设置较长的超时时间
+              signal: options?.signal || (AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined),
+            });
+          },
+        },
+      },
+    });
+    
+    // 增强原始方法，添加请求限制
+    const originalAuthGetSession = supabaseClient.auth.getSession.bind(supabaseClient.auth);
+    supabaseClient.auth.getSession = async function() {
+      return limitRequests('auth_getSession', () => originalAuthGetSession());
+    };
+    
+    const originalAuthGetUser = supabaseClient.auth.getUser.bind(supabaseClient.auth);
+    supabaseClient.auth.getUser = async function() {
+      return limitRequests('auth_getUser', () => originalAuthGetUser());
+    };
+    
+    // 为所有认证相关操作添加请求限制
+    const originalSignIn = supabaseClient.auth.signInWithPassword.bind(supabaseClient.auth);
+    supabaseClient.auth.signInWithPassword = async function(credentials) {
+      return limitRequests('auth_signIn', () => originalSignIn(credentials));
+    };
+    
+    console.log('Supabase 客户端已初始化');
+  } catch (error) {
+    console.error('创建 Supabase 客户端失败:', error);
+    throw error;
+  }
   
-  // 设置身份验证重定向URL
-  // 注意：这里我们不能直接在创建客户端时设置auth.redirectTo选项，因为类型定义不支持
-  // 但我们可以在使用signUp或signIn方法时指定redirectTo
-
   return supabaseClient;
 };
 

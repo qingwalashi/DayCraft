@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/hooks/use-auth';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -14,7 +14,9 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
+  const { signup } = useAuth();
+  const signupAttemptRef = useRef<number>(0);
+  const lastSignupTimeRef = useRef<number>(0);
   
   const validateForm = () => {
     if (password !== confirmPassword) {
@@ -35,30 +37,42 @@ export default function SignupPage() {
       return;
     }
     
+    // 防止快速重复点击
+    const now = Date.now();
+    if (now - lastSignupTimeRef.current < 3000) {
+      setError('请稍候再试');
+      return;
+    }
+    
+    // 检查注册尝试次数，实现指数退避
+    const attemptCount = signupAttemptRef.current;
+    if (attemptCount > 2) {
+      const backoffTime = Math.min(Math.pow(2, attemptCount - 2) * 1000, 60000);
+      if (now - lastSignupTimeRef.current < backoffTime) {
+        setError(`请等待${Math.ceil(backoffTime/1000)}秒后再试`);
+        return;
+      }
+    }
+    
     setLoading(true);
     setError(null);
     setSuccessMessage(null);
+    lastSignupTimeRef.current = now;
     
     try {
-      const { error } = await supabase.auth.signUp({ 
-        email, 
-        password,
-        options: {
-          data: {
-            name
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
-      });
+      const success = await signup(email, password, name);
       
-      if (error) {
-        setError(error.message);
-      } else {
+      if (success) {
         setSuccessMessage('注册成功！请检查您的邮箱并点击确认链接。');
+        signupAttemptRef.current = 0; // 重置尝试次数
+      } else {
+        // 注册失败由 signup 函数内部处理错误提示
+        signupAttemptRef.current++; // 增加尝试次数
       }
     } catch (err) {
       setError('注册时出错，请重试');
       console.error('注册错误:', err);
+      signupAttemptRef.current++; // 增加尝试次数
     } finally {
       setLoading(false);
     }

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/hooks/use-auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,45 +11,56 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
+  const { login } = useAuth();
+  const loginAttemptRef = useRef<number>(0);
+  const lastLoginTimeRef = useRef<number>(0);
   
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     
-    try {
-      // 验证输入
-      if (!email || !password) {
-        setError('请输入邮箱和密码');
+    // 验证输入
+    if (!email || !password) {
+      setError('请输入邮箱和密码');
+      return;
+    }
+    
+    // 防止快速重复点击
+    const now = Date.now();
+    if (now - lastLoginTimeRef.current < 2000) {
+      setError('请稍候再试');
+      return;
+    }
+    
+    // 检查登录尝试次数，实现指数退避
+    const attemptCount = loginAttemptRef.current;
+    if (attemptCount > 3) {
+      const backoffTime = Math.min(Math.pow(2, attemptCount - 3) * 1000, 30000);
+      if (now - lastLoginTimeRef.current < backoffTime) {
+        setError(`请等待${Math.ceil(backoffTime/1000)}秒后再试`);
         return;
       }
-      
+    }
+    
+    setLoading(true);
+    lastLoginTimeRef.current = now;
+    
+    try {
       console.log('尝试登录...');
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const success = await login(email, password);
       
-      if (error) {
-        console.error('登录错误:', error);
-        
-        // 翻译常见错误信息
-        if (error.message.includes('Invalid login credentials')) {
-          setError('邮箱或密码不正确');
-        } else if (error.message.includes('Email not confirmed')) {
-          setError('邮箱未验证，请检查您的邮箱并点击验证链接');
-        } else {
-          setError(error.message || '登录失败，请重试');
-        }
-      } else {
+      if (success) {
         console.log('登录成功，重定向到仪表板');
+        loginAttemptRef.current = 0; // 重置尝试次数
         router.push('/dashboard/overview');
-        router.refresh();
+      } else {
+        // 登录失败由 login 函数内部处理错误提示
+        loginAttemptRef.current++; // 增加尝试次数
       }
     } catch (err) {
       console.error('登录过程发生异常:', err);
       setError('登录时出错，请检查网络连接或稍后重试');
+      loginAttemptRef.current++; // 增加尝试次数
     } finally {
       setLoading(false);
     }

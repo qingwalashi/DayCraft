@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -6,12 +6,16 @@ import { useTenantStore } from '@/lib/store/tenant-store'
 import { Tenant } from '@/lib/supabase/client'
 import { getAuthCallbackUrl } from '@/lib/utils/env'
 
+// 创建一个共享的 Supabase 客户端实例
+const supabase = createClient();
+
 export function useAuth() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { setCurrentTenant } = useTenantStore()
   const [tenantFetched, setTenantFetched] = useState(false)
+  const authInProgress = useRef(false);
 
   const fetchTenantInfo = useCallback(async (userId: string) => {
     if (typeof window !== 'undefined') {
@@ -28,37 +32,44 @@ export function useAuth() {
       }
     }
 
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('tenant_id, tenants:tenant_id(*)')
-      .eq('id', userId)
-      .single()
-    
-    if (data && data.tenants) {
-      const tenant = data.tenants as unknown as Tenant
-      setCurrentTenant(tenant)
+    try {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('tenant_id, tenants:tenant_id(*)')
+        .eq('id', userId)
+        .single()
       
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`tenant_info_${userId}`, JSON.stringify(tenant))
+      if (data && data.tenants) {
+        const tenant = data.tenants as unknown as Tenant
+        setCurrentTenant(tenant)
+        
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(`tenant_info_${userId}`, JSON.stringify(tenant))
+        }
       }
+      
+      setTenantFetched(true)
+    } catch (error) {
+      console.error('获取租户信息失败:', error);
+      // 即使失败也设置为已获取，避免无限重试
+      setTenantFetched(true);
     }
-    
-    setTenantFetched(true)
   }, [setCurrentTenant])
 
   useEffect(() => {
-    const supabase = createClient()
-    
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user || null)
-      
-      if (user && !tenantFetched) {
-        await fetchTenantInfo(user.id)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        setUser(user || null)
+        
+        if (user && !tenantFetched) {
+          await fetchTenantInfo(user.id)
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error);
+      } finally {
+        setLoading(false)
       }
-      
-      setLoading(false)
     }
 
     getUser()
@@ -81,9 +92,14 @@ export function useAuth() {
   }, [fetchTenantInfo, tenantFetched])
 
   const login = useCallback(async (email: string, password: string) => {
+    if (authInProgress.current) {
+      toast.error('登录操作正在进行中，请稍候');
+      return false;
+    }
+    
     try {
+      authInProgress.current = true;
       setLoading(true)
-      const supabase = createClient()
       
       const redirectUrl = getAuthCallbackUrl();
       
@@ -108,13 +124,22 @@ export function useAuth() {
       return false
     } finally {
       setLoading(false)
+      // 延迟重置状态，避免快速重复点击
+      setTimeout(() => {
+        authInProgress.current = false;
+      }, 1000);
     }
   }, [router])
 
   const signup = useCallback(async (email: string, password: string, tenantName: string) => {
+    if (authInProgress.current) {
+      toast.error('注册操作正在进行中，请稍候');
+      return false;
+    }
+    
     try {
+      authInProgress.current = true;
       setLoading(true)
-      const supabase = createClient()
       
       const redirectUrl = getAuthCallbackUrl();
       
@@ -174,21 +199,29 @@ export function useAuth() {
       return false
     } finally {
       setLoading(false)
+      // 延迟重置状态，避免快速重复点击
+      setTimeout(() => {
+        authInProgress.current = false;
+      }, 1000);
     }
   }, [router, setCurrentTenant])
 
   const logout = useCallback(async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setCurrentTenant(null)
-    setTenantFetched(false)
-    
-    if (user && typeof window !== 'undefined') {
-      sessionStorage.removeItem(`tenant_info_${user.id}`)
-      sessionStorage.removeItem(`user_profile_${user.id}`)
+    try {
+      await supabase.auth.signOut()
+      setCurrentTenant(null)
+      setTenantFetched(false)
+      
+      if (user && typeof window !== 'undefined') {
+        sessionStorage.removeItem(`tenant_info_${user.id}`)
+        sessionStorage.removeItem(`user_profile_${user.id}`)
+      }
+      
+      router.push('/')
+    } catch (error) {
+      console.error('登出失败:', error);
+      toast.error('登出失败，请重试');
     }
-    
-    router.push('/')
   }, [router, setCurrentTenant, user])
 
   return { user, loading, login, signup, logout }
