@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon, AlertCircleIcon, CalendarIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -110,22 +110,26 @@ export default function DailyReportsPage() {
   const [isDeletingReport, setIsDeletingReport] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [reports, setReports] = useState<ReportWithItems[]>([]);
   
-  // 使用持久化状态钩子替代普通的useState
+  // 使用持久化状态替代普通状态
+  const [reports, setReports] = usePersistentState<ReportWithItems[]>('daily-reports-reports', []);
   const [projects, setProjects] = usePersistentState<Project[]>('daily-reports-projects', []);
   const [previewReport, setPreviewReport] = usePersistentState<ReportWithItems | null>('daily-reports-preview', null);
-  // 使用持久化状态钩子保存周数据
   const [weekData, setWeekData] = usePersistentState<WeekData[]>('daily-reports-week-data', []);
   const [currentWeekIndex, setCurrentWeekIndex] = usePersistentState<number>('daily-reports-current-week', 0);
-  
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  
-  // 新增今日日报提醒状态
-  const [todayReportReminder, setTodayReportReminder] = useState<{
+  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState<boolean>('daily-reports-preview-open', false);
+  const [todayReportReminder, setTodayReportReminder] = usePersistentState<{
     date: string;
     hasReport: boolean;
-  } | null>(null);
+  } | null>('daily-reports-today-reminder', null);
+  
+  // 添加数据加载状态引用
+  const dataLoadedRef = useRef(false);
+  const weekDataLoadedRef = useRef<Record<string, boolean>>({});
+  // 添加最后数据加载时间戳
+  const lastLoadTimeRef = useRef<number>(0);
+  // 数据刷新间隔（毫秒），设置为5分钟
+  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
 
   // 当前选中的周数据
   const currentWeekData = useMemo(() => {
@@ -143,33 +147,14 @@ export default function DailyReportsPage() {
     return getYear(currentWeekData.startDate);
   }, [currentWeekData]);
 
-  // 加载项目和日报数据
-  useEffect(() => {
-    if (!user) return;
-    
-    // 初始化周数据结构
-    initWeekData();
-    
-    // 检查今天的日报状态
-    checkTodayReport();
-  }, [user]);
-
-  // 当周索引变化时，加载该周的日报数据
-  useEffect(() => {
-    if (user && weekData.length > 0) {
-      fetchWeekReports(weekData[currentWeekIndex]);
+  // 初始化周数据结构 - 使用useCallback
+  const initWeekData = useCallback(() => {
+    if (weekData.length > 0) {
+      console.log('周数据已初始化，跳过');
+      return;
     }
-  }, [user, currentWeekIndex, weekData.length]);
-
-  // 处理周切换
-  const handleWeekChange = (weekIndex: number) => {
-    if (weekIndex >= 0 && weekIndex < weekData.length) {
-      setCurrentWeekIndex(weekIndex);
-    }
-  };
-
-  // 初始化周数据结构
-  const initWeekData = () => {
+    
+    console.log('初始化周数据结构');
     const today = new Date();
     const weeks: WeekData[] = [];
     
@@ -208,12 +193,114 @@ export default function DailyReportsPage() {
     }
     
     setWeekData(weeks);
-  };
+    dataLoadedRef.current = true;
+  }, [weekData.length, setWeekData]);
 
-  // 获取指定周的日报数据
-  const fetchWeekReports = async (week: WeekData) => {
+  // 检查今天的日报状态 - 使用useCallback
+  const checkTodayReport = useCallback(async () => {
     if (!user) return;
     
+    // 如果已经检查过今日日报状态，跳过
+    if (todayReportReminder) {
+      console.log('今日日报状态已检查，跳过');
+      return;
+    }
+    
+    console.log('检查今日日报状态');
+    try {
+      const today = new Date();
+      const todayStr = format(today, 'yyyy-MM-dd');
+      
+      // 查询今天的日报
+      const { data: todayReport, error } = await supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', todayStr)
+        .maybeSingle();
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('检查今日日报失败', error);
+        return;
+      }
+      
+      // 设置今日日报提醒状态
+      setTodayReportReminder({
+        date: todayStr,
+        hasReport: !!todayReport
+      });
+      
+    } catch (error) {
+      console.error('检查今日日报失败', error);
+    }
+  }, [user, supabase, todayReportReminder, setTodayReportReminder]);
+
+  // 更新周数据中的日报信息 - 使用useCallback
+  const updateWeekData = useCallback((week: WeekData, reports: ReportWithItems[]) => {
+    setWeekData(prevWeeks => {
+      const updatedWeeks = [...prevWeeks];
+      const weekIndex = updatedWeeks.findIndex(w => 
+        w.year === week.year && w.weekNumber === week.weekNumber
+      );
+      
+      if (weekIndex !== -1) {
+        const updatedDays = [...updatedWeeks[weekIndex].days];
+        
+        // 更新每一天的日报状态
+        updatedDays.forEach((day, index) => {
+          const report = reports.find(r => r.date === day.date);
+          updatedDays[index] = {
+            ...day,
+            hasReport: !!report,
+            report: report || null
+          };
+          
+          // 如果是今天，更新今日日报提醒状态
+          if (isToday(parseISO(day.date))) {
+            setTodayReportReminder({
+              date: day.date,
+              hasReport: !!report
+            });
+          }
+        });
+        
+        updatedWeeks[weekIndex] = {
+          ...updatedWeeks[weekIndex],
+          days: updatedDays
+        };
+      }
+      
+      return updatedWeeks;
+    });
+    
+    // 更新全局reports状态，用于预览等功能
+    setReports(reports);
+  }, [setWeekData, setTodayReportReminder, setReports]);
+
+  // 获取指定周的日报数据 - 使用useCallback
+  const fetchWeekReports = useCallback(async (week: WeekData) => {
+    if (!user || !week) return;
+    
+    // 创建周的唯一标识符
+    const weekKey = `${week.year}-${week.weekNumber}`;
+    
+    // 检查该周的数据是否已经加载过
+    if (weekDataLoadedRef.current[weekKey]) {
+      console.log(`周 ${weekKey} 的数据已加载，跳过重新获取`);
+      setIsLoading(false);
+      return;
+    }
+    
+    // 检查是否超过刷新间隔
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimeRef.current;
+    if (lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
+      console.log(`数据加载间隔小于${DATA_REFRESH_INTERVAL/1000}秒，跳过重新获取`);
+      setIsLoading(false);
+      return;
+    }
+    
+    console.log(`加载周 ${weekKey} 的日报数据`);
     setIsLoading(true);
     try {
       // 获取项目数据（只需获取一次）
@@ -294,85 +381,79 @@ export default function DailyReportsPage() {
       // 更新当前周的日报数据
       updateWeekData(week, reportsWithItems);
       
+      // 标记该周数据已加载
+      weekDataLoadedRef.current[weekKey] = true;
+      lastLoadTimeRef.current = now;
+      
     } catch (error) {
       console.error('加载数据失败', error);
       toast.error('加载数据失败');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, supabase, projects, setProjects, updateWeekData]);
 
-  // 更新周数据中的日报信息
-  const updateWeekData = (week: WeekData, reports: ReportWithItems[]) => {
-    setWeekData(prevWeeks => {
-      const updatedWeeks = [...prevWeeks];
-      const weekIndex = updatedWeeks.findIndex(w => 
-        w.year === week.year && w.weekNumber === week.weekNumber
-      );
-      
-      if (weekIndex !== -1) {
-        const updatedDays = [...updatedWeeks[weekIndex].days];
-        
-        // 更新每一天的日报状态
-        updatedDays.forEach((day, index) => {
-          const report = reports.find(r => r.date === day.date);
-          updatedDays[index] = {
-            ...day,
-            hasReport: !!report,
-            report: report || null
-          };
-          
-          // 如果是今天，更新今日日报提醒状态
-          if (isToday(parseISO(day.date))) {
-            setTodayReportReminder({
-              date: day.date,
-              hasReport: !!report
-            });
-          }
-        });
-        
-        updatedWeeks[weekIndex] = {
-          ...updatedWeeks[weekIndex],
-          days: updatedDays
-        };
-      }
-      
-      return updatedWeeks;
-    });
-    
-    // 更新全局reports状态，用于预览等功能
-    setReports(reports);
-  };
-
-  // 检查今天是否已经写了日报
-  const checkTodayReport = async () => {
+  // 加载项目和日报数据
+  useEffect(() => {
     if (!user) return;
     
-    try {
-      const today = new Date();
-      const todayStr = format(today, 'yyyy-MM-dd');
+    // 初始化周数据结构
+    initWeekData();
+    
+    // 检查今天的日报状态
+    checkTodayReport();
+  }, [user, initWeekData, checkTodayReport]);
+
+  // 当周索引变化时，加载该周的日报数据
+  useEffect(() => {
+    if (user && weekData.length > 0) {
+      fetchWeekReports(weekData[currentWeekIndex]);
+    }
+  }, [user, currentWeekIndex, weekData, fetchWeekReports]);
+
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('日报管理页面恢复可见，检查数据状态');
+          
+          // 检查是否需要重新加载当前周的数据
+          if (user && weekData.length > 0) {
+            const currentWeek = weekData[currentWeekIndex];
+            if (currentWeek) {
+              const weekKey = `${currentWeek.year}-${currentWeek.weekNumber}`;
+              const now = Date.now();
+              const timeSinceLastLoad = now - lastLoadTimeRef.current;
+              
+              // 如果超过刷新间隔，重新加载数据
+              if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+                console.log('数据超过刷新间隔，重新加载');
+                // 重置该周的加载状态
+                weekDataLoadedRef.current[weekKey] = false;
+                fetchWeekReports(currentWeek);
+              } else {
+                console.log('数据在刷新间隔内，保持现有数据');
+              }
+            }
+          }
+          
+          // 更新今日日报状态
+          checkTodayReport();
+        }
+      };
       
-      // 查询今天的日报
-      const { data: todayReport, error } = await supabase
-        .from('daily_reports')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('date', todayStr)
-        .maybeSingle();
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('检查今日日报失败', error);
-        return;
-      }
-      
-      // 设置今日日报提醒状态
-      setTodayReportReminder({
-        date: todayStr,
-        hasReport: !!todayReport
-      });
-      
-    } catch (error) {
-      console.error('检查今日日报失败', error);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [user, weekData, currentWeekIndex, fetchWeekReports, checkTodayReport]);
+
+  // 处理周切换
+  const handleWeekChange = (weekIndex: number) => {
+    if (weekIndex >= 0 && weekIndex < weekData.length) {
+      setCurrentWeekIndex(weekIndex);
     }
   };
 
