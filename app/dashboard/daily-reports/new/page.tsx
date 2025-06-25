@@ -822,54 +822,58 @@ export default function NewDailyReportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center">
-          <Link href="/dashboard/daily-reports" className="mr-4 p-2 rounded-full text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+          <Link href="/dashboard/daily-reports" className="mr-3 p-2 rounded-full text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
-          <h1 className="text-2xl font-bold">{existingReport ? '编辑日报' : '新建日报'}</h1>
-          {existingReport && (
-            <span className="ml-3 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              已有日报
-            </span>
-          )}
-          {isPlan && (
-            <span className="ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-              工作计划
-            </span>
-          )}
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">{existingReport ? '编辑日报' : '新建日报'}</h1>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {existingReport && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  已有日报
+                </span>
+              )}
+              {isPlan && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  工作计划
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={togglePreview}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors min-w-[110px] justify-center"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
           >
-            <EyeIcon className="h-4 w-4 mr-2" />
-            {showPreview ? '返回编辑' : '预览日报'}
+            <EyeIcon className="h-4 w-4 mr-1.5" />
+            {showPreview ? '返回编辑' : '预览'}
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving || projects.length === 0 || isLoadingExistingReport}
-            className="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-w-[110px] justify-center"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <BookmarkIcon className="h-4 w-4 mr-2" />
-            {isSaving ? '保存中...' : '暂存'}
+            <BookmarkIcon className="h-4 w-4 mr-1.5" />
+            {isSaving ? '保存中' : '暂存'}
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || projects.length === 0 || isLoadingExistingReport}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 shadow-sm text-sm font-medium rounded-md text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-w-[110px] justify-center"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 shadow-sm text-sm font-medium rounded-md text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <SaveIcon className="h-4 w-4 mr-2" />
-            {isSubmitting ? '提交中...' : (existingReport ? '更新日报' : '提交日报')}
+            <SaveIcon className="h-4 w-4 mr-1.5" />
+            {isSubmitting ? '提交中' : (existingReport ? '更新' : '提交')}
           </button>
         </div>
       </div>
 
       {projects.length === 0 ? (
-        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200 shadow-sm">
-          <p className="text-yellow-800">
+        <div className="bg-yellow-50 p-4 sm:p-6 rounded-lg border border-yellow-200 shadow-sm">
+          <p className="text-yellow-800 text-sm sm:text-base">
             您目前没有活跃的项目。请先在 
             <Link href="/dashboard/projects" className="text-blue-600 hover:underline font-medium">
               项目管理
@@ -878,32 +882,32 @@ export default function NewDailyReportPage() {
           </p>
         </div>
       ) : showPreview ? (
-        <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6 border border-gray-100">
           <div className="flex justify-between items-center mb-4 pb-3 border-b">
             <div>
             <h2 className="text-lg font-medium">日报预览</h2>
-              <p className="text-sm text-gray-500 mt-1">查看格式化后的日报内容</p>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">查看格式化后的日报内容</p>
             </div>
             <button
               onClick={handleCopyPreview}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
             >
-              <CopyIcon className="h-4 w-4 mr-1" />
-              复制内容
+              <CopyIcon className="h-3.5 w-3.5 mr-1" />
+              复制
             </button>
           </div>
           
           <div className="border-b pb-3 mb-4">
             <div className="flex items-center">
-              <CalendarIcon className="h-5 w-5 text-gray-500 mr-2" />
-              <p className="font-medium text-gray-800">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
+              <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500 mr-2" />
+              <p className="font-medium text-sm sm:text-base text-gray-800">{date} ({format(new Date(date), 'EEEE', { locale: zhCN })})</p>
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <span className={`px-2.5 py-1 text-xs rounded-full inline-flex items-center ${existingReport ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+              <span className={`px-2 py-0.5 text-xs rounded-full inline-flex items-center ${existingReport ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
               {existingReport ? '已提交' : '未提交'}
             </span>
               {isPlan && (
-                <span className="px-2.5 py-1 text-xs rounded-full bg-blue-100 text-blue-800 inline-flex items-center">
+                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 inline-flex items-center">
                   工作计划
                 </span>
               )}
@@ -919,15 +923,15 @@ export default function NewDailyReportPage() {
               if (projectWorkItems.length === 0) return null;
               
               return (
-                <div key={project.id} className="border-l-3 border-blue-500 pl-4 py-1 rounded bg-blue-50/30">
-                  <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
-                    <FileTextIcon className="h-4 w-4 mr-1.5" />
+                <div key={project.id} className="border-l-3 border-blue-500 pl-3 sm:pl-4 py-1 rounded bg-blue-50/30">
+                  <div className="text-xs sm:text-sm font-medium text-blue-700 mb-1.5 sm:mb-2 flex items-center">
+                    <FileTextIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
                     {project.name} <span className="mx-1.5 text-blue-300">|</span> <span className="text-blue-600">{project.code}</span>
                   </div>
-                  <ul className="space-y-2">
+                  <ul className="space-y-1.5 sm:space-y-2">
                     {projectWorkItems.map((item, idx) => (
-                      <li key={idx} className="text-sm text-gray-600 flex items-start">
-                        <span className="mr-2 text-blue-500">•</span>
+                      <li key={idx} className="text-xs sm:text-sm text-gray-600 flex items-start">
+                        <span className="mr-1.5 sm:mr-2 text-blue-500">•</span>
                         <span>{item.content}</span>
                       </li>
                     ))}
@@ -937,27 +941,27 @@ export default function NewDailyReportPage() {
             })}
             
             {workItems.every(item => item.content.trim() === '') && (
-              <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <div className="text-center text-gray-500 py-8 sm:py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
                 <div className="flex flex-col items-center">
-                  <FileTextIcon className="h-8 w-8 text-gray-300 mb-2" />
-                  <p>请添加至少一项工作内容</p>
+                  <FileTextIcon className="h-6 w-6 sm:h-8 sm:w-8 text-gray-300 mb-2" />
+                  <p className="text-sm">请添加至少一项工作内容</p>
                 </div>
               </div>
             )}
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
           {/* 日期选择 */}
-          <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
-            <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white shadow rounded-lg p-4 sm:p-6 border border-gray-100">
+            <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
               <div className="md:col-span-2">
               <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
                 日报日期
               </label>
                 <div className="relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+                  <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                 </div>
                 <input
                   type="date"
@@ -965,26 +969,26 @@ export default function NewDailyReportPage() {
                   name="date"
                   value={date}
                   onChange={(e) => handleDateChange(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                  className="block w-full pl-10 pr-3 py-2 sm:py-2.5 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors"
                   required
                   disabled={isLoadingExistingReport}
                 />
               </div>
               {existingReport && (
-                <div className="mt-2 flex items-center">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <div className="mt-1.5 sm:mt-2 flex items-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                     已有日报
                   </span>
-                  <span className="ml-2 text-sm text-gray-600">
-                    已加载该日期的日报内容，可以直接编辑
+                  <span className="ml-2 text-xs sm:text-sm text-gray-600">
+                    已加载该日期的日报内容
                   </span>
                 </div>
               )}
               </div>
               
               {/* 工作计划区域 */}
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <div className="flex items-center mb-2">
+              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center mb-1.5 sm:mb-2">
                   <input
                     id="is-plan"
                     name="is-plan"
@@ -1005,25 +1009,25 @@ export default function NewDailyReportPage() {
           </div>
 
           {/* 工作内容和预览区域 */}
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* 工作内容区域 - 占2/3 */}
-            <div className="lg:w-2/3">
-              <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center">
-                <FileTextIcon className="mr-2 h-5 w-5" />今日工作内容
+          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+            {/* 工作内容区域 - 移动端下占满宽度 */}
+            <div className="w-full lg:w-2/3">
+              <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-800 flex items-center">
+                <FileTextIcon className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />今日工作内容
               </h3>
-              <div className="space-y-4 mb-4">
+              <div className="space-y-3 sm:space-y-4 mb-4">
                 {/* 添加新项目工作 - 移到上方 */}
                 {projects && projects.length > 0 && (
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                  <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-gray-700">添加新项目工作</h4>
+                      <h4 className="font-medium text-sm text-gray-700">添加新项目工作</h4>
                 </div>
                     <div className="flex items-end gap-2">
                       <div className="flex-grow">
                         <select
                           value={selectedProjectId}
                           onChange={(e) => setSelectedProjectId(e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          className="w-full p-1.5 sm:p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
                         >
                           <option value="">选择项目...</option>
                           {availableProjects.map((project) => (
@@ -1037,29 +1041,29 @@ export default function NewDailyReportPage() {
                         type="button"
                         onClick={addWorkItem}
                         disabled={!selectedProjectId}
-                        className="px-4 py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
+                        className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center text-xs sm:text-sm transition-colors"
                       >
-                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
+                        <PlusCircleIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> 添加
                       </button>
                         </div>
                       </div>
                 )}
 
                 {workItemsGroupedByProject.map((group, groupIndex) => (
-                  <div key={groupIndex} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-blue-600">{group.projectName}</h4>
+                  <div key={groupIndex} className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-center mb-2 sm:mb-3">
+                      <h4 className="font-medium text-sm text-blue-600">{group.projectName}</h4>
                       <button
                         type="button"
                         onClick={() => handleAddWorkItem(group.projectId)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
+                        className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm font-medium flex items-center transition-colors"
                       >
-                        <PlusCircleIcon className="h-4 w-4 mr-1" /> 添加
+                        <PlusCircleIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" /> 添加
                       </button>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       {group.items.map((item, itemIndex) => (
-                        <div key={itemIndex} className="flex items-center gap-2 bg-gray-50 p-3 rounded-md hover:bg-gray-100 transition-colors">
+                        <div key={itemIndex} className="flex items-center gap-1.5 sm:gap-2 bg-gray-50 p-2 sm:p-3 rounded-md hover:bg-gray-100 transition-colors">
                           <div className="flex-grow">
                             <input
                               type="text"
@@ -1075,7 +1079,7 @@ export default function NewDailyReportPage() {
                                 }
                               }}
                               placeholder="请输入工作内容..."
-                              className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
+                              className="w-full p-1.5 sm:p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm transition-all"
                             />
                           </div>
                   <button
@@ -1090,14 +1094,14 @@ export default function NewDailyReportPage() {
                                 removeWorkItem(index);
                               }
                             }}
-                            className="flex-shrink-0 h-10 w-10 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
+                            className="flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
                           >
-                            <TrashIcon className="h-5 w-5" />
+                            <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </button>
                         </div>
                       ))}
                       {group.items.length === 0 && (
-                        <div className="text-center py-3 text-gray-500 text-sm">
+                        <div className="text-center py-2 sm:py-3 text-gray-500 text-xs sm:text-sm">
                           点击"添加"按钮开始添加工作内容
                         </div>
                       )}
@@ -1107,13 +1111,13 @@ export default function NewDailyReportPage() {
               </div>
               {/* 项目管理提示 */}
               {(!projects || projects.length === 0) && (
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 sm:p-4 mb-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <AlertTriangleIcon className="h-5 w-5 text-yellow-400" />
+                      <AlertTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-yellow-700">
+                    <div className="ml-2 sm:ml-3">
+                      <p className="text-xs sm:text-sm text-yellow-700">
                         请先在"项目管理"中创建并激活项目，然后才能添加工作内容。
                       </p>
                     </div>
@@ -1122,28 +1126,28 @@ export default function NewDailyReportPage() {
               )}
             </div>
 
-            {/* 预览区域 - 占1/3 */}
-            <div className="lg:w-1/3">
-              <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center justify-between">
+            {/* 预览区域 - 移动端下隐藏，或使用可折叠面板 */}
+            <div className="w-full lg:w-1/3 hidden lg:block">
+              <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-800 flex items-center justify-between">
                 <div className="flex items-center">
-                  <EyeIcon className="mr-2 h-5 w-5" />实时预览
+                  <EyeIcon className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />实时预览
                 </div>
                 <button
                   type="button"
                   onClick={handleCopyPreview}
-                  className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                  className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 flex items-center"
                 >
-                  <CopyIcon className="h-4 w-4 mr-1" />复制内容
+                  <CopyIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />复制
                 </button>
               </h3>
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 h-full">
+              <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200 h-full">
                 {isLoadingExistingReport ? (
-                  <div className="flex justify-center items-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-                    <span className="ml-3 text-sm text-gray-600">加载中...</span>
+                  <div className="flex justify-center items-center py-6 sm:py-8">
+                    <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-t-2 border-b-2 border-blue-500"></div>
+                    <span className="ml-2 sm:ml-3 text-xs sm:text-sm text-gray-600">加载中...</span>
                 </div>
               ) : (
-                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                  <div className="space-y-3 sm:space-y-4 max-h-[350px] sm:max-h-[500px] overflow-y-auto pr-1 sm:pr-2">
                     {[...projectWorkItems]
                       .sort((a, b) => {
                         // 按添加顺序排序，获取项目在工作项中的首次出现位置
@@ -1160,15 +1164,15 @@ export default function NewDailyReportPage() {
                       if (project.workItems.length === 0) return null;
                     
                     return (
-                        <div key={project.id} className="border-l-2 border-blue-500 pl-3 py-2 bg-blue-50/30 rounded">
-                          <div className="text-sm font-medium text-blue-700 mb-1.5 flex items-center">
-                            <FileTextIcon className="h-3.5 w-3.5 mr-1.5" />
-                            {project.name} <span className="mx-1 text-blue-300 text-xs">|</span> <span className="text-blue-600 text-xs">{project.code}</span>
+                        <div key={project.id} className="border-l-2 border-blue-500 pl-2 sm:pl-3 py-1.5 sm:py-2 bg-blue-50/30 rounded">
+                          <div className="text-xs sm:text-sm font-medium text-blue-700 mb-1 sm:mb-1.5 flex items-center">
+                            <FileTextIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 sm:mr-1.5" />
+                            {project.name} <span className="mx-0.5 sm:mx-1 text-blue-300 text-xs">|</span> <span className="text-blue-600 text-xs">{project.code}</span>
                         </div>
-                          <ul className="space-y-1.5">
+                          <ul className="space-y-1 sm:space-y-1.5">
                             {project.workItems.map((item, idx) => (
-                              <li key={idx} className="text-sm text-gray-600 flex items-start">
-                                <span className="mr-1.5 text-blue-500">•</span>
+                              <li key={idx} className="text-xs sm:text-sm text-gray-600 flex items-start">
+                                <span className="mr-1 sm:mr-1.5 text-blue-500">•</span>
                               <span>{item.content}</span>
                             </li>
                           ))}
@@ -1178,15 +1182,27 @@ export default function NewDailyReportPage() {
                   })}
                   
                   {workItems.every(item => item.content.trim() === '') && (
-                      <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <p>预览将在此处显示</p>
-                        <p className="text-xs mt-1">添加工作内容后查看</p>
+                      <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <p className="text-xs sm:text-sm">预览将在此处显示</p>
+                        <p className="text-xs mt-0.5 sm:mt-1">添加工作内容后查看</p>
                     </div>
                   )}
                 </div>
               )}
               </div>
             </div>
+          </div>
+
+          {/* 移动端预览按钮 - 仅在移动端显示 */}
+          <div className="lg:hidden">
+            <button
+              type="button"
+              onClick={togglePreview}
+              className="w-full flex items-center justify-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            >
+              <EyeIcon className="h-4 w-4 mr-1.5" />
+              预览日报内容
+            </button>
           </div>
         </form>
       )}
