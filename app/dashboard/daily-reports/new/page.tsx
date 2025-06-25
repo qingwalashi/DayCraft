@@ -127,6 +127,13 @@ export default function NewDailyReportPage() {
       setExistingReport(false);
       setExistingReportItems([]);
       
+      // 重置工作项 - 当选择新日期时，确保不会显示之前的工作内容
+      if (projects.length > 0) {
+        setWorkItems([{ content: '', projectId: projects[0].id }]);
+      } else {
+        setWorkItems([]);
+      }
+      
       const { data, error } = await supabase
         .from('daily_reports')
         .select('id, is_plan')
@@ -158,7 +165,7 @@ export default function NewDailyReportPage() {
     } finally {
       setIsLoadingExistingReport(false);
     }
-  }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent]);
+  }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent, projects, setWorkItems]);
 
   // 加载活跃项目数据 - 使用useCallback包装
   const loadActiveProjects = useCallback(async () => {
@@ -243,9 +250,18 @@ export default function NewDailyReportPage() {
 
   // 处理日期变更
   const handleDateChange = useCallback(async (newDate: string) => {
+    // 如果日期改变，清空之前的工作项内容
+    if (date !== newDate) {
+      reportContentLoadedNotificationRef.current = false; // 重置通知状态，允许新的通知
+      // 如果之前有工作项内容，提示用户正在切换日期
+      if (workItems.length > 0 && workItems.some(item => item.content.trim() !== '')) {
+        toast.info('已切换至新日期，工作内容已重置');
+      }
+    }
+    
     setDate(newDate);
     await checkExistingReport(newDate);
-  }, [setDate, checkExistingReport]);
+  }, [setDate, checkExistingReport, date, workItems]);
 
   // 初始加载数据
   useEffect(() => {
