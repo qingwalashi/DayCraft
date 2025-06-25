@@ -40,7 +40,7 @@ export default function NewDailyReportPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingExistingReport, setIsLoadingExistingReport] = useState(false);
   const [date, setDate] = usePersistentState<string>('new-daily-report-date', format(new Date(), 'yyyy-MM-dd'));
-  const [workItems, setWorkItems] = usePersistentState<WorkItem[]>('new-daily-report-work-items', [{ content: '', projectId: '' }]);
+  const [workItems, setWorkItems] = usePersistentState<WorkItem[]>('new-daily-report-work-items', []);
   const [projects, setProjects] = usePersistentState<Project[]>('new-daily-report-projects', []);
   const [existingReport, setExistingReport] = usePersistentState<boolean>('new-daily-report-existing', false);
   const [existingReportId, setExistingReportId] = usePersistentState<string | null>('new-daily-report-id', null);
@@ -100,9 +100,8 @@ export default function NewDailyReportPage() {
         }
       } else {
         // 如果数据库中有日报记录但没有工作项
-        if (projects.length > 0) {
-          setWorkItems([{ content: '', projectId: projects[0].id }]);
-        }
+        // 不再自动添加空的工作项，让用户自己选择添加
+        setWorkItems([]);
         
         // 只在首次加载时显示通知
         if (!reportContentLoadedNotificationRef.current) {
@@ -127,12 +126,8 @@ export default function NewDailyReportPage() {
       setExistingReport(false);
       setExistingReportItems([]);
       
-      // 重置工作项 - 当选择新日期时，确保不会显示之前的工作内容
-      if (projects.length > 0) {
-        setWorkItems([{ content: '', projectId: projects[0].id }]);
-      } else {
-        setWorkItems([]);
-      }
+      // 重置工作项 - 当选择新日期时，不预先选择任何项目
+      setWorkItems([]);
       
       const { data, error } = await supabase
         .from('daily_reports')
@@ -165,7 +160,7 @@ export default function NewDailyReportPage() {
     } finally {
       setIsLoadingExistingReport(false);
     }
-  }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent, projects, setWorkItems]);
+  }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent, setWorkItems]);
 
   // 加载活跃项目数据 - 使用useCallback包装
   const loadActiveProjects = useCallback(async () => {
@@ -206,11 +201,9 @@ export default function NewDailyReportPage() {
       const typedProjects = projectsData as Project[] || [];
       setProjects(typedProjects);
       
-      // 如果有可用项目并且没有工作项，设置第一个工作项的默认项目
-      if (typedProjects.length > 0 && (!workItems.length || workItems.every(item => !item.projectId))) {
-        // 添加类型断言确保id的类型为string
-        const firstProject = typedProjects[0] as Project;
-        setWorkItems([{ content: '', projectId: firstProject.id }]);
+      // 默认不选择任何项目，保持工作项为空数组
+      if (workItems.length === 0) {
+        setWorkItems([]);
       }
       
       // 更新加载状态和时间戳
@@ -373,20 +366,24 @@ export default function NewDailyReportPage() {
         items: projectItems
       };
     })
-    .filter(group => group.items.length > 0)
+    // 只显示用户已添加的项目（即已在workItems中使用的项目）
+    .filter(group => workItems.some(item => item.projectId === group.projectId))
     .sort((a, b) => a.sortIndex - b.sortIndex); // 按项目在工作项中的首次出现顺序排序
   
-  // 计算预览数据
-  const projectWorkItems = projects.map(project => {
-    return {
-      id: project.id,
-      name: project.name,
-      code: project.code,
-      workItems: workItems.filter(item => 
-        item.projectId === project.id && item.content.trim() !== ''
-      )
-    };
-  });
+  // 计算预览数据 - 这里只过滤有内容的工作项
+  const projectWorkItems = projects
+    .map(project => {
+      return {
+        id: project.id,
+        name: project.name,
+        code: project.code,
+        workItems: workItems.filter(item => 
+          item.projectId === project.id && item.content.trim() !== ''
+        )
+      };
+    })
+    // 只显示用户已添加的项目
+    .filter(project => workItems.some(item => item.projectId === project.id));
 
   // 删除工作项
   const removeWorkItem = (index: number) => {
@@ -458,10 +455,8 @@ export default function NewDailyReportPage() {
   
   const availableProjects = projects
     .filter(project => 
-      !usedProjectIds.includes(project.id) || 
-      workItemsGroupedByProject.some(group => 
-        group.projectId === project.id && group.items.length === 0
-      )
+      // 允许选择所有未被使用的项目
+      !usedProjectIds.includes(project.id)
     );
 
   // 通过tempId查找工作项索引
@@ -840,7 +835,7 @@ export default function NewDailyReportPage() {
       
       // 清理页面状态
       clearPageState('new-daily-report-work-items');
-      setWorkItems([{ content: '', projectId: projects.length > 0 ? projects[0].id : '' }]);
+      setWorkItems([]);
       setShowPreview(false);
       
       // 提交成功后重置加载通知标记，以便下次加载显示通知
@@ -985,16 +980,15 @@ export default function NewDailyReportPage() {
                 </div>
               );
             })}
-            
-            {workItems.every(item => item.content.trim() === '') && (
-              <div className="text-center text-gray-500 py-8 sm:py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                <div className="flex flex-col items-center">
-                  <FileTextIcon className="h-6 w-6 sm:h-8 sm:w-8 text-gray-300 mb-2" />
-                  <p className="text-sm">请添加至少一项工作内容</p>
-                </div>
-              </div>
-            )}
           </div>
+          
+          {/* 当没有工作项或所有工作项都为空时显示提示 */}
+          {(workItems.length === 0 || workItems.every(item => !item.content.trim())) && (
+            <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <p className="text-xs sm:text-sm">预览将在此处显示</p>
+              <p className="text-xs mt-0.5 sm:mt-1">请先使用"选择项目..."下拉框添加工作项</p>
+            </div>
+          )}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
@@ -1154,6 +1148,16 @@ export default function NewDailyReportPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* 当没有工作项时显示引导提示 */}
+                {workItems.length === 0 && projects.length > 0 && (
+                  <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                    <div className="flex flex-col items-center">
+                      <FileTextIcon className="h-6 w-6 sm:h-8 sm:w-8 text-gray-300 mb-2" />
+                      <p className="text-sm">请使用上方"选择项目..."下拉框添加工作项</p>
+                    </div>
+                  </div>
+                )}
               </div>
               {/* 项目管理提示 */}
               {(!projects || projects.length === 0) && (
@@ -1227,10 +1231,11 @@ export default function NewDailyReportPage() {
                     );
                   })}
                   
-                  {workItems.every(item => item.content.trim() === '') && (
-                      <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <p className="text-xs sm:text-sm">预览将在此处显示</p>
-                        <p className="text-xs mt-0.5 sm:mt-1">添加工作内容后查看</p>
+                  {/* 当没有工作项或所有工作项都为空时显示提示 */}
+                  {(workItems.length === 0 || workItems.every(item => !item.content.trim())) && (
+                    <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                      <p className="text-xs sm:text-sm">预览将在此处显示</p>
+                      <p className="text-xs mt-0.5 sm:mt-1">请先使用"选择项目..."下拉框添加工作项</p>
                     </div>
                   )}
                 </div>
