@@ -199,9 +199,13 @@ CREATE TABLE public.user_ai_settings (
   system_prompt TEXT DEFAULT '你是一个智能助手，可以帮助用户生成日报、周报和月报。请根据用户提供的信息，生成专业、简洁的报告内容。',
   user_prompt TEXT DEFAULT '请根据我的工作内容，生成一份专业的日报。',
   is_enabled BOOLEAN DEFAULT TRUE,
+  settings_type TEXT DEFAULT 'system' CHECK (settings_type IN ('system', 'custom')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 为settings_type字段添加注释
+COMMENT ON COLUMN public.user_ai_settings.settings_type IS '设置类型：system表示使用系统环境变量配置，custom表示使用用户自定义配置';
 
 -- 为用户AI设置表启用行级安全策略
 ALTER TABLE public.user_ai_settings ENABLE ROW LEVEL SECURITY;
@@ -223,9 +227,17 @@ CREATE POLICY "用户可以删除自己的AI设置" ON public.user_ai_settings
 CREATE OR REPLACE FUNCTION public.handle_new_user_ai_settings()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- 创建用户AI设置
-  INSERT INTO public.user_ai_settings (user_id)
-  VALUES (NEW.id);
+  -- 创建用户AI设置（如果系统环境变量已配置，则默认使用系统设置）
+  INSERT INTO public.user_ai_settings (
+    user_id,
+    is_enabled,
+    settings_type
+  )
+  VALUES (
+    NEW.id,
+    TRUE,
+    'system'
+  );
 
   RETURN NEW;
 END;
