@@ -280,29 +280,29 @@ export default function DailyReportsPage() {
   }, [setWeekData, setTodayReportReminder, setReports]);
 
   // 获取指定周的日报数据 - 使用useCallback
-  const fetchWeekReports = useCallback(async (week: WeekData) => {
+  const fetchWeekReports = useCallback(async (week: WeekData, forceUpdate: boolean = false) => {
     if (!user || !week) return;
     
     // 创建周的唯一标识符
     const weekKey = `${week.year}-${week.weekNumber}`;
     
-    // 检查该周的数据是否已经加载过
-    if (weekDataLoadedRef.current[weekKey]) {
+    // 检查该周的数据是否已经加载过，如果强制更新则忽略此检查
+    if (!forceUpdate && weekDataLoadedRef.current[weekKey]) {
       console.log(`周 ${weekKey} 的数据已加载，跳过重新获取`);
       setIsLoading(false);
       return;
     }
     
-    // 检查是否超过刷新间隔
+    // 检查是否超过刷新间隔，如果强制更新则忽略此检查
     const now = Date.now();
     const timeSinceLastLoad = now - lastLoadTimeRef.current;
-    if (lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
+    if (!forceUpdate && lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
       console.log(`数据加载间隔小于${DATA_REFRESH_INTERVAL/1000}秒，跳过重新获取`);
       setIsLoading(false);
       return;
     }
     
-    console.log(`加载周 ${weekKey} 的日报数据`);
+    console.log(`加载周 ${weekKey} 的日报数据${forceUpdate ? '(强制刷新)' : ''}`);
     setIsLoading(true);
     try {
       // 获取项目数据（只需获取一次）
@@ -406,10 +406,17 @@ export default function DailyReportsPage() {
     checkTodayReport();
   }, [user, initWeekData, checkTodayReport]);
 
-  // 当周索引变化时，加载该周的日报数据
+  // 仅在首次加载和没有强制刷新的情况下加载该周的日报数据
+  const isFirstLoadRef = useRef<Record<number, boolean>>({});
+
+  // 当周索引变化时，加载该周的日报数据（避免与强制刷新冲突）
   useEffect(() => {
     if (user && weekData.length > 0) {
-      fetchWeekReports(weekData[currentWeekIndex]);
+      // 如果是首次加载该周的数据，正常获取
+      if (!isFirstLoadRef.current[currentWeekIndex]) {
+        isFirstLoadRef.current[currentWeekIndex] = true;
+        fetchWeekReports(weekData[currentWeekIndex]);
+      }
     }
   }, [user, currentWeekIndex, weekData, fetchWeekReports]);
 
@@ -456,20 +463,53 @@ export default function DailyReportsPage() {
   const handleWeekChange = (weekIndex: number) => {
     if (weekIndex >= 0 && weekIndex < weekData.length) {
       setCurrentWeekIndex(weekIndex);
+      
+      // 在周切换后强制刷新数据
+      if (user && weekData[weekIndex]) {
+        // 延迟一点执行，确保状态已更新
+        setTimeout(() => {
+          fetchWeekReports(weekData[weekIndex], true);
+        }, 10);
+      }
+    }
+  };
+
+  // 强制刷新当前周数据
+  const handleRefreshData = () => {
+    if (user && currentWeekData) {
+      toast.info('正在刷新数据...');
+      // 强制刷新当前周数据
+      fetchWeekReports(currentWeekData, true);
     }
   };
 
   // 切换到上一周
   const handlePreviousWeek = () => {
     if (currentWeekIndex < weekData.length - 1) {
-      setCurrentWeekIndex(currentWeekIndex + 1);
+      const newIndex = currentWeekIndex + 1;
+      setCurrentWeekIndex(newIndex);
+      
+      // 强制刷新数据
+      if (user && weekData[newIndex]) {
+        setTimeout(() => {
+          fetchWeekReports(weekData[newIndex], true);
+        }, 10);
+      }
     }
   };
 
   // 切换到下一周
   const handleNextWeek = () => {
     if (currentWeekIndex > 0) {
-      setCurrentWeekIndex(currentWeekIndex - 1);
+      const newIndex = currentWeekIndex - 1;
+      setCurrentWeekIndex(newIndex);
+      
+      // 强制刷新数据
+      if (user && weekData[newIndex]) {
+        setTimeout(() => {
+          fetchWeekReports(weekData[newIndex], true);
+        }, 10);
+      }
     }
   };
 
@@ -590,8 +630,8 @@ export default function DailyReportsPage() {
         const weekKey = `${currentWeekData.year}-${currentWeekData.weekNumber}`;
         weekDataLoadedRef.current[weekKey] = false;
         
-        // 立即获取最新数据
-        fetchWeekReports(currentWeekData);
+        // 强制刷新数据
+        fetchWeekReports(currentWeekData, true);
       }
       
     } catch (error) {
@@ -921,18 +961,49 @@ export default function DailyReportsPage() {
         <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
             <h2 className="text-base md:text-lg font-medium">日报列表</h2>
-            {currentWeekData && (
-              <Breadcrumbs 
-                year={currentYear}
-                month={currentMonth}
-                weekNumber={currentWeekData.weekNumber}
-                onWeekChange={handleWeekChange}
-                currentWeekIndex={currentWeekIndex}
-                maxWeekIndex={weekData.length - 1}
-              />
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefreshData}
+                disabled={isLoading}
+                className="px-2 py-1 rounded hover:bg-blue-100 text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center border border-blue-200"
+                aria-label="刷新数据"
+                title="刷新当前周数据"
+              >
+                <svg 
+                  className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isLoading ? 'animate-spin' : ''}`} 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24"
+                >
+                  <circle 
+                    className="opacity-25" 
+                    cx="12" 
+                    cy="12" 
+                    r="10" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                  />
+                  <path 
+                    className="opacity-75" 
+                    fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                <span className="ml-1 text-xs md:text-sm">刷新</span>
+              </button>
+              {currentWeekData && (
+                <Breadcrumbs 
+                  year={currentYear}
+                  month={currentMonth}
+                  weekNumber={currentWeekData.weekNumber}
+                  onWeekChange={handleWeekChange}
+                  currentWeekIndex={currentWeekIndex}
+                  maxWeekIndex={weekData.length - 1}
+                />
+              )}
+            </div>
           </div>
-      </div>
+        </div>
 
         {isLoading ? (
           <div className="flex justify-center items-center p-6 md:p-12">
