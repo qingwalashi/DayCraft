@@ -1,7 +1,8 @@
 "use client";
 
 import { ThemeProvider } from "@/providers/theme-provider";
-import { Toaster } from "@/components/ui/toaster";
+// 移除未使用的Toaster导入
+// import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/auth-context";
 import { useEffect } from "react";
 import { initPageStateManager } from "@/lib/utils/page-state-manager";

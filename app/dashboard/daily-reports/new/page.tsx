@@ -9,7 +9,7 @@ import { createClient, Project } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { usePersistentState } from "@/lib/utils/page-persistence";
+import { usePersistentState, clearPageState } from "@/lib/utils/page-persistence";
 
 interface WorkItem {
   id?: string; // 添加可选的id字段，用于跟踪已有工作项
@@ -53,6 +53,8 @@ export default function NewDailyReportPage() {
   const dataLoadedRef = useRef(false);
   const lastLoadTimeRef = useRef<number>(0);
   const urlParamsCheckedRef = useRef(false);
+  // 添加toast通知控制标志
+  const reportContentLoadedNotificationRef = useRef(false);
   // 数据刷新间隔（毫秒），设置为10分钟
   const DATA_REFRESH_INTERVAL = 10 * 60 * 1000;
 
@@ -90,13 +92,23 @@ export default function NewDailyReportPage() {
         }));
         
         setWorkItems(existingItems);
-        toast.info('已加载现有日报内容');
+        
+        // 只在首次加载成功后显示通知
+        if (!reportContentLoadedNotificationRef.current) {
+          toast.info('已加载现有日报内容');
+          reportContentLoadedNotificationRef.current = true;
+        }
       } else {
         // 如果数据库中有日报记录但没有工作项
         if (projects.length > 0) {
           setWorkItems([{ content: '', projectId: projects[0].id }]);
         }
-        toast.info('该日报没有工作内容，可以添加新内容');
+        
+        // 只在首次加载时显示通知
+        if (!reportContentLoadedNotificationRef.current) {
+          toast.info('该日报没有工作内容，可以添加新内容');
+          reportContentLoadedNotificationRef.current = true;
+        }
       }
     } catch (error) {
       console.error('加载日报内容失败', error);
@@ -259,13 +271,20 @@ export default function NewDailyReportPage() {
             console.log('数据超过刷新间隔，重新加载');
             // 重置数据加载状态
             dataLoadedRef.current = false;
-            loadActiveProjects();
+            // 调用loadActiveProjects但不触发连锁的URL参数检查及日报加载
+            loadActiveProjects().then(() => {
+              console.log('项目数据已刷新');
+            });
           } else {
             console.log('数据在刷新间隔内，保持现有数据');
           }
           
-          // 每次恢复可见时，都检查一下URL参数
-          checkUrlParams();
+          // 仅在必要时检查URL参数（避免频繁重新加载日报内容）
+          if (!urlParamsCheckedRef.current) {
+            checkUrlParams().then(() => {
+              console.log('URL参数已检查');
+            });
+          }
         }
       };
       
@@ -620,6 +639,9 @@ export default function NewDailyReportPage() {
       
       toast.success('日报已暂存');
       
+      // 暂存成功后重置加载通知标记，以便下次加载显示通知
+      reportContentLoadedNotificationRef.current = false;
+      
     } catch (error) {
       console.error('暂存日报失败', error);
       toast.error('暂存日报失败');
@@ -800,10 +822,18 @@ export default function NewDailyReportPage() {
       
       toast.success(existingReport ? '日报更新成功' : '日报创建成功');
       
-      // 等待一点时间让用户看到成功消息
-      await new Promise(resolve => setTimeout(resolve, 800));
-      router.push('/dashboard/daily-reports');
+      // 清理页面状态
+      clearPageState('new-daily-report-work-items');
+      setWorkItems([{ content: '', projectId: projects.length > 0 ? projects[0].id : '' }]);
+      setShowPreview(false);
       
+      // 提交成功后重置加载通知标记，以便下次加载显示通知
+      reportContentLoadedNotificationRef.current = false;
+      
+      // 延时导航回日报列表
+      setTimeout(() => {
+        router.push('/dashboard/daily-reports');
+      }, 1000);
     } catch (error) {
       console.error('提交日报失败', error);
       toast.error('提交日报失败');
