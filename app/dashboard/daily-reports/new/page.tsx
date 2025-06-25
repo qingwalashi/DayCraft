@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon } from "lucide-react";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon, BookmarkIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -36,6 +36,7 @@ export default function NewDailyReportPage() {
   
   // 使用持久化状态替代普通状态
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // 添加暂存状态
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingExistingReport, setIsLoadingExistingReport] = useState(false);
   const [date, setDate] = usePersistentState<string>('new-daily-report-date', format(new Date(), 'yyyy-MM-dd'));
@@ -446,6 +447,187 @@ export default function NewDailyReportPage() {
     });
   };
 
+  // 暂存日报功能
+  const handleSave = async () => {
+    if (!user) {
+      toast.error('用户未登录');
+      return;
+    }
+    
+    setIsSaving(true);
+
+    // 过滤空的工作项
+    const filteredItems = workItems.filter(item => 
+      item.content.trim() !== '' && 
+      item.projectId
+    );
+    
+    try {
+      let reportId;
+      
+      // 检查是否已存在日报
+      if (existingReport && existingReportId) {
+        reportId = existingReportId;
+        console.log(`更新已有日报 ID: ${reportId}`);
+        
+        // 确保先删除原有工作项 - 改为逐条确认删除
+        if (existingReportItems.length > 0) {
+          console.log(`准备删除 ${existingReportItems.length} 条原有工作项`);
+          
+          // 使用事务或批量操作删除所有工作项
+          const deletePromises = [];
+          for (const item of existingReportItems) {
+            const deletePromise = supabase
+              .from('report_items')
+              .delete()
+              .eq('id', item.id);
+            
+            deletePromises.push(deletePromise);
+          }
+          
+          // 等待所有删除操作完成
+          const deleteResults = await Promise.all(deletePromises);
+          
+          // 检查是否有删除失败的情况
+          let hasDeleteError = false;
+          deleteResults.forEach((result, index) => {
+            if (result.error) {
+              console.error(`删除ID为 ${existingReportItems[index].id} 的工作项失败:`, result.error);
+              hasDeleteError = true;
+            }
+          });
+          
+          if (hasDeleteError) {
+            throw new Error('删除原有工作项时出现错误');
+          }
+          
+          console.log(`已删除所有原有工作项`);
+          
+          // 额外验证：检查工作项是否真的已被删除
+          const { data: remainingItems, error: checkError } = await supabase
+            .from('report_items')
+            .select('id')
+            .eq('report_id', reportId as string);
+            
+          if (checkError) {
+            throw checkError;
+          }
+          
+          if (remainingItems && remainingItems.length > 0) {
+            console.warn(`警告：仍有 ${remainingItems.length} 个工作项未被删除`);
+            
+            // 最后一次尝试删除所有剩余项
+            const { error: finalDeleteError } = await supabase
+              .from('report_items')
+              .delete()
+              .eq('report_id', reportId as string);
+              
+            if (finalDeleteError) {
+              console.error('最终删除失败:', finalDeleteError);
+              throw finalDeleteError;
+            }
+          }
+        }
+        
+        // 等待一小段时间，确保删除操作完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 更新日报记录
+        const { error: updateError } = await supabase
+          .from('daily_reports')
+          .update({ 
+            updated_at: new Date().toISOString(),
+            is_plan: isPlan // 更新是否为工作计划
+          })
+          .eq('id', reportId as string);
+        
+        if (updateError) {
+          console.error('更新日报记录失败', updateError);
+          throw updateError;
+        }
+      } else {
+        console.log(`创建新日报，日期: ${date}`);
+        // 创建新日报
+        const { data: reportData, error: reportError } = await supabase
+          .from('daily_reports')
+          .insert({
+            user_id: user.id,
+            date: date,
+            is_plan: isPlan // 添加是否为工作计划
+          })
+          .select()
+          .single();
+        
+        if (reportError) {
+          console.error('创建新日报失败', reportError);
+          throw reportError;
+        }
+        
+        reportId = reportData.id;
+        setExistingReportId(reportId);
+        setExistingReport(true);
+        console.log(`新创建的日报 ID: ${reportId}`);
+      }
+      
+      // 添加工作项
+      const reportItems = filteredItems.map(item => ({
+        report_id: reportId as string,
+        project_id: item.projectId,
+        content: item.content
+      }));
+      
+      // 确保工作项不为空
+      if (reportItems.length > 0) {
+        console.log(`准备插入 ${reportItems.length} 条工作项`);
+        console.log('工作项内容:', JSON.stringify(reportItems));
+        
+        // 等待一小段时间，确保上一个操作完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 创建新的工作项
+        const { data: insertedItems, error: itemsError } = await supabase
+          .from('report_items')
+          .insert(reportItems)
+          .select();
+        
+        if (itemsError) {
+          console.error('添加工作项失败', itemsError);
+          throw itemsError;
+        }
+        console.log(`成功添加了 ${insertedItems?.length || 0} 条工作项`);
+        
+        // 更新存在的工作项ID列表
+        if (insertedItems && insertedItems.length > 0) {
+          setExistingReportItems(insertedItems.map((item: any) => ({id: item.id})));
+        }
+        
+        // 额外验证：检查插入后的工作项总数
+        const { data: finalItems, error: finalCheckError } = await supabase
+          .from('report_items')
+          .select('id')
+          .eq('report_id', reportId as string);
+          
+        if (finalCheckError) {
+          console.warn('最终检查失败:', finalCheckError);
+        } else {
+          console.log(`日报现在共有 ${finalItems?.length || 0} 条工作项`);
+          
+          if (finalItems && reportItems.length !== finalItems.length) {
+            console.warn(`警告：预期应有 ${reportItems.length} 条工作项，但实际有 ${finalItems.length} 条`);
+          }
+        }
+      }
+      
+      toast.success('日报已暂存');
+      
+    } catch (error) {
+      console.error('暂存日报失败', error);
+      toast.error('暂存日报失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // 提交日报
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -594,6 +776,11 @@ export default function NewDailyReportPage() {
         }
         console.log(`成功添加了 ${insertedItems?.length || 0} 条工作项`);
         
+        // 更新存在的工作项ID列表
+        if (insertedItems && insertedItems.length > 0) {
+          setExistingReportItems(insertedItems.map((item: any) => ({id: item.id})));
+        }
+        
         // 额外验证：检查插入后的工作项总数
         const { data: finalItems, error: finalCheckError } = await supabase
           .from('report_items')
@@ -659,6 +846,15 @@ export default function NewDailyReportPage() {
           >
             <EyeIcon className="h-4 w-4 mr-2" />
             {showPreview ? '返回编辑' : '预览日报'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || projects.length === 0 || isLoadingExistingReport}
+            className="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-w-[110px] justify-center"
+          >
+            <BookmarkIcon className="h-4 w-4 mr-2" />
+            {isSaving ? '保存中...' : '暂存'}
           </button>
           <button
             onClick={handleSubmit}
