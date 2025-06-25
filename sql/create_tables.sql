@@ -240,7 +240,7 @@ CREATE TRIGGER on_user_profile_created
 CREATE TABLE public.user_dingtalk_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) NOT NULL UNIQUE,
-  ios_url_scheme TEXT DEFAULT 'dingtalk://dingtalkclient/page/link?url=',
+  ios_url_scheme TEXT DEFAULT 'dingtalk://dingtalkclient/page/link?url=https://landray.dingtalkapps.com/alid/app/report/home.html',
   is_enabled BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
