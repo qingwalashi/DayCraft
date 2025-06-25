@@ -463,7 +463,7 @@ export default function NewDailyReportPage() {
     );
     
     try {
-      let reportId;
+      let reportId: string;
       
       // 检查是否已存在日报
       if (existingReport && existingReportId) {
@@ -507,7 +507,7 @@ export default function NewDailyReportPage() {
           const { data: remainingItems, error: checkError } = await supabase
             .from('report_items')
             .select('id')
-            .eq('report_id', reportId as string);
+            .eq('report_id', reportId);
             
           if (checkError) {
             throw checkError;
@@ -520,7 +520,7 @@ export default function NewDailyReportPage() {
             const { error: finalDeleteError } = await supabase
               .from('report_items')
               .delete()
-              .eq('report_id', reportId as string);
+              .eq('report_id', reportId);
               
             if (finalDeleteError) {
               console.error('最终删除失败:', finalDeleteError);
@@ -539,7 +539,7 @@ export default function NewDailyReportPage() {
             updated_at: new Date().toISOString(),
             is_plan: isPlan // 更新是否为工作计划
           })
-          .eq('id', reportId as string);
+          .eq('id', reportId);
         
         if (updateError) {
           console.error('更新日报记录失败', updateError);
@@ -563,7 +563,7 @@ export default function NewDailyReportPage() {
           throw reportError;
         }
         
-        reportId = reportData.id;
+        reportId = reportData.id as string;
         setExistingReportId(reportId);
         setExistingReport(true);
         console.log(`新创建的日报 ID: ${reportId}`);
@@ -571,7 +571,7 @@ export default function NewDailyReportPage() {
       
       // 添加工作项
       const reportItems = filteredItems.map(item => ({
-        report_id: reportId as string,
+        report_id: reportId,
         project_id: item.projectId,
         content: item.content
       }));
@@ -605,7 +605,7 @@ export default function NewDailyReportPage() {
         const { data: finalItems, error: finalCheckError } = await supabase
           .from('report_items')
           .select('id')
-          .eq('report_id', reportId as string);
+          .eq('report_id', reportId);
           
         if (finalCheckError) {
           console.warn('最终检查失败:', finalCheckError);
@@ -645,7 +645,7 @@ export default function NewDailyReportPage() {
     );
     
     try {
-      let reportId;
+      let reportId: string;
       
       // 检查是否已存在日报
       if (existingReport && existingReportId) {
@@ -689,7 +689,7 @@ export default function NewDailyReportPage() {
           const { data: remainingItems, error: checkError } = await supabase
             .from('report_items')
             .select('id')
-            .eq('report_id', reportId as string);
+            .eq('report_id', reportId);
             
           if (checkError) {
             throw checkError;
@@ -702,7 +702,7 @@ export default function NewDailyReportPage() {
             const { error: finalDeleteError } = await supabase
               .from('report_items')
               .delete()
-              .eq('report_id', reportId as string);
+              .eq('report_id', reportId);
               
             if (finalDeleteError) {
               console.error('最终删除失败:', finalDeleteError);
@@ -721,7 +721,7 @@ export default function NewDailyReportPage() {
             updated_at: new Date().toISOString(),
             is_plan: isPlan // 更新是否为工作计划
           })
-          .eq('id', reportId as string);
+          .eq('id', reportId);
         
         if (updateError) {
           console.error('更新日报记录失败', updateError);
@@ -745,13 +745,13 @@ export default function NewDailyReportPage() {
           throw reportError;
         }
         
-        reportId = reportData.id;
+        reportId = reportData.id as string;
         console.log(`新创建的日报 ID: ${reportId}`);
       }
       
       // 添加工作项
       const reportItems = filteredItems.map(item => ({
-        report_id: reportId as string,
+        report_id: reportId,
         project_id: item.projectId,
         content: item.content
       }));
@@ -785,7 +785,7 @@ export default function NewDailyReportPage() {
         const { data: finalItems, error: finalCheckError } = await supabase
           .from('report_items')
           .select('id')
-          .eq('report_id', reportId as string);
+          .eq('report_id', reportId);
           
         if (finalCheckError) {
           console.warn('最终检查失败:', finalCheckError);
