@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import { format, startOfWeek, endOfWeek, startOfMonth, parseISO, getWeek } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { Project } from "@/lib/supabase/client";
+import { Project, UserDingTalkSettings } from "@/lib/supabase/client";
 import Link from "next/link";
 import { toast } from "sonner";
 import { usePersistentState } from '@/lib/utils/page-persistence';
@@ -60,6 +60,10 @@ export default function DashboardOverview() {
   // 添加预览相关状态
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
+  
+  // 添加钉钉相关状态
+  const [dingTalkSettings, setDingTalkSettings] = useState<UserDingTalkSettings | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
 
   // 添加数据已加载的引用
   const dataLoadedRef = useRef(false);
@@ -281,6 +285,40 @@ export default function DashboardOverview() {
     }
   }, [authUser, user, reports, fetchData]);
 
+  // 检测平台是否为iOS
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+  }, []);
+
+  // 加载钉钉设置
+  useEffect(() => {
+    async function loadDingTalkSettings() {
+      if (!authUser) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from("user_dingtalk_settings")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .single();
+          
+        if (error && error.code !== 'PGRST116') {
+          console.error("加载钉钉设置失败:", error);
+          return;
+        }
+        
+        if (data) {
+          setDingTalkSettings(data as UserDingTalkSettings);
+        }
+      } catch (error) {
+        console.error("加载钉钉设置时出错:", error);
+      }
+    }
+    
+    loadDingTalkSettings();
+  }, [authUser, supabase]);
+
   // 获取报告涉及的所有项目
   const getReportProjects = (report: Report) => {
     const projectMap = new Map<string, Project>();
@@ -444,6 +482,94 @@ export default function DashboardOverview() {
     const today = format(new Date(), 'yyyy-MM-dd');
     return dateString === today;
   }, []);
+
+  // 复制到钉钉
+  const handleCopyToDingTalk = () => {
+    if (!previewReport || !dingTalkSettings || !dingTalkSettings.is_enabled) return;
+    
+    // 获取报告中涉及的所有项目
+    const reportProjects = getReportProjects(previewReport);
+    
+    let yamlContent = '';
+    
+    // 按项目组织工作内容
+    reportProjects.forEach(project => {
+      yamlContent += `${project.name}:\n`;
+      
+      // 获取该项目下的所有工作项
+      const projectItems = getProjectWorkItems(previewReport, project.id);
+      projectItems.forEach(item => {
+        yamlContent += `  - ${item.content}\n`;
+      });
+    });
+    
+    try {
+      // 判断是否是iOS设备
+      if (isIOS) {
+        try {
+          // 先尝试复制内容到剪贴板
+          fallbackCopyTextToClipboard(yamlContent);
+          toast.success('内容已复制到剪贴板');
+          
+          // 延迟一下再跳转，确保复制操作完成
+          setTimeout(() => {
+            try {
+              // 构建URL Scheme，确保URL编码正确
+              const encodedContent = encodeURIComponent(yamlContent);
+              
+              // 检查URL scheme格式是否正确，确保以正确的格式结尾
+              let dingTalkUrl = dingTalkSettings.ios_url_scheme;
+              if (!dingTalkUrl.endsWith('=')) {
+                // 如果URL不是以=结尾，确保有合适的连接符
+                if (!dingTalkUrl.endsWith('/') && !dingTalkUrl.endsWith('=') && !dingTalkUrl.endsWith('?')) {
+                  dingTalkUrl += '?url=';
+                }
+              }
+              
+              // 构建最终URL
+              const finalUrl = `${dingTalkUrl}${encodedContent}`;
+              console.log('跳转到钉钉URL:', finalUrl);
+              
+              // 使用iframe方式跳转，这在iOS上更可靠
+              const iframe = document.createElement('iframe');
+              iframe.style.display = 'none';
+              iframe.src = finalUrl;
+              document.body.appendChild(iframe);
+              
+              // 短暂延迟后移除iframe
+              setTimeout(() => {
+                document.body.removeChild(iframe);
+                
+                // 作为备用，也尝试直接跳转
+                window.location.href = finalUrl;
+              }, 100);
+            } catch (err) {
+              console.error('钉钉跳转失败:', err);
+              toast.error('跳转到钉钉失败，请手动粘贴内容');
+            }
+          }, 300);
+        } catch (err) {
+          console.error('复制或跳转失败:', err);
+          toast.error('操作失败，请重试');
+        }
+      } else {
+        // 非iOS设备只复制内容并提示
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，此功能仅支持iOS客户端直接跳转到钉钉');
+      }
+    } catch (err) {
+      console.error('操作失败:', err);
+      toast.error('操作失败，请重试');
+      
+      // 作为最后的备用方案，至少尝试复制内容
+      try {
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，但跳转失败');
+      } catch (e) {
+        console.error('备用复制也失败:', e);
+      }
+    }
+  };
 
   if (loading || isLoading || !user) {
     return (
@@ -657,6 +783,17 @@ export default function DashboardOverview() {
                 <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
                 复制内容
               </button>
+              {dingTalkSettings && dingTalkSettings.is_enabled && (
+                <button
+                  onClick={(e) => {e.stopPropagation(); handleCopyToDingTalk();}}
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                >
+                  <svg viewBox="0 0 1024 1024" width="16" height="16" className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 fill-current text-blue-600">
+                    <path d="M573.7 252.5C422.5 197.4 201.3 96.7 201.3 96.7c-15.7-4.1-17.9 11.1-17.9 11.1-5 61.1 33.6 160.5 53.6 182.8 19.9 22.3 319.1 113.7 319.1 113.7S326 357.9 270.5 341.9c-55.6-16-37.9 17.8-37.9 17.8 11.4 61.7 64.9 131.8 107.2 138.4 42.2 6.6 220.1 4 220.1 4s-35.5 4.1-93.2 11.9c-42.7 5.8-97 12.5-111.1 17.8-33.1 12.5 24 62.6 24 62.6 84.7 76.8 129.7 50.5 129.7 50.5 33.3-10.7 61.4-18.5 85.2-24.2L565 743.1h84.6L603 928l205.3-271.9H700.8l22.3-38.7c.3.5.4.8.4.8S799.8 496.1 829 433.8l.6-1h-.1c5-10.8 8.6-19.7 10-25.8 17-71.3-114.5-99.4-265.8-154.5z"/>
+                  </svg>
+                  复制到钉钉
+                </button>
+              )}
               <Link
                 href={`/dashboard/daily-reports/new?date=${previewReport.date}`}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
