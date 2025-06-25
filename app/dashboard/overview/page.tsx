@@ -724,8 +724,14 @@ export default function DashboardOverview() {
       
       {/* 日报预览弹窗 */}
       {isPreviewOpen && previewReport && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col">
+        <div 
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 overflow-hidden"
+          onClick={closePreview}
+        >
+          <div 
+            className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-2 md:mb-4">
               <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">
                 日报详情 - {previewReport.date}
