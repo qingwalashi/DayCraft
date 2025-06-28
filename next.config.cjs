@@ -18,8 +18,15 @@ const nextConfig = {
     // 确保路径别名正确工作
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': path.resolve(__dirname, './'),
+      '@': path.resolve(process.cwd(), './'),
     };
+    
+    // 确保模块解析正确
+    config.resolve.modules = [
+      ...config.resolve.modules,
+      path.resolve(process.cwd(), './'),
+    ];
+    
     return config;
   },
   // 跨域配置
