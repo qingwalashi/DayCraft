@@ -6,11 +6,22 @@ const withPWA = require('next-pwa')({
   skipWaiting: true
 })
 
+const path = require('path');
+
 const nextConfig = {
   reactStrictMode: false,
   swcMinify: true,
   // 输出目录配置
   distDir: '.next',
+  // webpack 配置
+  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    // 确保路径别名正确工作
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, './'),
+    };
+    return config;
+  },
   // 跨域配置
   async headers() {
     return [
