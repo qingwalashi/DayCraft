@@ -132,6 +132,10 @@ export default function DailyReportsPage() {
   const lastLoadTimeRef = useRef<number>(0);
   // 数据刷新间隔（毫秒），设置为5分钟
   const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
+  // 添加请求状态跟踪，避免重复请求
+  const isRequestingRef = useRef<Record<string, boolean>>({});
+  // 防抖延迟
+  const DEBOUNCE_DELAY = 300;
 
   // 当前选中的周数据
   const currentWeekData = useMemo(() => {
@@ -151,7 +155,8 @@ export default function DailyReportsPage() {
 
   // 初始化周数据结构 - 使用useCallback
   const initWeekData = useCallback(() => {
-    if (weekData.length > 0) {
+    // 检查是否已经初始化过
+    if (dataLoadedRef.current) {
       console.log('周数据已初始化，跳过');
       return;
     }
@@ -196,17 +201,11 @@ export default function DailyReportsPage() {
     
     setWeekData(weeks);
     dataLoadedRef.current = true;
-  }, [weekData.length, setWeekData]);
+  }, [setWeekData]);
 
   // 检查今天的日报状态 - 使用useCallback
   const checkTodayReport = useCallback(async () => {
     if (!user) return;
-    
-    // 如果已经检查过今日日报状态，跳过
-    if (todayReportReminder) {
-      console.log('今日日报状态已检查，跳过');
-      return;
-    }
     
     console.log('检查今日日报状态');
     try {
@@ -235,7 +234,7 @@ export default function DailyReportsPage() {
     } catch (error) {
       console.error('检查今日日报失败', error);
     }
-  }, [user, supabase, todayReportReminder, setTodayReportReminder]);
+  }, [user, supabase, setTodayReportReminder]);
 
   // 更新周数据中的日报信息 - 使用useCallback
   const updateWeekData = useCallback((week: WeekData, reports: ReportWithItems[]) => {
@@ -286,6 +285,12 @@ export default function DailyReportsPage() {
     // 创建周的唯一标识符
     const weekKey = `${week.year}-${week.weekNumber}`;
     
+    // 检查是否正在请求中，避免重复请求
+    if (isRequestingRef.current[weekKey]) {
+      console.log(`周 ${weekKey} 正在请求中，跳过重复请求`);
+      return;
+    }
+    
     // 检查该周的数据是否已经加载过，如果强制更新则忽略此检查
     if (!forceUpdate && weekDataLoadedRef.current[weekKey]) {
       console.log(`周 ${weekKey} 的数据已加载，跳过重新获取`);
@@ -303,6 +308,9 @@ export default function DailyReportsPage() {
     }
     
     console.log(`加载周 ${weekKey} 的日报数据${forceUpdate ? '(强制刷新)' : ''}`);
+    
+    // 设置请求状态
+    isRequestingRef.current[weekKey] = true;
     setIsLoading(true);
     try {
       // 获取项目数据（只需获取一次）
@@ -391,9 +399,11 @@ export default function DailyReportsPage() {
       console.error('加载数据失败', error);
       toast.error('加载数据失败');
     } finally {
+      // 清除请求状态
+      isRequestingRef.current[weekKey] = false;
       setIsLoading(false);
     }
-  }, [user, supabase, projects, setProjects, updateWeekData]);
+  }, [user, supabase, setProjects, updateWeekData]);
 
   // 加载项目和日报数据
   useEffect(() => {
@@ -404,7 +414,7 @@ export default function DailyReportsPage() {
     
     // 检查今天的日报状态
     checkTodayReport();
-  }, [user, initWeekData, checkTodayReport]);
+  }, [user]);
 
   // 仅在首次加载和没有强制刷新的情况下加载该周的日报数据
   const isFirstLoadRef = useRef<Record<number, boolean>>({});
@@ -418,9 +428,9 @@ export default function DailyReportsPage() {
         fetchWeekReports(weekData[currentWeekIndex]);
       }
     }
-  }, [user, currentWeekIndex, weekData, fetchWeekReports]);
+  }, [user, currentWeekIndex, weekData.length]);
 
-  // 添加页面可见性监听
+  // 添加页面可见性监听，优化逻辑避免重复请求
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
@@ -440,15 +450,22 @@ export default function DailyReportsPage() {
                 console.log('数据超过刷新间隔，重新加载');
                 // 重置该周的加载状态
                 weekDataLoadedRef.current[weekKey] = false;
-                fetchWeekReports(currentWeek);
+                // 使用setTimeout避免在事件处理中直接调用
+                setTimeout(() => {
+                  fetchWeekReports(currentWeek);
+                }, 100);
               } else {
                 console.log('数据在刷新间隔内，保持现有数据');
               }
             }
           }
           
-          // 更新今日日报状态
-          checkTodayReport();
+          // 更新今日日报状态，但避免重复检查
+          if (!todayReportReminder) {
+            setTimeout(() => {
+              checkTodayReport();
+            }, 100);
+          }
         }
       };
       
@@ -457,7 +474,7 @@ export default function DailyReportsPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [user, weekData, currentWeekIndex, fetchWeekReports, checkTodayReport]);
+  }, [user, weekData.length, currentWeekIndex, todayReportReminder]);
 
   // 处理周切换
   const handleWeekChange = (weekIndex: number) => {

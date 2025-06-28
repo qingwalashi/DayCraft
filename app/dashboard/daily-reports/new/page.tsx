@@ -57,6 +57,10 @@ export default function NewDailyReportPage() {
   const reportContentLoadedNotificationRef = useRef(false);
   // 数据刷新间隔（毫秒），设置为10分钟
   const DATA_REFRESH_INTERVAL = 10 * 60 * 1000;
+  // 添加请求状态跟踪，避免重复请求
+  const isRequestingRef = useRef<Record<string, boolean>>({});
+  // 防抖延迟
+  const DEBOUNCE_DELAY = 300;
 
   // 加载已有日报的内容 - 使用useCallback包装
   const loadExistingReportContent = useCallback(async (reportId: string) => {
@@ -113,13 +117,21 @@ export default function NewDailyReportPage() {
       console.error('加载日报内容失败', error);
       toast.error('加载日报内容失败');
     }
-  }, [supabase, projects, setWorkItems, setExistingReportItems]);
+  }, [supabase, setWorkItems, setExistingReportItems]);
 
   // 检查所选日期是否已存在日报 - 使用useCallback包装
   const checkExistingReport = useCallback(async (selectedDate: string) => {
     if (!user) return;
     
+    // 检查是否正在请求中，避免重复请求
+    if (isRequestingRef.current[`report-${selectedDate}`]) {
+      console.log(`日报检查正在请求中，跳过重复请求: ${selectedDate}`);
+      return;
+    }
+    
     try {
+      // 设置请求状态
+      isRequestingRef.current[`report-${selectedDate}`] = true;
       setIsLoadingExistingReport(true);
       // 重置已有日报状态
       setExistingReportId(null);
@@ -158,6 +170,8 @@ export default function NewDailyReportPage() {
     } catch (error) {
       console.error('检查日报是否存在时出错', error);
     } finally {
+      // 清除请求状态
+      isRequestingRef.current[`report-${selectedDate}`] = false;
       setIsLoadingExistingReport(false);
     }
   }, [user, supabase, setExistingReport, setExistingReportId, setExistingReportItems, setIsPlan, loadExistingReportContent, setWorkItems]);
@@ -165,6 +179,12 @@ export default function NewDailyReportPage() {
   // 加载活跃项目数据 - 使用useCallback包装
   const loadActiveProjects = useCallback(async () => {
     if (!user) return;
+    
+    // 检查是否正在请求中，避免重复请求
+    if (isRequestingRef.current['projects']) {
+      console.log('项目数据正在请求中，跳过重复请求');
+      return;
+    }
     
     // 检查是否已加载过数据
     if (dataLoadedRef.current && projects.length > 0) {
@@ -183,6 +203,9 @@ export default function NewDailyReportPage() {
     }
     
     console.log('加载项目数据');
+    
+    // 设置请求状态
+    isRequestingRef.current['projects'] = true;
     setIsLoading(true);
     try {
       // 获取所有活跃的项目
@@ -201,11 +224,6 @@ export default function NewDailyReportPage() {
       const typedProjects = projectsData as Project[] || [];
       setProjects(typedProjects);
       
-      // 默认不选择任何项目，保持工作项为空数组
-      if (workItems.length === 0) {
-        setWorkItems([]);
-      }
-      
       // 更新加载状态和时间戳
       dataLoadedRef.current = true;
       lastLoadTimeRef.current = now;
@@ -213,9 +231,11 @@ export default function NewDailyReportPage() {
       console.error('获取项目失败', error);
       toast.error('获取项目数据失败');
     } finally {
+      // 清除请求状态
+      isRequestingRef.current['projects'] = false;
       setIsLoading(false);
     }
-  }, [user, supabase, projects.length, workItems, setProjects, setWorkItems]);
+  }, [user, supabase, setProjects]);
 
   // 检查URL参数
   const checkUrlParams = useCallback(async () => {
@@ -239,22 +259,16 @@ export default function NewDailyReportPage() {
     } catch (error) {
       console.error('检查URL参数时出错', error);
     }
-  }, [date, setDate, checkExistingReport]);
+  }, [setDate, checkExistingReport]);
 
   // 处理日期变更
   const handleDateChange = useCallback(async (newDate: string) => {
     // 如果日期改变，清空之前的工作项内容
-    if (date !== newDate) {
-      reportContentLoadedNotificationRef.current = false; // 重置通知状态，允许新的通知
-      // 如果之前有工作项内容，提示用户正在切换日期
-      if (workItems.length > 0 && workItems.some(item => item.content.trim() !== '')) {
-        toast.info('已切换至新日期，工作内容已重置');
-      }
-    }
+    reportContentLoadedNotificationRef.current = false; // 重置通知状态，允许新的通知
     
     setDate(newDate);
     await checkExistingReport(newDate);
-  }, [setDate, checkExistingReport, date, workItems]);
+  }, [setDate, checkExistingReport]);
 
   // 初始加载数据
   useEffect(() => {
@@ -262,7 +276,7 @@ export default function NewDailyReportPage() {
       loadActiveProjects();
       checkUrlParams();
     }
-  }, [user, loadActiveProjects, checkUrlParams]);
+  }, [user]);
 
   // 添加页面可见性监听
   useEffect(() => {
@@ -280,19 +294,23 @@ export default function NewDailyReportPage() {
             console.log('数据超过刷新间隔，重新加载');
             // 重置数据加载状态
             dataLoadedRef.current = false;
-            // 调用loadActiveProjects但不触发连锁的URL参数检查及日报加载
-            loadActiveProjects().then(() => {
-              console.log('项目数据已刷新');
-            });
+            // 使用setTimeout避免在事件处理中直接调用
+            setTimeout(() => {
+              loadActiveProjects().then(() => {
+                console.log('项目数据已刷新');
+              });
+            }, 100);
           } else {
             console.log('数据在刷新间隔内，保持现有数据');
           }
           
           // 仅在必要时检查URL参数（避免频繁重新加载日报内容）
           if (!urlParamsCheckedRef.current) {
-            checkUrlParams().then(() => {
-              console.log('URL参数已检查');
-            });
+            setTimeout(() => {
+              checkUrlParams().then(() => {
+                console.log('URL参数已检查');
+              });
+            }, 100);
           }
         }
       };
@@ -302,7 +320,7 @@ export default function NewDailyReportPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [loadActiveProjects, checkUrlParams]);
+  }, []); // 移除所有依赖，避免循环
 
   // 处理工作项内容变更
   const handleWorkItemContentChange = (index: number, content: string) => {

@@ -3,7 +3,7 @@
  * 用于处理页面在Tab切换、浏览器最小化后恢复显示时的状态保持
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * 使用会话存储保存页面状态
@@ -59,36 +59,36 @@ export function clearPageState(key: string): void {
  * @returns [状态, 设置状态的函数]
  */
 export function usePersistentState<T>(key: string, initialState: T): [T, (value: T | ((prevState: T) => T)) => void] {
+  // 使用ref来跟踪是否正在从sessionStorage恢复状态，避免循环更新
+  const isRestoringRef = useRef(false);
+  const lastSavedValueRef = useRef<string>('');
+  
   // 尝试从sessionStorage加载状态，如果没有则使用初始状态
   const [state, setState] = useState<T>(() => {
     const persistedState = loadPageState<T>(key);
+    if (persistedState !== null) {
+      isRestoringRef.current = true;
+      lastSavedValueRef.current = JSON.stringify(persistedState);
+    }
     return persistedState !== null ? persistedState : initialState;
   });
 
-  // 当状态变化时保存到sessionStorage
+  // 当状态变化时保存到sessionStorage，但避免在恢复状态时保存
   useEffect(() => {
-    savePageState(key, state);
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      return;
+    }
+    
+    const currentValue = JSON.stringify(state);
+    if (currentValue !== lastSavedValueRef.current) {
+      savePageState(key, state);
+      lastSavedValueRef.current = currentValue;
+    }
   }, [key, state]);
 
-  // 添加页面可见性变化监听
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          // 页面重新变为可见时，检查sessionStorage中是否有更新的状态
-          const latestState = loadPageState<T>(key);
-          if (latestState !== null) {
-            setState(latestState);
-          }
-        }
-      };
-
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, [key]);
+  // 移除页面可见性变化监听，避免重复触发状态更新
+  // 这个功能可能导致循环更新，我们改为在具体页面中根据需要处理
 
   return [state, setState];
 } 
