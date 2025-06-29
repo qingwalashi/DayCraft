@@ -9,6 +9,7 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, g
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { usePersistentState } from "@/lib/utils/page-persistence";
+import { getSystemAIConfig } from "@/lib/utils/ai-env";
 
 interface DailyReportData {
   date: string;
@@ -152,21 +153,40 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
       return;
     }
     
-    if (!aiSettings.api_key) {
-      toast.error('未设置API密钥，请先在设置页面配置');
-      return;
+    // 根据AI设置类型选择配置
+    let apiConfig;
+    if (aiSettings.settings_type === 'system') {
+      // 使用系统内置AI配置
+      apiConfig = getSystemAIConfig();
+      if (!apiConfig.api_key) {
+        toast.error('系统内置AI未配置API密钥，请联系管理员');
+        return;
+      }
+    } else {
+      // 使用用户自定义AI配置
+      if (!aiSettings.api_key) {
+        toast.error('未设置API密钥，请先在设置页面配置');
+        return;
+      }
+      apiConfig = {
+        api_url: aiSettings.api_url,
+        api_key: aiSettings.api_key,
+        model_name: aiSettings.model_name,
+        system_prompt: aiSettings.system_prompt,
+        user_prompt: aiSettings.user_prompt,
+      };
     }
     
     setIsPolishing(true);
-    toast.info('正在使用AI润色报告...');
+    toast.info(`正在使用${aiSettings.settings_type === 'system' ? '系统内置' : '自定义'}AI润色报告...`);
     
     try {
       // 准备提示词
       const reportType = title.includes('周报') ? '周报' : '月报';
-      const systemPrompt = aiSettings.system_prompt || '你是一个专业的工作报告助手，负责帮助用户整理和生成日报、周报和月报。';
+      const systemPrompt = apiConfig.system_prompt || '你是一个专业的工作报告助手，负责帮助用户整理和生成日报、周报和月报。';
       
       // 替换用户提示词中的占位符
-      let userPrompt = aiSettings.user_prompt || '请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}';
+      let userPrompt = apiConfig.user_prompt || '请根据我的工作内容，生成一份专业的{report_type}。以下是我的工作记录：\n\n{report_content}';
       userPrompt = userPrompt
         .replace('{report_type}', reportType)
         .replace('{report_content}', editedContent);
@@ -175,7 +195,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
       userPrompt = `请对以下${reportType}进行润色和优化，使其更加专业、条理清晰，并保持原有的工作内容不变。\n\n${editedContent}`;
       
       // 调用AI API
-      const apiUrl = aiSettings.api_url || 'https://api.openai.com/v1';
+      const apiUrl = apiConfig.api_url || 'https://api.openai.com/v1';
       // 确保API URL以/v1结尾，然后拼接/chat/completions
       const endpoint = `${apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`}/chat/completions`;
       
@@ -183,10 +203,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${aiSettings.api_key}`
+          'Authorization': `Bearer ${apiConfig.api_key}`
         },
         body: JSON.stringify({
-          model: aiSettings.model_name || 'gpt-3.5-turbo',
+          model: apiConfig.model_name || 'gpt-3.5-turbo',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
