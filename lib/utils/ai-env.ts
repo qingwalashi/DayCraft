@@ -6,5 +6,6 @@ export function getSystemAIConfig() {
     model_name: process.env.NEXT_PUBLIC_AI_MODEL_NAME || '',
     system_prompt: process.env.NEXT_PUBLIC_AI_SYSTEM_PROMPT || '',
     user_prompt: process.env.NEXT_PUBLIC_AI_USER_PROMPT || '',
+    system_calls_limit: Number(process.env.NEXT_PUBLIC_AI_SYSTEM_CALLS_LIMIT || 10),
   };
 } 

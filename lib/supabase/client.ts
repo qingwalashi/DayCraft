@@ -169,6 +169,8 @@ export type UserAISettings = {
   created_at: string;
   updated_at: string;
   settings_type?: 'system' | 'custom';
+  system_ai_remaining_calls?: number;
+  system_ai_total_calls_limit?: number;
 };
 
 // 用户钉钉设置类型

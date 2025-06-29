@@ -162,6 +162,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
         toast.error('系统内置AI未配置API密钥，请联系管理员');
         return;
       }
+      
+      // 检查系统AI调用次数
+      if (aiSettings.system_ai_remaining_calls !== undefined && aiSettings.system_ai_remaining_calls <= 0) {
+        toast.error('系统AI调用次数已用完，请切换到自定义AI或联系管理员增加调用次数');
+        return;
+      }
     } else {
       // 使用用户自定义AI配置
       if (!aiSettings.api_key) {
@@ -226,6 +232,31 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
       if (polishedContent) {
         setEditedContent(polishedContent);
         toast.success('AI润色完成');
+        
+        // 如果是系统AI，扣减调用次数
+        if (aiSettings.settings_type === 'system' && aiSettings.system_ai_remaining_calls !== undefined) {
+          const newRemainingCalls = Math.max(0, aiSettings.system_ai_remaining_calls - 1);
+          await supabase
+            .from('user_ai_settings')
+            .update({ 
+              system_ai_remaining_calls: newRemainingCalls,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', aiSettings.id);
+          
+          // 更新本地状态
+          setAiSettings(prev => prev ? {
+            ...prev,
+            system_ai_remaining_calls: newRemainingCalls
+          } : null);
+          
+          if (newRemainingCalls === 0) {
+            toast.warning('系统AI调用次数已用完，下次将无法使用系统AI功能');
+          } else {
+            toast.info(`系统AI剩余调用次数: ${newRemainingCalls}`);
+          }
+        }
+        
         // 自动进入编辑模式以便用户可以进一步修改
         setIsEditing(true);
       } else {
@@ -283,11 +314,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
               {isAIEnabled && (
               <button
                 onClick={handlePolish}
-                disabled={isPolishing || isEditing}
-                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+                disabled={isPolishing || isEditing || (aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls || 0) <= 0)}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+                title={aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls || 0) <= 0 ? '系统AI调用次数已用完' : '使用AI润色报告'}
               >
                   <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
                   {isPolishing ? '润色中...' : 'AI润色'}
+                  {aiSettings?.settings_type === 'system' && (
+                    <span className="ml-1 text-xs opacity-75">
+                      ({aiSettings?.system_ai_remaining_calls || 0})
+                    </span>
+                  )}
               </button>
               )}
               
