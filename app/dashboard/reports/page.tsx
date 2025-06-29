@@ -314,15 +314,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
               {isAIEnabled && (
               <button
                 onClick={handlePolish}
-                disabled={isPolishing || isEditing || (aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls || 0) <= 0)}
+                disabled={isPolishing || isEditing || (aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls ?? 0) <= 0)}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-purple-300 text-xs md:text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
-                title={aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls || 0) <= 0 ? '系统AI调用次数已用完' : '使用AI润色报告'}
+                title={aiSettings?.settings_type === 'system' && (aiSettings?.system_ai_remaining_calls ?? 0) <= 0 ? '系统AI调用次数已用完' : '使用AI润色报告'}
               >
                   <SparklesIcon className={`h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 ${isPolishing ? 'animate-pulse' : ''}`} />
                   {isPolishing ? '润色中...' : 'AI润色'}
                   {aiSettings?.settings_type === 'system' && (
                     <span className="ml-1 text-xs opacity-75">
-                      ({aiSettings?.system_ai_remaining_calls || 0})
+                      ({aiSettings?.system_ai_remaining_calls ?? 0})
                     </span>
                   )}
               </button>

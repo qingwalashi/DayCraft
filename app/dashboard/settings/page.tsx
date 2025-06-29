@@ -8,7 +8,7 @@ import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell, Link, Smart
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { getSystemAIConfig } from "@/lib/utils/ai-env";
+import { getSystemAIConfig } from "../../../lib/utils/ai-env";
 
 interface ModelOption {
   value: string;
@@ -143,25 +143,16 @@ export default function SettingsPage() {
     setAiType(type);
     if (!user || !settings) return;
     const supabase = createClient();
-    
+
+    // 只更新settings_type，不重置调用次数
+    await supabase
+      .from('user_ai_settings')
+      .update({ settings_type: type, updated_at: new Date().toISOString() })
+      .eq('id', settings.id);
+
     if (type === 'system') {
       // 读取系统环境变量
       const sys = getSystemAIConfig();
-      
-      // 如果剩余调用次数为0，重置为环境变量配置的限制次数
-      const shouldResetCalls = settings.system_ai_remaining_calls === 0;
-      const remainingCalls = shouldResetCalls ? sys.system_calls_limit : (settings.system_ai_remaining_calls || sys.system_calls_limit);
-      
-      await supabase
-        .from('user_ai_settings')
-        .update({ 
-          settings_type: type, 
-          system_ai_remaining_calls: remainingCalls,
-          system_ai_total_calls_limit: sys.system_calls_limit,
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', settings.id);
-      
       setFormData({
         api_url: sys.api_url,
         api_key: sys.api_key,
@@ -170,25 +161,12 @@ export default function SettingsPage() {
         user_prompt: sys.user_prompt,
         is_enabled: true
       });
-      
-      // 更新本地设置状态
       setSettings(prev => prev ? {
         ...prev,
-        settings_type: type,
-        system_ai_remaining_calls: remainingCalls,
-        system_ai_total_calls_limit: sys.system_calls_limit
+        settings_type: type
       } : null);
-      
-      if (shouldResetCalls) {
-        toast.success(`系统AI调用次数已重置为 ${sys.system_calls_limit} 次`);
-      }
     } else {
       // 恢复用户自定义
-      await supabase
-        .from('user_ai_settings')
-        .update({ settings_type: type, updated_at: new Date().toISOString() })
-        .eq('id', settings.id);
-      
       setFormData({
         api_url: settings.api_url || '',
         api_key: settings.api_key || '',
@@ -197,8 +175,6 @@ export default function SettingsPage() {
         user_prompt: settings.user_prompt || '',
         is_enabled: settings.is_enabled !== undefined ? settings.is_enabled : true
       });
-      
-      // 更新本地设置状态
       setSettings(prev => prev ? {
         ...prev,
         settings_type: type
