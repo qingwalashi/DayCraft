@@ -202,6 +202,8 @@ CREATE TABLE public.user_ai_settings (
   settings_type TEXT DEFAULT 'system' CHECK (settings_type IN ('system', 'custom')),
   system_ai_remaining_calls INTEGER DEFAULT 10,
   system_ai_total_calls_limit INTEGER DEFAULT 10,
+  system_ai_calls INTEGER DEFAULT 0,
+  custom_ai_calls INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -210,6 +212,8 @@ CREATE TABLE public.user_ai_settings (
 COMMENT ON COLUMN public.user_ai_settings.settings_type IS '设置类型：system表示使用系统环境变量配置，custom表示使用用户自定义配置';
 COMMENT ON COLUMN public.user_ai_settings.system_ai_remaining_calls IS '系统AI剩余调用次数';
 COMMENT ON COLUMN public.user_ai_settings.system_ai_total_calls_limit IS '系统AI总调用次数限制';
+COMMENT ON COLUMN public.user_ai_settings.system_ai_calls IS '系统AI累计调用次数';
+COMMENT ON COLUMN public.user_ai_settings.custom_ai_calls IS '自定义AI累计调用次数';
 
 -- 为用户AI设置表启用行级安全策略
 ALTER TABLE public.user_ai_settings ENABLE ROW LEVEL SECURITY;

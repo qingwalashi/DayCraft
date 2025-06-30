@@ -233,28 +233,43 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ title, content, onClose, 
         setEditedContent(polishedContent);
         toast.success('AI润色完成');
         
-        // 如果是系统AI，扣减调用次数
+        // 如果是系统AI，扣减调用次数并累计调用总数
         if (aiSettings.settings_type === 'system' && aiSettings.system_ai_remaining_calls !== undefined) {
           const newRemainingCalls = Math.max(0, aiSettings.system_ai_remaining_calls - 1);
           await supabase
             .from('user_ai_settings')
             .update({ 
               system_ai_remaining_calls: newRemainingCalls,
+              system_ai_calls: (aiSettings.system_ai_calls || 0) + 1,
               updated_at: new Date().toISOString()
             })
             .eq('id', aiSettings.id);
-          
           // 更新本地状态
           setAiSettings(prev => prev ? {
             ...prev,
-            system_ai_remaining_calls: newRemainingCalls
+            system_ai_remaining_calls: newRemainingCalls,
+            system_ai_calls: (prev.system_ai_calls || 0) + 1
           } : null);
-          
           if (newRemainingCalls === 0) {
             toast.warning('系统AI调用次数已用完，下次将无法使用系统AI功能');
           } else {
             toast.info(`系统AI剩余调用次数: ${newRemainingCalls}`);
           }
+        }
+        // 如果是自定义AI，累计调用总数
+        if (aiSettings.settings_type === 'custom') {
+          await supabase
+            .from('user_ai_settings')
+            .update({ 
+              custom_ai_calls: (aiSettings.custom_ai_calls || 0) + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', aiSettings.id);
+          // 更新本地状态
+          setAiSettings(prev => prev ? {
+            ...prev,
+            custom_ai_calls: (prev.custom_ai_calls || 0) + 1
+          } : null);
         }
         
         // 自动进入编辑模式以便用户可以进一步修改
