@@ -21,6 +21,7 @@ interface UserProfile {
   id: string;
   name: string;
   email: string;
+  role: string[];
 }
 
 interface NavItem {
@@ -110,19 +111,8 @@ export default function DashboardLayout({
   const fetchUserProfile = async () => {
     if (!user) return;
     setIsLoading(true);
-    
     try {
-      // 首先尝试从sessionStorage获取缓存的用户资料
-      const cachedProfile = sessionStorage.getItem(`user_profile_${user.id}`);
-      if (cachedProfile) {
-        const parsedProfile = JSON.parse(cachedProfile);
-        setUserProfile(parsedProfile);
-        setProfileFetched(true);
-        setIsLoading(false);
-        return;
-      }
-      
-      // 如果没有缓存，则从数据库获取
+      // 总是从数据库获取最新资料
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -130,88 +120,78 @@ export default function DashboardLayout({
         .single();
 
       if (error) {
-        // 如果是没有找到记录的错误，则尝试创建新用户资料
         if (error.code === 'PGRST116') {
           console.log('用户资料不存在，尝试创建...');
-          
-          // 创建用户资料对象
           const userProfileData = {
-            id: user.id, 
+            id: user.id,
             email: user.email || '',
             full_name: user.user_metadata?.name || user.email?.split('@')[0] || '用户',
             avatar_url: user.user_metadata?.avatar_url || null,
-            role: 'user' // 明确设置角色
+            role: ['user']
           };
-          
-          // 创建新的用户资料
           const { data: newProfile, error: insertError } = await supabase
             .from('user_profiles')
-            .upsert(userProfileData) // 使用upsert而不是insert
+            .upsert(userProfileData)
             .select('*')
             .single();
-            
           if (insertError) {
             console.error('创建用户资料失败:', insertError);
-            // 使用基本信息作为备选
             const basicProfile = {
               id: user.id,
               name: user.email?.split('@')[0] || '用户',
               email: user.email || '',
+              role: ['user']
             };
             setUserProfile(basicProfile);
-            // 缓存到sessionStorage
             sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
+            console.log('当前用户角色:', basicProfile.role);
           } else if (newProfile) {
-            // 使用新创建的资料
             const profile = {
               id: user.id,
               name: (newProfile.full_name as string) || user.email?.split('@')[0] || '用户',
               email: (newProfile.email as string) || user.email || '',
+              role: Array.isArray(newProfile.role) ? newProfile.role : [newProfile.role]
             };
             setUserProfile(profile);
-            // 缓存到sessionStorage
             sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(profile));
+            console.log('当前用户角色:', profile.role);
           }
         } else {
           console.error('获取用户资料错误:', error);
-          
-          // 如果获取失败，使用基本用户信息
           const basicProfile = {
             id: user.id,
             name: user.email?.split('@')[0] || '用户',
             email: user.email || '',
+            role: ['user']
           };
           setUserProfile(basicProfile);
-          // 缓存到sessionStorage
           sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
+          console.log('当前用户角色:', basicProfile.role);
         }
       } else if (data) {
-        // 成功获取资料
         const profile = {
           id: user.id,
           name: (data.full_name as string) || user.email?.split('@')[0] || '用户',
           email: (data.email as string) || user.email || '',
+          role: Array.isArray(data.role) ? data.role : [data.role]
         };
         setUserProfile(profile);
-        // 缓存到sessionStorage
         sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(profile));
+        console.log('当前用户角色:', profile.role);
       }
-      
-      // 标记已获取用户资料
       setProfileFetched(true);
     } catch (error) {
       console.error('处理用户资料时出错:', error);
-      
-      // 出现异常时，使用基本用户信息
       if (user) {
         const basicProfile = {
           id: user.id,
           name: user.email?.split('@')[0] || '用户',
           email: user.email || '',
+          role: ['user']
         };
         setUserProfile(basicProfile);
-        // 缓存到sessionStorage
         sessionStorage.setItem(`user_profile_${user.id}`, JSON.stringify(basicProfile));
+        console.log('当前用户角色:', basicProfile.role);
       }
     } finally {
       setIsLoading(false);
@@ -370,6 +350,10 @@ export default function DashboardLayout({
               <div className="flex items-center">
                 <span className="text-sm text-gray-500 hidden sm:inline-block">
                   {userProfile?.name || "用户"}
+                </span>
+                {/* 新增：显示角色 */}
+                <span className="text-xs text-blue-600 ml-2">
+                  {userProfile?.role?.join(', ') || '无角色'}
                 </span>
                 {/* 移动端显示用户头像 */}
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 sm:hidden ml-2">
