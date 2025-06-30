@@ -11,7 +11,7 @@ import {
   MenuIcon, 
   FolderIcon,
   Settings2Icon,
-  BarChartIcon,
+  ShieldCheckIcon,
   XIcon 
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -31,21 +31,40 @@ interface NavItem {
   subItems?: { name: string; href: string }[];
 }
 
-// 导航项配置
-const navigation: NavItem[] = [
-  { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
-  { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
-  { 
-    name: "报告", 
-    href: "#",
-    icon: FileTextIcon,
-    subItems: [
-      { name: "日报", href: "/dashboard/daily-reports" },
-      { name: "周报/月报", href: "/dashboard/reports" }
-    ]
-  },
-  { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
-];
+// 动态导航项配置
+const getNavigation = (role: string[] = []) => {
+  // 仅 admin 且不是双重角色时，只显示系统管理菜单
+  if (role.length === 1 && role[0] === 'admin') {
+    return [
+      { name: "系统管理", href: "/dashboard/admin", icon: ShieldCheckIcon, subItems: undefined }
+    ];
+  }
+  // user 或 user+admin（双重角色）都显示普通菜单和系统管理菜单
+  const baseNav: NavItem[] = [
+    { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
+    { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+    {
+      name: "报告",
+      href: "#",
+      icon: FileTextIcon,
+      subItems: [
+        { name: "日报", href: "/dashboard/daily-reports" },
+        { name: "周报/月报", href: "/dashboard/reports" }
+      ]
+    },
+    { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
+  ];
+  if (role.includes('admin')) {
+    baseNav.push({ name: "系统管理", href: "/dashboard/admin", icon: ShieldCheckIcon, subItems: undefined });
+  }
+  return baseNav;
+};
+
+// 角色标签映射
+const roleLabelMap: Record<string, string> = {
+  admin: '管理员',
+  user: '普通用户',
+};
 
 export default function DashboardLayout({
   children,
@@ -206,6 +225,9 @@ export default function DashboardLayout({
     await signOut();
   };
 
+  // 在组件内，动态获取导航项
+  const navigation = getNavigation(userProfile?.role);
+
   // 处理加载状态
   if (isLoading || authLoading) {
     return (
@@ -351,9 +373,21 @@ export default function DashboardLayout({
                 <span className="text-sm text-gray-500 hidden sm:inline-block">
                   {userProfile?.name || "用户"}
                 </span>
-                {/* 新增：显示角色 */}
-                <span className="text-xs text-blue-600 ml-2">
-                  {userProfile?.role?.join(', ') || '无角色'}
+                {/* 新增：显示角色标签，适配移动端 */}
+                <span className="flex gap-1 ml-2">
+                  {userProfile?.role?.length
+                    ? userProfile.role.map((r) => (
+                        <span
+                          key={r}
+                          className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 whitespace-nowrap"
+                          style={{ minWidth: 48, textAlign: 'center' }}
+                        >
+                          {roleLabelMap[r] || r}
+                        </span>
+                      ))
+                    : (
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">无角色</span>
+                    )}
                 </span>
                 {/* 移动端显示用户头像 */}
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 sm:hidden ml-2">
