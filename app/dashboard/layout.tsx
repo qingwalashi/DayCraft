@@ -33,31 +33,51 @@ interface NavItem {
 
 // 动态导航项配置
 const getNavigation = (role: string[] = []) => {
+  const isAdmin = role.includes('admin');
+  const isUser = role.includes('user');
   // 仅 admin 且不是双重角色时，只显示系统管理菜单
-  if (role.length === 1 && role[0] === 'admin') {
+  if (isAdmin && !isUser && role.length === 1) {
     return [
       { name: "系统管理", href: "/dashboard/admin", icon: ShieldCheckIcon, subItems: undefined }
     ];
   }
-  // user 或 user+admin（双重角色）都显示普通菜单和系统管理菜单
-  const baseNav: NavItem[] = [
-    { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
-    { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
-    {
-      name: "报告",
-      href: "#",
-      icon: FileTextIcon,
-      subItems: [
-        { name: "日报", href: "/dashboard/daily-reports" },
-        { name: "周报/月报", href: "/dashboard/reports" }
-      ]
-    },
-    { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
-  ];
-  if (role.includes('admin')) {
-    baseNav.push({ name: "系统管理", href: "/dashboard/admin", icon: ShieldCheckIcon, subItems: undefined });
+  // 仅 user 时，只显示普通菜单
+  if (isUser && !isAdmin && role.length === 1) {
+    return [
+      { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
+      { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      {
+        name: "报告",
+        href: "#",
+        icon: FileTextIcon,
+        subItems: [
+          { name: "日报", href: "/dashboard/daily-reports" },
+          { name: "周报/月报", href: "/dashboard/reports" }
+        ]
+      },
+      { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
+    ];
   }
-  return baseNav;
+  // 同时有 admin 和 user 时，显示普通菜单+系统管理
+  if (isAdmin && isUser) {
+    return [
+      { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
+      { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      {
+        name: "报告",
+        href: "#",
+        icon: FileTextIcon,
+        subItems: [
+          { name: "日报", href: "/dashboard/daily-reports" },
+          { name: "周报/月报", href: "/dashboard/reports" }
+        ]
+      },
+      { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
+      { name: "系统管理", href: "/dashboard/admin", icon: ShieldCheckIcon, subItems: undefined },
+    ];
+  }
+  // 其他情况（无角色或未知角色）
+  return [];
 };
 
 // 角色标签映射

@@ -1,13 +1,92 @@
- -- 用户配置表
-CREATE TABLE public.user_profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY,
-  email TEXT NOT NULL,
-  full_name TEXT,
-  avatar_url TEXT,
-  role TEXT[] DEFAULT ARRAY['user']::TEXT[] CHECK (role <@ ARRAY['user','admin']::TEXT[]),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- =====================
+-- 用户资料表（支持多角色）
+-- =====================
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY, -- 用户ID，关联 auth.users
+  email TEXT NOT NULL, -- 用户邮箱
+  full_name TEXT, -- 用户姓名
+  avatar_url TEXT, -- 头像链接
+  role TEXT[] NOT NULL DEFAULT ARRAY['user']::TEXT[] CHECK (role <@ ARRAY['user','admin']::TEXT[] AND array_length(role, 1) >= 1), -- 角色数组，只允许 'user' 或 'admin'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- 创建时间
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()  -- 更新时间
 );
+
+-- =====================
+-- 行级安全策略（RLS）
+-- =====================
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY; -- 启用RLS
+
+-- 用户可以查看自己的资料
+CREATE POLICY IF NOT EXISTS "用户可以查看自己的资料" ON public.user_profiles
+  FOR SELECT USING (auth.uid() = id);
+
+-- 管理员可以查看所有用户资料
+CREATE POLICY IF NOT EXISTS "管理员可查所有用户资料" ON public.user_profiles
+  FOR SELECT USING (
+    (auth.uid() = id)
+    OR ('admin' = ANY (coalesce(auth.jwt() -> 'roles', ARRAY[]::TEXT[])) )
+  );
+
+-- 用户可以更新自己的资料
+CREATE POLICY IF NOT EXISTS "用户可以更新自己的资料" ON public.user_profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- 管理员可以更新所有用户资料
+CREATE POLICY IF NOT EXISTS "管理员可更新所有用户资料" ON public.user_profiles
+  FOR UPDATE USING (
+    'admin' = ANY (coalesce(auth.jwt() -> 'roles', ARRAY[]::TEXT[]))
+  );
+
+-- =====================
+-- JWT claims 同步角色 Hook
+-- =====================
+-- 该函数会在用户登录/注册时，将 user_profiles.role 字段同步到 JWT 的 roles 字段（数组）
+CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  user_roles TEXT[];
+  merged_claims JSONB;
+BEGIN
+  -- 查询用户角色
+  SELECT coalesce(u.role, ARRAY['user']) INTO user_roles
+  FROM public.user_profiles u
+  WHERE u.id = (event->>'user_id')::uuid;
+
+  -- 合并 claims，保留原有 claims 字段并加入 roles
+  merged_claims := (event->'claims') || jsonb_build_object('roles', user_roles);
+
+  RETURN jsonb_build_object('claims', merged_claims);
+END;
+$$;
+
+-- 授权 authenticator 角色调用该函数
+GRANT EXECUTE ON FUNCTION public.custom_access_token_hook(jsonb) TO authenticator;
+
+-- =====================
+-- 触发器：用户注册时自动创建资料
+-- =====================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- 创建用户资料
+  INSERT INTO public.user_profiles (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1))
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 添加触发器，自动为新用户创建资料
+CREATE TRIGGER IF NOT EXISTS on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 -- 项目表
 CREATE TABLE public.projects (
@@ -42,19 +121,6 @@ CREATE TABLE public.report_items (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
--- 设置RLS策略
-ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.daily_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.report_items ENABLE ROW LEVEL SECURITY;
-
--- 用户只能查看和编辑自己的资料
-CREATE POLICY "用户可以查看自己的资料" ON public.user_profiles
-  FOR SELECT USING (auth.uid() = id);
-
-CREATE POLICY "用户可以更新自己的资料" ON public.user_profiles
-  FOR UPDATE USING (auth.uid() = id);
 
 -- 用户可以查看自己的项目
 CREATE POLICY "用户可以查看自己的项目" ON public.projects
@@ -107,27 +173,6 @@ CREATE POLICY "用户可以删除自己日报中的条目" ON public.report_item
       SELECT id FROM public.daily_reports WHERE user_id = auth.uid()
     )
   );
-
--- 创建触发器函数，在用户注册时创建用户资料
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- 创建用户资料
-  INSERT INTO public.user_profiles (id, email, full_name)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1))
-  );
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 添加触发器，自动为新用户创建资料
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 -- 周报表
 CREATE TABLE public.weekly_reports (
@@ -298,3 +343,30 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_user_profile_created_dingtalk
   AFTER INSERT ON public.user_profiles
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_dingtalk_settings();
+
+-- =====================
+-- RLS 策略：支持 admin 角色读取所有数据
+-- =====================
+-- projects
+DROP POLICY IF EXISTS "管理员可查所有项目" ON public.projects;
+CREATE POLICY "管理员可查所有项目" ON public.projects
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
+-- daily_reports
+DROP POLICY IF EXISTS "管理员可查所有日报" ON public.daily_reports;
+CREATE POLICY "管理员可查所有日报" ON public.daily_reports
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
+-- user_ai_settings
+DROP POLICY IF EXISTS "管理员可查所有AI设置" ON public.user_ai_settings;
+CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
