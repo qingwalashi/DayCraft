@@ -371,3 +371,30 @@ CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
     (user_id = auth.uid())
     OR (auth.jwt() -> 'roles') ? 'admin'
   );
+
+-- 待办表
+CREATE TABLE public.project_todos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  content TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  due_date DATE NOT NULL,
+  is_completed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.project_todos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "用户可以查看自己的待办" ON public.project_todos
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以创建自己的待办" ON public.project_todos
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "用户可以更新自己的待办" ON public.project_todos
+  FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以删除自己的待办" ON public.project_todos
+  FOR DELETE USING (user_id = auth.uid());

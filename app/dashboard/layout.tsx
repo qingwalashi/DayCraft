@@ -46,6 +46,7 @@ const getNavigation = (role: string[] = []) => {
     return [
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
       { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
         href: "#",
@@ -63,6 +64,7 @@ const getNavigation = (role: string[] = []) => {
     return [
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
       { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
         href: "#",
