@@ -3,7 +3,8 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/hooks/use-auth';
+import { useAuth } from '@/contexts/auth-context';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,7 +12,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { login } = useAuth();
+  const { user } = useAuth();
+  const supabase = createClient();
   const loginAttemptRef = useRef<number>(0);
   const lastLoginTimeRef = useRef<number>(0);
   
@@ -46,21 +48,17 @@ export default function LoginPage() {
     lastLoginTimeRef.current = now;
     
     try {
-      console.log('尝试登录...');
-      const success = await login(email, password);
-      
-      if (success) {
-        console.log('登录成功，重定向到仪表板');
-        loginAttemptRef.current = 0; // 重置尝试次数
-        router.push('/dashboard/overview');
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setError(error.message);
+        loginAttemptRef.current++;
       } else {
-        // 登录失败由 login 函数内部处理错误提示
-        loginAttemptRef.current++; // 增加尝试次数
+        loginAttemptRef.current = 0;
+        router.push('/dashboard/overview');
       }
     } catch (err) {
-      console.error('登录过程发生异常:', err);
       setError('登录时出错，请检查网络连接或稍后重试');
-      loginAttemptRef.current++; // 增加尝试次数
+      loginAttemptRef.current++;
     } finally {
       setLoading(false);
     }

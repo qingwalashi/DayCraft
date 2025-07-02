@@ -3,7 +3,8 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/hooks/use-auth';
+import { useAuth } from '@/contexts/auth-context';
+import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -14,7 +15,8 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const router = useRouter();
-  const { signup } = useAuth();
+  const { user } = useAuth();
+  const supabase = createClient();
   const signupAttemptRef = useRef<number>(0);
   const lastSignupTimeRef = useRef<number>(0);
   
@@ -60,19 +62,20 @@ export default function SignupPage() {
     lastSignupTimeRef.current = now;
     
     try {
-      const success = await signup(email, password, name);
-      
-      if (success) {
-        setSuccessMessage('注册成功！请检查您的邮箱并点击确认链接。');
-        signupAttemptRef.current = 0; // 重置尝试次数
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password
+      });
+      if (authError) {
+        setError(authError.message);
       } else {
-        // 注册失败由 signup 函数内部处理错误提示
-        signupAttemptRef.current++; // 增加尝试次数
+        setSuccessMessage('注册成功，请登录您的账户');
+        setTimeout(() => {
+          router.push('/login');
+        }, 2000);
       }
     } catch (err) {
-      setError('注册时出错，请重试');
-      console.error('注册错误:', err);
-      signupAttemptRef.current++; // 增加尝试次数
+      setError('注册时出错，请检查网络连接或稍后重试');
     } finally {
       setLoading(false);
     }
