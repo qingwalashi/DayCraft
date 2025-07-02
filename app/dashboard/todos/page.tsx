@@ -315,7 +315,7 @@ export default function TodosPage() {
                   <ChevronRightIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                   <span className="truncate flex-1 text-left max-w-[160px]">{project.name}</span>
                   <div className="flex items-center">
-                    {project.todoCount > 0 && (
+                    {(project.todoCount ?? 0) > 0 && (
                       <span className="inline-flex items-center justify-center px-2 py-1 mr-2 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
                         {project.todoCount}
                       </span>
