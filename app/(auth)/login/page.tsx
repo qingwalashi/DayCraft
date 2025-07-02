@@ -48,12 +48,19 @@ export default function LoginPage() {
     lastLoginTimeRef.current = now;
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error, data } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setError(error.message);
         loginAttemptRef.current++;
       } else {
         loginAttemptRef.current = 0;
+        // 登录成功后同步 last_sign_in_at
+        if (data?.user) {
+          await supabase
+            .from('user_profiles')
+            .update({ last_sign_in_at: new Date().toISOString() })
+            .eq('id', data.user.id);
+        }
         router.push('/dashboard/overview');
       }
     } catch (err) {

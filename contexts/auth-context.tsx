@@ -158,6 +158,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshSession]);
 
+  // 用户每次进入应用且已登录时，且当天首次访问才更新 last_sign_in_at
+  useEffect(() => {
+    if (user && user.id && typeof window !== 'undefined') {
+      const today = new Date().toISOString().slice(0, 10); // yyyy-mm-dd
+      const key = `last_sign_in_update_${user.id}`;
+      const lastUpdate = localStorage.getItem(key);
+      if (lastUpdate !== today) {
+        const supabase = createClient();
+        supabase
+          .from('user_profiles')
+          .update({ last_sign_in_at: new Date().toISOString() })
+          .eq('id', user.id);
+        localStorage.setItem(key, today);
+      }
+    }
+  }, [user]);
+
   const signOut = async () => {
     setLoading(true);
     try {
