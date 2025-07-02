@@ -37,20 +37,10 @@ export default function AdminPage() {
     // 1. 获取所有用户
     const { data: userList, error: userError } = await supabase
       .from("user_profiles")
-      .select("id, full_name, email, created_at, updated_at");
+      .select("id, full_name, email, created_at, updated_at, last_sign_in_at");
     if (userError) {
       setLoading(false);
       return;
-    }
-    // 获取auth用户的last_sign_in_at
-    let authUsers: any[] = [];
-    try {
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-      if (!authError && authData && authData.users) {
-        authUsers = authData.users;
-      }
-    } catch (e) {
-      // 忽略auth获取失败
     }
     // 2. 获取项目、日报、AI调用等统计
     const userIds = userList.map((u: any) => u.id);
@@ -70,8 +60,10 @@ export default function AdminPage() {
     const now = new Date();
     const monthAgo = new Date();
     monthAgo.setDate(now.getDate() - 30);
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
     // 统计
-    let active = 0;
+    let active = 0, mau = 0, dau = 0;
     const userRows: UserRow[] = userList.map((u: any) => {
       const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
       const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
@@ -81,10 +73,10 @@ export default function AdminPage() {
       const system_ai_calls = typeof ai?.system_ai_calls === 'number' ? ai.system_ai_calls : 0;
       const custom_ai_calls = typeof ai?.custom_ai_calls === 'number' ? ai.custom_ai_calls : 0;
       // last_sign_in_at判断
-      const authUser = authUsers.find(au => au.id === u.id);
-      const lastSignIn = authUser?.last_sign_in_at ? new Date(authUser.last_sign_in_at) : null;
-      const is_active = lastSignIn && lastSignIn >= monthAgo;
-      if (is_active) active++;
+      const lastSignIn = u.last_sign_in_at ? new Date(u.last_sign_in_at) : null;
+      if (lastSignIn) active++;
+      if (lastSignIn && lastSignIn >= monthAgo) mau++;
+      if (lastSignIn && lastSignIn.toDateString() === yesterday.toDateString()) dau++;
       return {
         id: u.id,
         full_name: u.full_name || u.email?.split("@")?.[0] || "用户",
@@ -94,14 +86,14 @@ export default function AdminPage() {
         system_ai_calls,
         custom_ai_calls,
         last_active: lastSignIn ? lastSignIn.toLocaleString() : null,
-        is_active: !!is_active
+        is_active: !!lastSignIn
       };
     });
     setStats({
       total: userList.length,
       active,
-      mau: 0, // 其它活跃统计如需auth表可补充
-      dau: 0
+      mau,
+      dau
     });
     setUsers(userRows);
     setLoading(false);
