@@ -58,6 +58,7 @@ export default function ProjectsPage() {
 
   // 加载项目数据
   const fetchProjects = useCallback(async () => {
+    if (!user) return;
     if (dataLoadedRef.current) {
       console.log('项目数据已加载，跳过重新获取');
       setIsLoading(false);
@@ -69,6 +70,7 @@ export default function ProjectsPage() {
       const { data, error } = await supabase
         .from('projects')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -83,7 +85,7 @@ export default function ProjectsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, setProjects]);
+  }, [supabase, setProjects, user]);
 
   useEffect(() => {
     if (!user) return;

@@ -42,6 +42,16 @@ export default function AdminPage() {
       setLoading(false);
       return;
     }
+    // 获取auth用户的last_sign_in_at
+    let authUsers: any[] = [];
+    try {
+      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+      if (!authError && authData && authData.users) {
+        authUsers = authData.users;
+      }
+    } catch (e) {
+      // 忽略auth获取失败
+    }
     // 2. 获取项目、日报、AI调用等统计
     const userIds = userList.map((u: any) => u.id);
     // 项目数
@@ -58,12 +68,10 @@ export default function AdminPage() {
       .select("user_id, system_ai_calls, custom_ai_calls, updated_at");
     // 活跃用户统计
     const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const monthAgo = new Date(now);
+    const monthAgo = new Date();
     monthAgo.setDate(now.getDate() - 30);
     // 统计
-    let active = 0, mau = 0, dau = 0;
+    let active = 0;
     const userRows: UserRow[] = userList.map((u: any) => {
       const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
       const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
@@ -72,39 +80,38 @@ export default function AdminPage() {
       const ai = aiSettings?.find(a => a.user_id === u.id);
       const system_ai_calls = typeof ai?.system_ai_calls === 'number' ? ai.system_ai_calls : 0;
       const custom_ai_calls = typeof ai?.custom_ai_calls === 'number' ? ai.custom_ai_calls : 0;
-      // 活跃判断
-      const last_active = ai?.updated_at || dailyUserReports[0]?.created_at || u.updated_at || u.created_at;
-      const is_active = !!last_active;
-      // 统计活跃
+      // last_sign_in_at判断
+      const authUser = authUsers.find(au => au.id === u.id);
+      const lastSignIn = authUser?.last_sign_in_at ? new Date(authUser.last_sign_in_at) : null;
+      const is_active = lastSignIn && lastSignIn >= monthAgo;
       if (is_active) active++;
-      if (last_active && new Date(last_active) >= monthAgo) mau++;
-      if (last_active && new Date(last_active).toDateString() === yesterday.toDateString()) dau++;
       return {
         id: u.id,
-        full_name: u.full_name || u.email?.split("@")[0] || "用户",
+        full_name: u.full_name || u.email?.split("@")?.[0] || "用户",
         email: u.email,
         project_count,
         daily_count,
         system_ai_calls,
         custom_ai_calls,
-        last_active: last_active ? new Date(last_active).toLocaleString() : null,
-        is_active
+        last_active: lastSignIn ? lastSignIn.toLocaleString() : null,
+        is_active: !!is_active
       };
     });
     setStats({
       total: userList.length,
       active,
-      mau,
-      dau
+      mau: 0, // 其它活跃统计如需auth表可补充
+      dau: 0
     });
     setUsers(userRows);
     setLoading(false);
   }
 
-  // 搜索过滤
+  // 排序+搜索过滤：先按日报数量降序，再按搜索
   const filteredUsers = useMemo(() => {
-    if (!search) return users;
-    return users.filter(u => u.full_name.toLowerCase().includes(search.toLowerCase()));
+    let sorted = [...users].sort((a, b) => b.daily_count - a.daily_count);
+    if (!search) return sorted;
+    return sorted.filter(u => u.full_name.toLowerCase().includes(search.toLowerCase()));
   }, [users, search]);
 
   return (
@@ -157,40 +164,50 @@ export default function AdminPage() {
       </div>
       {/* 用户列表 */}
       <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">名称</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">邮箱</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">项目数</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">日报数</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">系统AI调用</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">自定义AI调用</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">最近活跃</th>
+              <th className="px-4 py-2 text-left font-semibold text-gray-600 w-32">名称</th>
+              <th className="px-4 py-2 text-left font-semibold text-gray-600 w-56">邮箱</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-20">项目数</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-20">日报数</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-24">系统AI调用</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-24">自定义AI调用</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-36">最近活跃</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-20">状态</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-8">
+                <td colSpan={8} className="text-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                   <div className="text-xs text-gray-400 mt-2">加载中...</div>
                 </td>
               </tr>
             ) : filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-gray-400">暂无数据</td>
+                <td colSpan={8} className="text-center py-8 text-gray-400">暂无数据</td>
               </tr>
             ) : (
-              filteredUsers.map(u => (
-                <tr key={u.id}>
-                  <td className="px-4 py-2 whitespace-nowrap">{u.full_name}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{u.email}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-center">{u.project_count}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-center">{u.daily_count}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-center">{u.system_ai_calls}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-center">{u.custom_ai_calls}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-center">{u.last_active || '-'}</td>
+              filteredUsers.map((u, idx) => (
+                <tr key={u.id} className={idx % 2 === 0 ? "bg-white hover:bg-blue-50" : "bg-gray-50 hover:bg-blue-50"}>
+                  <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">{u.full_name}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {u.email}
+                  </td>
+                  <td className="px-4 py-2 text-center">{u.project_count}</td>
+                  <td className="px-4 py-2 text-center font-bold text-blue-700">{u.daily_count}</td>
+                  <td className="px-4 py-2 text-center">{u.system_ai_calls}</td>
+                  <td className="px-4 py-2 text-center">{u.custom_ai_calls}</td>
+                  <td className="px-4 py-2 text-center">{u.last_active || '-'}</td>
+                  <td className="px-4 py-2 text-center">
+                    {u.is_active ? (
+                      <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">活跃</span>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded bg-gray-200 text-gray-500 text-xs">未活跃</span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}

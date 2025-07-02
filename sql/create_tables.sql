@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   avatar_url TEXT, -- 头像链接
   role TEXT[] NOT NULL DEFAULT ARRAY['user']::TEXT[] CHECK (role <@ ARRAY['user','admin']::TEXT[] AND array_length(role, 1) >= 1), -- 角色数组，只允许 'user' 或 'admin'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- 创建时间
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()  -- 更新时间
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- 更新时间
+  last_sign_in_at TIMESTAMP WITH TIME ZONE
 );
 
 -- =====================
