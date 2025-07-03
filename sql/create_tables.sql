@@ -375,6 +375,9 @@ CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
     OR (auth.jwt() -> 'roles') ? 'admin'
   );
 
+-- 先创建待办状态枚举类型
+CREATE TYPE todo_status AS ENUM ('not_started', 'in_progress', 'completed');
+
 -- 待办表
 CREATE TABLE public.project_todos (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -383,7 +386,7 @@ CREATE TABLE public.project_todos (
   content TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
   due_date DATE NOT NULL,
-  is_completed BOOLEAN DEFAULT FALSE,
+  status todo_status NOT NULL DEFAULT 'not_started',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
