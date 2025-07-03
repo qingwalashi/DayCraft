@@ -194,6 +194,7 @@ export default function TodosPage() {
 
   // 删除已存在待办
   const handleRemoveTodo = async (id?: string) => {
+    if (!user) return;
     if (!id) return;
     setIsLoading(true);
     try {
