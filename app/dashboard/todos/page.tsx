@@ -55,6 +55,9 @@ export default function TodosPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
+  // 新增：待办删除确认
+  const [todoToDelete, setTodoToDelete] = useState<string | null>(null);
+  const [showDeleteTodoConfirm, setShowDeleteTodoConfirm] = useState(false);
   // 新增：全部视图的待办
   const [allTodos, setAllTodos] = useState<(Todo & { projectName: string })[]>([]);
   // 新增：全部视图编辑状态
@@ -209,10 +212,18 @@ export default function TodosPage() {
     });
   };
 
+  // 显示待办删除确认对话框
+  const handleShowTodoDeleteConfirm = (id?: string) => {
+    if (!id) return;
+    setTodoToDelete(id);
+    setShowDeleteTodoConfirm(true);
+  };
+
   // 删除已存在待办
   const handleRemoveTodo = async (id?: string) => {
     if (!user) return;
     if (!id) return;
+    if (!selectedProjectId) return;
     setIsLoading(true);
     try {
       await supabase.from("project_todos").delete().eq("id", id);
@@ -226,10 +237,43 @@ export default function TodosPage() {
         .not("status", "eq", "completed");
       if ((count || 0) === 0) {
         setProjectToDelete(selectedProjectId);
+        setShowDeleteProjectConfirm(true); // 只弹窗，不自动删除
+      }
+      // 刷新项目统计
+      await updateAllProjectTodoCounts();
+    } catch (err) {
+      console.error("删除待办失败:", err);
+      setError("删除失败，请重试");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 执行待办删除操作
+  const handleConfirmTodoDelete = async () => {
+    if (!user) return;
+    if (!todoToDelete) return;
+    if (!selectedProjectId) return;
+    setIsLoading(true);
+    try {
+      await supabase.from("project_todos").delete().eq("id", todoToDelete);
+      setTodos((prev) => prev.filter((t) => t.id !== todoToDelete));
+      // 检查该项目下是否还有未完成的待办
+      const { count } = await supabase
+        .from("project_todos")
+        .select("id", { count: 'exact', head: true })
+        .eq("user_id", user.id)
+        .eq("project_id", selectedProjectId)
+        .not("status", "eq", "completed");
+      if ((count || 0) === 0) {
+        setProjectToDelete(selectedProjectId);
         setShowDeleteProjectConfirm(true);
       }
       // 刷新项目统计
       await updateAllProjectTodoCounts();
+      // 关闭确认对话框
+      setShowDeleteTodoConfirm(false);
+      setTodoToDelete(null);
     } catch (err) {
       console.error("删除待办失败:", err);
       setError("删除失败，请重试");
@@ -363,6 +407,7 @@ export default function TodosPage() {
   // 新增删除项目函数
   const handleDeleteProject = async () => {
     if (!projectToDelete) return;
+    if (!user) return;
     setIsLoading(true);
     try {
       await supabase.from("projects").delete().eq("id", projectToDelete).eq("user_id", user.id);
@@ -823,7 +868,7 @@ export default function TodosPage() {
                           </option>
                         ))}
                       </select>
-                      <button className="text-red-500 hover:text-red-700 p-2 rounded-lg transition" onClick={() => handleRemoveTodo(todo.id)}>
+                      <button className="text-red-500 hover:text-red-700 p-2 rounded-lg transition" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
                         <TrashIcon className="h-5 w-5" />
                       </button>
                     </div>
@@ -840,7 +885,7 @@ export default function TodosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
           <div className="bg-white rounded-lg shadow-lg p-6 w-80">
             <h3 className="text-lg font-bold mb-4 text-gray-800">确认删除项目</h3>
-            <p className="mb-6 text-gray-600">该项目下所有待办已删除，是否同时删除该项目？</p>
+            <p className="mb-6 text-gray-600">该项目下所有待办已删除，是否确认删除该项目？此操作不可恢复。</p>
             <div className="flex justify-end gap-3">
               <button
                 className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
@@ -849,6 +894,26 @@ export default function TodosPage() {
               <button
                 className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
                 onClick={handleDeleteProject}
+              >确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 待办删除确认弹窗 */}
+      {showDeleteTodoConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-80">
+            <h3 className="text-lg font-bold mb-4 text-gray-800">确认删除待办</h3>
+            <p className="mb-6 text-gray-600">确定要删除此待办项目吗？此操作不可恢复。</p>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                onClick={() => { setShowDeleteTodoConfirm(false); setTodoToDelete(null); }}
+              >取消</button>
+              <button
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                onClick={handleConfirmTodoDelete}
               >确认删除</button>
             </div>
           </div>

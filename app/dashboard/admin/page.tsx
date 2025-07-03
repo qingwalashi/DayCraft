@@ -25,7 +25,7 @@ export default function AdminPage() {
     total: 0,
     active: 0,
     mau: 0,
-    dau: 0
+    wau: 0
   });
 
   useEffect(() => {
@@ -60,10 +60,10 @@ export default function AdminPage() {
     const now = new Date();
     const monthAgo = new Date();
     monthAgo.setDate(now.getDate() - 30);
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
     // 统计
-    let active = 0, mau = 0, dau = 0;
+    let active = 0, mau = 0, wau = 0;
     const userRows: UserRow[] = userList.map((u: any) => {
       const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
       const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
@@ -76,7 +76,7 @@ export default function AdminPage() {
       const lastSignIn = u.last_sign_in_at ? new Date(u.last_sign_in_at) : null;
       if (lastSignIn) active++;
       if (lastSignIn && lastSignIn >= monthAgo) mau++;
-      if (lastSignIn && lastSignIn.toDateString() === yesterday.toDateString()) dau++;
+      if (lastSignIn && lastSignIn >= sevenDaysAgo) wau++;
       return {
         id: u.id,
         full_name: u.full_name || u.email?.split("@")?.[0] || "用户",
@@ -93,7 +93,7 @@ export default function AdminPage() {
       total: userList.length,
       active,
       mau,
-      dau
+      wau
     });
     setUsers(userRows);
     setLoading(false);
@@ -137,8 +137,8 @@ export default function AdminPage() {
         <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
           <UserCogIcon className="w-7 h-7 text-orange-500" />
           <div>
-            <div className="text-xs text-gray-500">昨日活跃</div>
-            <div className="text-xl font-bold">{stats.dau}</div>
+            <div className="text-xs text-gray-500">7日活跃</div>
+            <div className="text-xl font-bold">{stats.wau}</div>
           </div>
         </div>
       </div>
