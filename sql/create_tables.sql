@@ -387,6 +387,7 @@ CREATE TABLE public.project_todos (
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
   due_date DATE NOT NULL,
   status todo_status NOT NULL DEFAULT 'not_started',
+  completed_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

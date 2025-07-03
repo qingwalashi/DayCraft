@@ -36,6 +36,7 @@ interface Todo {
   priority: string;
   due_date: string;
   status?: string;
+  completed_at?: string;
 }
 
 // 新增：全部按钮的常量
@@ -65,6 +66,11 @@ export default function TodosPage() {
   const [isAllTodosSaving, setIsAllTodosSaving] = useState(false);
   // 新增：全部视图优先级统计
   const [allPriorityCount, setAllPriorityCount] = useState({ high: 0, medium: 0, low: 0 });
+  
+  // 新增：完成时间确认相关状态
+  const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
+  const [completingTodo, setCompletingTodo] = useState<{id: string, index: number} | null>(null);
+  const [completedAt, setCompletedAt] = useState<string>(format(new Date(), "yyyy-MM-dd"));
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -157,16 +163,16 @@ export default function TodosPage() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("project_todos")
-        .select("id, content, priority, due_date, status")
+        .select("id, content, priority, due_date, status, completed_at")
         .eq("user_id", user.id)
         .eq("project_id", selectedProjectId)
-        .order("created_at", { ascending: true });
+        .order("due_date", { ascending: true });
       setIsLoading(false);
       if (error) {
         setError("加载待办失败");
         return;
       }
-      setTodos((data || []) as Todo[]);
+      setTodos(Array.isArray(data) ? (data.filter(Boolean) as Todo[]) : []);
       setNewTodos([]);
     })();
   }, [user, selectedProjectId, supabase]);
@@ -205,11 +211,99 @@ export default function TodosPage() {
 
   // 编辑已存在待办
   const handleTodoChange = (idx: number, field: keyof Todo, value: any) => {
+    // 如果字段是status且值变为completed，则显示完成时间确认弹窗
+    if (field === "status" && value === "completed") {
+      const todo = todos[idx];
+      if (todo.id) {
+        setCompletingTodo({id: todo.id, index: idx});
+        setCompletedAt(format(new Date(), "yyyy-MM-dd")); // 默认设置为今天
+        setShowCompletedConfirm(true);
+        return; // 不立即更新状态，等待确认
+      }
+    }
+    
+    // 其他字段或非完成状态直接更新
     setTodos((prev) => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
       return arr;
     });
+  };
+
+  // 新增：确认完成时间
+  const handleConfirmCompletedAt = async () => {
+    if (!completingTodo || !user) return;
+    
+    setIsLoading(true);
+    try {
+      // 更新待办状态为已完成并设置完成时间
+      await supabase.from("project_todos").update({
+        status: "completed",
+        completed_at: `${completedAt}T00:00:00Z` // 将日期转为ISO格式
+      }).eq("id", completingTodo.id);
+      
+      // 根据当前视图更新相应的状态
+      if (selectedProjectId === ALL_PROJECTS) {
+        // 更新全部视图状态
+        setAllTodosEdited((prev) => {
+          const arr = [...prev];
+          const todoIndex = arr.findIndex(t => t.id === completingTodo.id);
+          if (todoIndex !== -1) {
+            arr[todoIndex] = { 
+              ...arr[todoIndex], 
+              status: "completed",
+              completed_at: completedAt
+            };
+          }
+          return arr;
+        });
+        
+        // 同步更新 allTodos 状态
+        setAllTodos((prev) => {
+          const arr = [...prev];
+          const todoIndex = arr.findIndex(t => t.id === completingTodo.id);
+          if (todoIndex !== -1) {
+            arr[todoIndex] = { 
+              ...arr[todoIndex], 
+              status: "completed",
+              completed_at: completedAt
+            };
+          }
+          return arr;
+        });
+      } else {
+        // 更新单项目视图状态
+        setTodos((prev) => {
+          const arr = [...prev];
+          if (completingTodo) {
+            arr[completingTodo.index] = { 
+              ...arr[completingTodo.index], 
+              status: "completed",
+              completed_at: completedAt
+            };
+          }
+          return arr;
+        });
+      }
+      
+      // 关闭确认对话框
+      setShowCompletedConfirm(false);
+      setCompletingTodo(null);
+      
+      // 刷新项目统计
+      await updateAllProjectTodoCounts();
+    } catch (err) {
+      console.error("更新完成状态失败:", err);
+      setError("更新状态失败，请重试");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // 取消完成状态确认
+  const handleCancelCompleted = () => {
+    setShowCompletedConfirm(false);
+    setCompletingTodo(null);
   };
 
   // 显示待办删除确认对话框
@@ -369,6 +463,10 @@ export default function TodosPage() {
           priority: todo.priority,
           due_date: todo.due_date,
           status: todo.status,
+          // 如果状态是completed但没有完成时间，自动设置为当前时间
+          completed_at: todo.status === 'completed' 
+            ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
+            : todo.completed_at
         }).eq("id", todo.id);
       }
       
@@ -380,7 +478,7 @@ export default function TodosPage() {
         .eq("project_id", selectedProjectId)
         .order("created_at", { ascending: false });
       
-      setTodos((data || []) as Todo[]);
+      setTodos(Array.isArray(data) ? (data.filter(Boolean) as Todo[]) : []);
       setNewTodos([]);
       
       // 保存后刷新所有项目统计
@@ -462,7 +560,7 @@ export default function TodosPage() {
         // 获取所有本周截止的待办
         const { data: todosData, error: todosError } = await supabase
           .from("project_todos")
-          .select("id, content, priority, due_date, status, project_id")
+          .select("id, content, priority, due_date, status, completed_at, project_id")
           .eq("user_id", user.id)
           .order("due_date", { ascending: true });
         if (todosError) {
@@ -479,9 +577,12 @@ export default function TodosPage() {
         // 统计优先级数量
         const count = { high: 0, medium: 0, low: 0 };
         for (const t of todosWithProject) {
-          if (t.priority === 'high') count.high++;
-          else if (t.priority === 'medium') count.medium++;
-          else if (t.priority === 'low') count.low++;
+          // 只统计未完成的待办（未开始和进行中）
+          if (t.status !== 'completed') {
+            if (t.priority === 'high') count.high++;
+            else if (t.priority === 'medium') count.medium++;
+            else if (t.priority === 'low') count.low++;
+          }
         }
         setAllPriorityCount(count);
       } catch (err) {
@@ -499,6 +600,18 @@ export default function TodosPage() {
 
   // 编辑全部待办内容/完成情况
   const handleAllTodosChange = (idx: number, field: keyof Todo, value: any) => {
+    // 如果字段是status且值变为completed，则显示完成时间确认弹窗
+    if (field === "status" && value === "completed") {
+      const todo = allTodosEdited[idx];
+      if (todo.id) {
+        setCompletingTodo({id: todo.id, index: idx});
+        setCompletedAt(format(new Date(), "yyyy-MM-dd")); // 默认设置为今天
+        setShowCompletedConfirm(true);
+        return; // 不立即更新状态，等待确认
+      }
+    }
+    
+    // 其他字段或非完成状态直接更新
     setAllTodosEdited((prev) => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
@@ -517,6 +630,10 @@ export default function TodosPage() {
         await supabase.from("project_todos").update({
           content: todo.content,
           status: todo.status,
+          // 如果状态是completed但没有完成时间，自动设置为当前时间
+          completed_at: todo.status === 'completed' 
+            ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
+            : todo.completed_at
         }).eq("id", todo.id);
       }
       // 保存后刷新
@@ -533,10 +650,8 @@ export default function TodosPage() {
       }, {});
       const { data: todosData } = await supabase
         .from("project_todos")
-        .select("id, content, priority, due_date, status, project_id")
+        .select("id, content, priority, due_date, status, completed_at, project_id")
         .eq("user_id", user.id)
-        .gte("due_date", start.toISOString().slice(0, 10))
-        .lte("due_date", end.toISOString().slice(0, 10))
         .order("due_date", { ascending: true });
       const todosWithProject = (todosData || []).map((t: any) => ({
         ...t,
@@ -544,6 +659,9 @@ export default function TodosPage() {
       }));
       setAllTodos(todosWithProject);
       setError(null);
+      
+      // 刷新项目统计
+      await updateAllProjectTodoCounts();
     } catch (err) {
       setError("保存失败，请重试");
     } finally {
@@ -595,13 +713,13 @@ export default function TodosPage() {
                 <div className="flex flex-shrink-0 gap-1">
                   {/* 优先级统计标签 */}
                   {allPriorityCount.high > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">高 {allPriorityCount.high}</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">高 {allPriorityCount.high}</span>
                   )}
                   {allPriorityCount.medium > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-700">中 {allPriorityCount.medium}</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">中 {allPriorityCount.medium}</span>
                   )}
                   {allPriorityCount.low > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">低 {allPriorityCount.low}</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">低 {allPriorityCount.low}</span>
                   )}
                 </div>
               </button>
@@ -619,17 +737,17 @@ export default function TodosPage() {
                   <span className="truncate flex-1 text-left">{project.name}</span>
                   <div className="flex flex-shrink-0 gap-1">
                     {safeCount(project.highCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
                         高 {project.highCount}
                       </span>
                     )}
                     {safeCount(project.mediumCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-700">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
                         中 {project.mediumCount}
                       </span>
                     )}
                     {safeCount(project.lowCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
                         低 {project.lowCount}
                       </span>
                     )}
@@ -652,7 +770,7 @@ export default function TodosPage() {
               {selectedProjectId && (
                 <>
                   <button
-                    className="flex items-center px-4 py-2 border rounded-md text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition"
+                    className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition"
                     onClick={handleAddTodo}
                     disabled={newTodos.length + todos.length >= 10}
                   >
@@ -660,7 +778,7 @@ export default function TodosPage() {
                     <span>添加待办</span>
                   </button>
                   <button
-                    className="flex items-center px-4 py-2 border rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
+                    className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
                     onClick={handleSave}
                     disabled={isSaving}
                   >
@@ -687,7 +805,7 @@ export default function TodosPage() {
             <div className="flex items-center justify-between mb-6">
               <span className="text-xl md:text-2xl font-bold text-gray-900">全部待办</span>
               <button
-                className="flex items-center px-4 py-2 border rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
+                className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
                 onClick={handleAllTodosSave}
                 disabled={isAllTodosSaving}
               >
@@ -707,56 +825,146 @@ export default function TodosPage() {
             ) : allTodosEdited.length === 0 ? (
               <div className="text-gray-400 mt-10 md:mt-20 text-center text-base md:text-lg">本周暂无待办</div>
             ) : (
-              <div className="space-y-3">
-                {allTodosEdited.map((todo, idx) => (
-                  <div key={todo.id} className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 bg-white border border-gray-200 rounded-lg px-3 py-3 md:px-4 md:py-3 shadow-sm hover:shadow transition-shadow">
-                    <div className="flex-1 flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 w-full">
-                      <span className="w-28 text-sm text-gray-700 font-semibold truncate">{todo.projectName}</span>
-                      <input
-                        className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition hover:border-blue-300"
-                        value={todo.content}
-                        onChange={e => handleAllTodosChange(idx, "content", e.target.value)}
-                      />
-                      {/* 优先级显示 */}
-                      <span className={`w-16 text-xs font-bold rounded px-1.5 py-0.5 flex items-center justify-center ${
-                        todo.priority === 'high' 
-                          ? 'bg-red-50 text-red-600 ring-1 ring-red-200' 
-                          : todo.priority === 'medium' 
-                            ? 'bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200' 
-                            : 'bg-green-50 text-green-700 ring-1 ring-green-200'
-                      }`}>
-                        {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}
-                      </span>
-                      <div className="relative w-40">
-                        <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                          <CalendarIcon className="h-4 w-4 text-gray-400" />
+              <>
+                {/* 桌面端表格视图 */}
+                <div className="hidden md:block overflow-x-auto rounded-xl shadow-sm border border-gray-100">
+                  <table className="w-full border-collapse bg-white">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">项目</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">内容</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">优先级</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">截止时间</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {allTodosEdited.map((todo, idx) => (
+                        <tr key={`desktop-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm font-medium text-gray-700">{todo.projectName}</td>
+                          <td className="px-4 py-2">
+                            <input
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                              value={todo.content}
+                              onChange={e => handleAllTodosChange(idx, "content", e.target.value)}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block w-full text-center text-xs font-medium rounded-full py-1 ${
+                              todo.priority === 'high' 
+                                ? 'bg-red-50 text-red-600 border border-red-200' 
+                                : todo.priority === 'medium' 
+                                  ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' 
+                                  : 'bg-green-50 text-green-700 border border-green-200'
+                            }`}>
+                              {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="relative w-full">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <CalendarIcon className="h-4 w-4 text-gray-400" />
+                              </div>
+                              <input
+                                type="date"
+                                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                                value={todo.due_date}
+                                onChange={e => handleAllTodosChange(idx, "due_date", e.target.value)}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <select
+                              className={`w-full text-xs border rounded-lg px-2.5 py-2 ${
+                                STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
+                              } ${
+                                STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
+                              } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
+                              value={todo.status || 'not_started'}
+                              onChange={e => handleAllTodosChange(idx, "status", e.target.value)}
+                            >
+                              {STATUS_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value} className={`${opt.bgColor} ${opt.color}`}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* 移动端卡片视图 */}
+                <div className="md:hidden space-y-4">
+                  {allTodosEdited.map((todo, idx) => (
+                    <div key={`mobile-${todo.id}`} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="p-4 space-y-3">
+                        {/* 项目名称和优先级 */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700">{todo.projectName}</span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            todo.priority === 'high' 
+                              ? 'bg-red-50 text-red-600 border border-red-200' 
+                              : todo.priority === 'medium' 
+                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' 
+                                : 'bg-green-50 text-green-700 border border-green-200'
+                          }`}>
+                            {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}
+                          </span>
                         </div>
-                        <input
-                          type="date"
-                          className="w-full border border-gray-300 rounded-lg pl-8 pr-2 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
-                          value={todo.due_date}
-                          onChange={e => handleAllTodosChange(idx, "due_date", e.target.value)}
-                        />
+                        
+                        {/* 内容 */}
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-500">内容</label>
+                          <input
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                            value={todo.content}
+                            onChange={e => handleAllTodosChange(idx, "content", e.target.value)}
+                          />
+                        </div>
+                        
+                        {/* 截止时间 */}
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-500">截止时间</label>
+                          <div className="relative w-full">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <CalendarIcon className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                              type="date"
+                              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                              value={todo.due_date}
+                              onChange={e => handleAllTodosChange(idx, "due_date", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* 状态 */}
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-500">状态</label>
+                          <select
+                            className={`w-full text-sm border rounded-lg px-3 py-2 ${
+                              STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
+                            } ${
+                              STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
+                            } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
+                            value={todo.status || 'not_started'}
+                            onChange={e => handleAllTodosChange(idx, "status", e.target.value)}
+                          >
+                            {STATUS_OPTIONS.map(opt => (
+                              <option key={opt.value} value={opt.value} className={`${opt.bgColor} ${opt.color}`}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                      <select
-                        className={`w-24 text-xs border rounded-lg px-2 py-1.5 ${
-                          STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
-                        } ${
-                          STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
-                        } font-medium transition-colors focus:ring-2 focus:ring-blue-100`}
-                        value={todo.status || 'not_started'}
-                        onChange={e => handleAllTodosChange(idx, "status", e.target.value)}
-                      >
-                        {STATUS_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value} className={`${opt.bgColor} ${opt.color}`}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
             {error && <div className="text-xs md:text-sm text-red-500 flex items-center mt-2"><AlertCircleIcon className="h-4 w-4 mr-1" />{error}</div>}
           </>
@@ -769,20 +977,178 @@ export default function TodosPage() {
               )}
               {error && <span className="text-xs md:text-sm text-red-500 flex items-center"><AlertCircleIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />{error}</span>}
             </div>
-            <div className="space-y-3">
-              {/* 新增待办 - 显示在第一行，宽度与已保存待办一致 */}
+            <div className="hidden md:block overflow-x-auto rounded-xl shadow-sm border border-gray-100">
+              <table className="w-full border-collapse bg-white">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">内容</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">优先级</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">截止时间</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">状态</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {/* 新增待办 */}
+                  {newTodos.map((todo, idx) => (
+                    <tr key={"desktop-new-"+idx} className="bg-blue-50 hover:bg-blue-100 transition-colors duration-150 ease-in-out">
+                      <td className="px-4 py-2">
+                        <input
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          placeholder="输入待办内容"
+                          value={todo.content}
+                          onChange={e => handleNewTodoChange(idx, "content", e.target.value)}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          value={todo.priority}
+                          onChange={e => handleNewTodoChange(idx, "priority", e.target.value)}
+                        >
+                          {PRIORITY_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="relative w-full">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <CalendarIcon className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <input
+                            type="date"
+                            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                            value={todo.due_date}
+                            onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          className={`w-full text-xs border rounded-lg px-2.5 py-2 ${
+                            STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
+                          } ${
+                            STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
+                          } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
+                          value={todo.status || 'not_started'}
+                          onChange={e => handleNewTodoChange(idx, "status", e.target.value)}
+                        >
+                          {STATUS_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value} className={`${opt.bgColor} ${opt.color}`}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleRemoveNewTodo(idx)}>
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {/* 已有待办 */}
+                  {Array.isArray(todos) && todos.filter(Boolean).map((todo, idx) => (
+                    <tr key={`desktop-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
+                      <td className="px-4 py-2">
+                        <input
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          value={todo.content}
+                          onChange={e => handleTodoChange(idx, "content", e.target.value)}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          value={todo.priority}
+                          onChange={e => handleTodoChange(idx, "priority", e.target.value)}
+                        >
+                          {PRIORITY_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="relative w-full">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <CalendarIcon className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <input
+                            type="date"
+                            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                            value={todo.due_date}
+                            onChange={e => handleTodoChange(idx, "due_date", e.target.value)}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          className={`w-full text-xs border rounded-lg px-2.5 py-2 ${
+                            STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
+                          } ${
+                            STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
+                          } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
+                          value={todo.status || 'not_started'}
+                          onChange={e => handleTodoChange(idx, "status", e.target.value)}
+                        >
+                          {STATUS_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value} className={`${opt.bgColor} ${opt.color}`}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* 移动端卡片视图 */}
+            <div className="md:hidden space-y-4">
+              {/* 新增待办卡片 */}
               {newTodos.map((todo, idx) => (
-                <div key={"new-"+idx} className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 bg-white border border-blue-200 rounded-lg px-3 py-3 md:px-4 md:py-3 shadow-sm hover:shadow transition-shadow">
-                  <div className="flex-1 flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 w-full">
-                    <input
-                      className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition hover:border-blue-300"
-                      placeholder="输入待办内容"
-                      value={todo.content}
-                      onChange={e => handleNewTodoChange(idx, "content", e.target.value)}
-                    />
-                    <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+                <div key={`mobile-new-${idx}`} className="bg-blue-50 rounded-xl shadow-sm border border-blue-100 overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    {/* 优先级和删除按钮 */}
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        todo.priority === 'high' 
+                          ? 'bg-red-50 text-red-600 border border-red-200' 
+                          : todo.priority === 'medium' 
+                            ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' 
+                            : 'bg-green-50 text-green-700 border border-green-200'
+                      }`}>
+                        {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}优先级
+                      </span>
+                      <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleRemoveNewTodo(idx)}>
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                    
+                    {/* 内容 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">内容</label>
+                      <input
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                        placeholder="输入待办内容"
+                        value={todo.content}
+                        onChange={e => handleNewTodoChange(idx, "content", e.target.value)}
+                      />
+                    </div>
+                    
+                    {/* 优先级 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">优先级</label>
                       <select
-                        className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
                         value={todo.priority}
                         onChange={e => handleNewTodoChange(idx, "priority", e.target.value)}
                       >
@@ -790,23 +1156,33 @@ export default function TodosPage() {
                           <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
                         ))}
                       </select>
-                      <div className="relative w-40">
-                        <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                    </div>
+                    
+                    {/* 截止时间 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">截止时间</label>
+                      <div className="relative w-full">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                           <CalendarIcon className="h-4 w-4 text-gray-400" />
                         </div>
                         <input
                           type="date"
-                          className="w-full border border-gray-300 rounded-lg pl-8 pr-2 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                          className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
                           value={todo.due_date}
                           onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
                         />
                       </div>
+                    </div>
+                    
+                    {/* 状态 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">状态</label>
                       <select
-                        className={`w-24 text-xs border rounded-lg px-2 py-1.5 ${
+                        className={`w-full text-sm border rounded-lg px-3 py-2 ${
                           STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
                         } ${
                           STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
-                        } font-medium transition-colors focus:ring-2 focus:ring-blue-100`}
+                        } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
                         value={todo.status || 'not_started'}
                         onChange={e => handleNewTodoChange(idx, "status", e.target.value)}
                       >
@@ -816,25 +1192,46 @@ export default function TodosPage() {
                           </option>
                         ))}
                       </select>
-                      <button className="text-red-500 hover:text-red-700 p-2 rounded-lg transition" onClick={() => handleRemoveNewTodo(idx)}>
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
                     </div>
                   </div>
                 </div>
               ))}
-              {/* 已有待办 */}
-              {todos.map((todo, idx) => (
-                <div key={todo.id} className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 bg-white border border-gray-200 rounded-lg px-3 py-3 md:px-4 md:py-3 shadow-sm hover:shadow transition-shadow">
-                  <div className="flex-1 flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 w-full">
-                    <input
-                      className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition hover:border-blue-300"
-                      value={todo.content}
-                      onChange={e => handleTodoChange(idx, "content", e.target.value)}
-                    />
-                    <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+              
+              {/* 已有待办卡片 */}
+              {Array.isArray(todos) && todos.filter(Boolean).map((todo, idx) => (
+                <div key={`mobile-${todo.id}`} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    {/* 优先级和删除按钮 */}
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        todo.priority === 'high' 
+                          ? 'bg-red-50 text-red-600 border border-red-200' 
+                          : todo.priority === 'medium' 
+                            ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' 
+                            : 'bg-green-50 text-green-700 border border-green-200'
+                      }`}>
+                        {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}优先级
+                      </span>
+                      <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                    
+                    {/* 内容 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">内容</label>
+                      <input
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                        value={todo.content}
+                        onChange={e => handleTodoChange(idx, "content", e.target.value)}
+                      />
+                    </div>
+                    
+                    {/* 优先级 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">优先级</label>
                       <select
-                        className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
                         value={todo.priority}
                         onChange={e => handleTodoChange(idx, "priority", e.target.value)}
                       >
@@ -842,23 +1239,33 @@ export default function TodosPage() {
                           <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
                         ))}
                       </select>
-                      <div className="relative w-40">
-                        <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                    </div>
+                    
+                    {/* 截止时间 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">截止时间</label>
+                      <div className="relative w-full">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                           <CalendarIcon className="h-4 w-4 text-gray-400" />
                         </div>
                         <input
                           type="date"
-                          className="w-full border border-gray-300 rounded-lg pl-8 pr-2 py-2 text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                          className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
                           value={todo.due_date}
                           onChange={e => handleTodoChange(idx, "due_date", e.target.value)}
                         />
                       </div>
+                    </div>
+                    
+                    {/* 状态 */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-500">状态</label>
                       <select
-                        className={`w-24 text-xs border rounded-lg px-2 py-1.5 ${
+                        className={`w-full text-sm border rounded-lg px-3 py-2 ${
                           STATUS_OPTIONS.find(opt => opt.value === todo.status)?.bgColor || 'bg-gray-50'
                         } ${
                           STATUS_OPTIONS.find(opt => opt.value === todo.status)?.color || 'text-gray-700'
-                        } font-medium transition-colors focus:ring-2 focus:ring-blue-100`}
+                        } font-medium transition-colors focus:ring-2 focus:ring-blue-100 focus:border-blue-300`}
                         value={todo.status || 'not_started'}
                         onChange={e => handleTodoChange(idx, "status", e.target.value)}
                       >
@@ -868,13 +1275,20 @@ export default function TodosPage() {
                           </option>
                         ))}
                       </select>
-                      <button className="text-red-500 hover:text-red-700 p-2 rounded-lg transition" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
                     </div>
                   </div>
                 </div>
               ))}
+              
+              {/* 添加待办按钮 - 移动端 */}
+              <button
+                className="w-full flex items-center justify-center px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-blue-600 hover:bg-blue-100 transition-colors"
+                onClick={handleAddTodo}
+                disabled={newTodos.length + todos.length >= 10}
+              >
+                <PlusIcon className="h-5 w-5 mr-2" /> 
+                <span>添加待办</span>
+              </button>
             </div>
           </>
         ) : (
@@ -882,17 +1296,17 @@ export default function TodosPage() {
         )}
       </div>
       {showDeleteProjectConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-80">
-            <h3 className="text-lg font-bold mb-4 text-gray-800">确认删除项目</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-96 max-w-[90%] border border-gray-100 transform transition-all">
+            <h3 className="text-xl font-bold mb-4 text-gray-800">确认删除项目</h3>
             <p className="mb-6 text-gray-600">该项目下所有待办已删除，是否确认删除该项目？此操作不可恢复。</p>
             <div className="flex justify-end gap-3">
               <button
-                className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                className="px-5 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium text-sm"
                 onClick={() => { setShowDeleteProjectConfirm(false); setProjectToDelete(null); }}
               >取消</button>
               <button
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                className="px-5 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors font-medium text-sm shadow-sm"
                 onClick={handleDeleteProject}
               >确认删除</button>
             </div>
@@ -902,19 +1316,53 @@ export default function TodosPage() {
       
       {/* 待办删除确认弹窗 */}
       {showDeleteTodoConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-80">
-            <h3 className="text-lg font-bold mb-4 text-gray-800">确认删除待办</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-96 max-w-[90%] border border-gray-100 transform transition-all">
+            <h3 className="text-xl font-bold mb-4 text-gray-800">确认删除待办</h3>
             <p className="mb-6 text-gray-600">确定要删除此待办项目吗？此操作不可恢复。</p>
             <div className="flex justify-end gap-3">
               <button
-                className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                className="px-5 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium text-sm"
                 onClick={() => { setShowDeleteTodoConfirm(false); setTodoToDelete(null); }}
               >取消</button>
               <button
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                className="px-5 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors font-medium text-sm shadow-sm"
                 onClick={handleConfirmTodoDelete}
               >确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 完成时间确认弹窗 */}
+      {showCompletedConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-96 max-w-[90%] border border-gray-100 transform transition-all">
+            <h3 className="text-xl font-bold mb-4 text-gray-800">确认完成时间</h3>
+            <p className="mb-5 text-gray-600">请选择任务完成时间：</p>
+            <div className="mb-6">
+              <div className="relative w-full">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="date"
+                  className="w-full border border-gray-200 rounded-lg pl-10 pr-3 py-3 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-blue-200"
+                  value={completedAt}
+                  onChange={e => setCompletedAt(e.target.value)}
+                  max={format(new Date(), "yyyy-MM-dd")} // 限制最大日期为今天
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-5 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium text-sm"
+                onClick={handleCancelCompleted}
+              >取消</button>
+              <button
+                className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm"
+                onClick={handleConfirmCompletedAt}
+              >确认完成</button>
             </div>
           </div>
         </div>
