@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PlusIcon, SaveIcon, TrashIcon, CalendarIcon, ChevronRightIcon, ChevronDownIcon, AlertCircleIcon, MenuIcon, ChevronLeftIcon } from "lucide-react";
+import { PlusIcon, SaveIcon, TrashIcon, CalendarIcon, ChevronRightIcon, ChevronDownIcon, AlertCircleIcon, MenuIcon, ChevronLeftIcon, Loader2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import { format, addDays } from "date-fns";
@@ -18,7 +18,10 @@ interface Project {
   name: string;
   code: string;
   is_active: boolean;
-  todoCount?: number; // 添加待办数量字段
+  todoCount?: number;
+  highCount?: number;
+  mediumCount?: number;
+  lowCount?: number;
 }
 interface Todo {
   id?: string;
@@ -36,9 +39,12 @@ export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodos, setNewTodos] = useState<Todo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -83,18 +89,33 @@ export default function TodosPage() {
         // 确保 projectsData 有正确的类型
         const typedProjectsData = projectsData as unknown as Project[];
         
-        // 获取每个项目的待办数量
+        // 获取每个项目的待办数量（按优先级统计）
         const projectsWithTodoCount = await Promise.all(
           (typedProjectsData || []).map(async (project) => {
-            const { count, error: countError } = await supabase
-              .from("project_todos")
-              .select("id", { count: 'exact', head: true })
-              .eq("user_id", user.id)
-              .eq("project_id", project.id);
-            
+            // 统计各优先级数量
+            const getCount = async (priority: string) => {
+              const { count } = await supabase
+                .from("project_todos")
+                .select("id", { count: 'exact', head: true })
+                .eq("user_id", user.id)
+                .eq("project_id", project.id)
+                .eq("priority", priority)
+                .eq("is_completed", false);
+              return count || 0;
+            };
+            const [highCount, mediumCount, lowCount] = await Promise.all([
+              getCount("high"),
+              getCount("medium"),
+              getCount("low")
+            ]);
+            // 总数
+            const todoCount = highCount + mediumCount + lowCount;
             return {
               ...project,
-              todoCount: count || 0
+              todoCount,
+              highCount,
+              mediumCount,
+              lowCount
             };
           })
         );
@@ -178,9 +199,19 @@ export default function TodosPage() {
     try {
       await supabase.from("project_todos").delete().eq("id", id);
       setTodos((prev) => prev.filter((t) => t.id !== id));
-      
-      // 更新项目待办数量
-      await updateProjectTodoCount();
+      // 检查该项目下是否还有未完成的待办
+      const { count } = await supabase
+        .from("project_todos")
+        .select("id", { count: 'exact', head: true })
+        .eq("user_id", user.id)
+        .eq("project_id", selectedProjectId)
+        .eq("is_completed", false);
+      if ((count || 0) === 0) {
+        setProjectToDelete(selectedProjectId);
+        setShowDeleteProjectConfirm(true);
+      }
+      // 刷新项目统计
+      await updateAllProjectTodoCounts();
     } catch (err) {
       console.error("删除待办失败:", err);
       setError("删除失败，请重试");
@@ -189,33 +220,67 @@ export default function TodosPage() {
     }
   };
 
-  // 保存后更新项目列表中的待办数量
-  const updateProjectTodoCount = async () => {
-    if (!user || !selectedProjectId) return;
-    
+  // 修复linter警告，避免undefined
+  const safeCount = (count?: number) => typeof count === 'number' ? count : 0;
+
+  // 修改updateProjectTodoCount为刷新所有项目统计
+  const updateAllProjectTodoCounts = async () => {
+    if (!user) return;
+    setIsLoading(true);
     try {
-      const { count } = await supabase
-        .from("project_todos")
-        .select("id", { count: 'exact', head: true })
+      const { data: projectsData, error: projectsError } = await supabase
+        .from("projects")
+        .select("id, name, code, is_active")
         .eq("user_id", user.id)
-        .eq("project_id", selectedProjectId);
-      
-      setProjects(prev => prev.map(project => 
-        project.id === selectedProjectId 
-          ? { ...project, todoCount: count || 0 } 
-          : project
-      ));
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+      if (projectsError) {
+        setError("加载项目失败");
+        setIsLoading(false);
+        return;
+      }
+      const typedProjectsData = projectsData as unknown as Project[];
+      const projectsWithTodoCount = await Promise.all(
+        (typedProjectsData || []).map(async (project) => {
+          const getCount = async (priority: string) => {
+            const { count } = await supabase
+              .from("project_todos")
+              .select("id", { count: 'exact', head: true })
+              .eq("user_id", user.id)
+              .eq("project_id", project.id)
+              .eq("priority", priority)
+              .eq("is_completed", false);
+            return count || 0;
+          };
+          const [highCount, mediumCount, lowCount] = await Promise.all([
+            getCount("high"),
+            getCount("medium"),
+            getCount("low")
+          ]);
+          const todoCount = highCount + mediumCount + lowCount;
+          return {
+            ...project,
+            todoCount,
+            highCount,
+            mediumCount,
+            lowCount
+          };
+        })
+      );
+      setProjects(projectsWithTodoCount);
     } catch (err) {
-      console.error("更新待办数量失败:", err);
+      console.error("加载项目和待办数量失败:", err);
+      setError("加载项目失败");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // 保存所有待办
   const handleSave = async () => {
     if (!selectedProjectId || !user) return;
-    setIsLoading(true);
+    setIsSaving(true);
     setError(null);
-    
     try {
       // 新增
       for (const todo of newTodos) {
@@ -240,7 +305,7 @@ export default function TodosPage() {
         }).eq("id", todo.id);
       }
       
-      // 重新加载 - 修改排序为降序，使新添加的显示在最前面
+      // 重新加载
       const { data } = await supabase
         .from("project_todos")
         .select("id, content, priority, due_date, is_completed")
@@ -251,13 +316,13 @@ export default function TodosPage() {
       setTodos((data || []) as Todo[]);
       setNewTodos([]);
       
-      // 更新项目待办数量
-      await updateProjectTodoCount();
+      // 保存后刷新所有项目统计
+      await updateAllProjectTodoCounts();
     } catch (error) {
       console.error("保存待办失败:", error);
       setError("保存失败，请重试");
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -269,6 +334,24 @@ export default function TodosPage() {
     setSelectedProjectId(projectId);
     if (isMobile) {
       setSidebarVisible(false);
+    }
+  };
+
+  // 新增删除项目函数
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+    setIsLoading(true);
+    try {
+      await supabase.from("projects").delete().eq("id", projectToDelete).eq("user_id", user.id);
+      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete));
+      if (selectedProjectId === projectToDelete) setSelectedProjectId(null);
+      setProjectToDelete(null);
+      setShowDeleteProjectConfirm(false);
+    } catch (err) {
+      console.error("删除项目失败:", err);
+      setError("删除项目失败，请重试");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -305,7 +388,7 @@ export default function TodosPage() {
           </div>
           <ul>
             {projects.map((project) => (
-              <li key={project.id} className="mb-2">
+              <li key={project.id} className="mb-4">
                 <button
                   className={`flex items-center w-full px-3 py-2 rounded-lg transition font-medium text-sm
                     ${selectedProjectId === project.id ? "bg-blue-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}
@@ -314,15 +397,26 @@ export default function TodosPage() {
                 >
                   <ChevronRightIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                   <span className="truncate flex-1 text-left max-w-[160px]">{project.name}</span>
-                  <div className="flex items-center">
-                    {(project.todoCount ?? 0) > 0 && (
-                      <span className="inline-flex items-center justify-center px-2 py-1 mr-2 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
-                        {project.todoCount}
-                      </span>
-                    )}
-                    <span className="text-xs text-gray-400 flex-shrink-0">({project.code})</span>
-                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">({project.code})</span>
                 </button>
+                {/* 第二行显示优先级统计标签 */}
+                <div className="flex gap-2 mt-1 ml-8">
+                  {safeCount(project.highCount) > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">
+                      高 {project.highCount}
+                    </span>
+                  )}
+                  {safeCount(project.mediumCount) > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-700">
+                      中 {project.mediumCount}
+                    </span>
+                  )}
+                  {safeCount(project.lowCount) > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">
+                      低 {project.lowCount}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -347,18 +441,27 @@ export default function TodosPage() {
                   <span>添加待办</span>
                 </button>
                 <button
-                  className="flex items-center px-4 py-2 border rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition"
+                  className="flex items-center px-4 py-2 border rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
                   onClick={handleSave}
-                  disabled={isLoading}
+                  disabled={isSaving}
                 >
-                  <SaveIcon className="h-5 w-5 mr-2" /> 
-                  <span>保存</span>
+                  {isSaving ? (
+                    <Loader2Icon className="h-5 w-5 mr-2 animate-spin" />
+                  ) : (
+                    <SaveIcon className="h-5 w-5 mr-2" />
+                  )}
+                  <span>{isSaving ? '保存中...' : '保存'}</span>
                 </button>
               </>
             )}
           </div>
         </div>
-        {selectedProjectId ? (
+        {isLoading ? (
+          <div className="flex justify-center items-center h-40">
+            <Loader2Icon className="h-8 w-8 text-blue-500 animate-spin" />
+            <span className="ml-2 text-gray-500 text-lg">加载中...</span>
+          </div>
+        ) : selectedProjectId ? (
           <>
             <div className="mb-4 flex flex-wrap items-center gap-2 md:gap-4">
               <span className="text-base md:text-lg font-semibold text-gray-700">{projects.find(p => p.id === selectedProjectId)?.name}</span>
@@ -449,6 +552,24 @@ export default function TodosPage() {
           <div className="text-gray-400 mt-10 md:mt-20 text-center text-base md:text-lg">请选择左侧项目后进行待办管理</div>
         )}
       </div>
+      {showDeleteProjectConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-80">
+            <h3 className="text-lg font-bold mb-4 text-gray-800">确认删除项目</h3>
+            <p className="mb-6 text-gray-600">该项目下所有待办已删除，是否同时删除该项目？</p>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                onClick={() => { setShowDeleteProjectConfirm(false); setProjectToDelete(null); }}
+              >取消</button>
+              <button
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                onClick={handleDeleteProject}
+              >确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

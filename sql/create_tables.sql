@@ -133,6 +133,9 @@ CREATE POLICY "用户可以创建自己的项目" ON public.projects
 CREATE POLICY "用户可以更新自己的项目" ON public.projects
   FOR UPDATE USING (user_id = auth.uid());
 
+CREATE POLICY "用户可以删除自己的项目" ON public.projects
+  FOR DELETE USING (user_id = auth.uid());
+
 -- 用户可以查看自己的日报
 CREATE POLICY "用户可以查看自己的日报" ON public.daily_reports
   FOR SELECT USING (user_id = auth.uid());
