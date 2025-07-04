@@ -196,7 +196,8 @@ export default function DashboardOverview() {
       const { count: projectCount, error: projectError } = await supabase
         .from('projects')
         .select('id', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('user_id', userId);
       
       if (projectError) throw projectError;
       

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { PlusIcon, SaveIcon, TrashIcon, CalendarIcon, ChevronRightIcon, ChevronDownIcon, AlertCircleIcon, MenuIcon, ChevronLeftIcon, Loader2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
-import { format, addDays } from "date-fns";
+import { format, addDays, parseISO, isBefore, isEqual } from "date-fns";
 
 const PRIORITY_OPTIONS = [
   { value: "high", label: "高", color: "text-red-600" },
@@ -41,6 +41,15 @@ interface Todo {
 
 // 新增：全部按钮的常量
 const ALL_PROJECTS = "ALL_PROJECTS";
+
+// 工具函数：判断截止日期是否为今天或更早
+function isPastOrToday(dateStr: string) {
+  if (!dateStr) return false;
+  const today = new Date();
+  const date = parseISO(dateStr);
+  // 只比较年月日
+  return isBefore(date, today) || isEqual(date, today);
+}
 
 export default function TodosPage() {
   const { user } = useAuth();
@@ -736,22 +745,22 @@ export default function TodosPage() {
                   <ChevronRightIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                   <span className="truncate flex-1 text-left">{project.name}</span>
                   <div className="flex flex-shrink-0 gap-1">
-                    {safeCount(project.highCount) > 0 && (
+                  {safeCount(project.highCount) > 0 && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
-                        高 {project.highCount}
-                      </span>
-                    )}
-                    {safeCount(project.mediumCount) > 0 && (
+                      高 {project.highCount}
+                    </span>
+                  )}
+                  {safeCount(project.mediumCount) > 0 && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
-                        中 {project.mediumCount}
-                      </span>
-                    )}
-                    {safeCount(project.lowCount) > 0 && (
+                      中 {project.mediumCount}
+                    </span>
+                  )}
+                  {safeCount(project.lowCount) > 0 && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                        低 {project.lowCount}
-                      </span>
-                    )}
-                  </div>
+                      低 {project.lowCount}
+                    </span>
+                  )}
+                </div>
                 </button>
               </li>
             ))}
@@ -763,36 +772,36 @@ export default function TodosPage() {
       <div className={`flex-1 p-4 md:p-8 overflow-y-auto flex flex-col ${!sidebarVisible || !isMobile ? 'block' : 'hidden md:block'}`}>
         {/* 全部视图下，隐藏添加待办和原保存按钮，仅显示全部保存按钮 */}
         {selectedProjectId === ALL_PROJECTS ? null : (
-          <div className="flex items-center justify-between mb-6">
-            <h2 className={`text-xl md:text-2xl font-bold text-gray-900 ${!sidebarVisible && isMobile ? '' : 'hidden md:block'}`}>待办管理</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className={`text-xl md:text-2xl font-bold text-gray-900 ${!sidebarVisible && isMobile ? '' : 'hidden md:block'}`}>待办管理</h2>
             {/* 操作按钮 - 仅非全部视图显示 */}
-            <div className="flex gap-2 md:gap-3 ml-auto">
-              {selectedProjectId && (
-                <>
-                  <button
+          <div className="flex gap-2 md:gap-3 ml-auto">
+            {selectedProjectId && (
+              <>
+                <button
                     className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition"
-                    onClick={handleAddTodo}
-                    disabled={newTodos.length + todos.length >= 10}
-                  >
-                    <PlusIcon className="h-5 w-5 mr-2" /> 
-                    <span>添加待办</span>
-                  </button>
-                  <button
+                  onClick={handleAddTodo}
+                  disabled={newTodos.length + todos.length >= 10}
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" /> 
+                  <span>添加待办</span>
+                </button>
+                <button
                     className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition relative"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <Loader2Icon className="h-5 w-5 mr-2 animate-spin" />
-                    ) : (
-                      <SaveIcon className="h-5 w-5 mr-2" />
-                    )}
-                    <span>{isSaving ? '保存中...' : '保存'}</span>
-                  </button>
-                </>
-              )}
-            </div>
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2Icon className="h-5 w-5 mr-2 animate-spin" />
+                  ) : (
+                    <SaveIcon className="h-5 w-5 mr-2" />
+                  )}
+                  <span>{isSaving ? '保存中...' : '保存'}</span>
+                </button>
+              </>
+            )}
           </div>
+        </div>
         )}
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
@@ -867,7 +876,7 @@ export default function TodosPage() {
                               </div>
                               <input
                                 type="date"
-                                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                                 value={todo.due_date}
                                 onChange={e => handleAllTodosChange(idx, "due_date", e.target.value)}
                               />
@@ -934,7 +943,7 @@ export default function TodosPage() {
                             </div>
                             <input
                               type="date"
-                              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                               value={todo.due_date}
                               onChange={e => handleAllTodosChange(idx, "due_date", e.target.value)}
                             />
@@ -990,38 +999,38 @@ export default function TodosPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {/* 新增待办 */}
-                  {newTodos.map((todo, idx) => (
+              {newTodos.map((todo, idx) => (
                     <tr key={"desktop-new-"+idx} className="bg-blue-50 hover:bg-blue-100 transition-colors duration-150 ease-in-out">
                       <td className="px-4 py-2">
-                        <input
+                    <input
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          placeholder="输入待办内容"
-                          value={todo.content}
-                          onChange={e => handleNewTodoChange(idx, "content", e.target.value)}
-                        />
+                      placeholder="输入待办内容"
+                      value={todo.content}
+                      onChange={e => handleNewTodoChange(idx, "content", e.target.value)}
+                    />
                       </td>
                       <td className="px-4 py-2">
-                        <select
+                      <select
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          value={todo.priority}
-                          onChange={e => handleNewTodoChange(idx, "priority", e.target.value)}
-                        >
-                          {PRIORITY_OPTIONS.map(opt => (
+                        value={todo.priority}
+                        onChange={e => handleNewTodoChange(idx, "priority", e.target.value)}
+                      >
+                        {PRIORITY_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
-                          ))}
-                        </select>
+                        ))}
+                      </select>
                       </td>
                       <td className="px-4 py-2">
                         <div className="relative w-full">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <CalendarIcon className="h-4 w-4 text-gray-400" />
                           </div>
-                          <input
-                            type="date"
-                            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                            value={todo.due_date}
-                            onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
-                          />
+                      <input
+                        type="date"
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                        value={todo.due_date}
+                        onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
+                      />
                         </div>
                       </td>
                       <td className="px-4 py-2">
@@ -1043,44 +1052,44 @@ export default function TodosPage() {
                       </td>
                       <td className="px-4 py-2">
                         <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleRemoveNewTodo(idx)}>
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
                       </td>
                     </tr>
-                  ))}
+              ))}
                   
-                  {/* 已有待办 */}
+              {/* 已有待办 */}
                   {Array.isArray(todos) && todos.filter(Boolean).map((todo, idx) => (
                     <tr key={`desktop-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
                       <td className="px-4 py-2">
-                        <input
+                    <input
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          value={todo.content}
-                          onChange={e => handleTodoChange(idx, "content", e.target.value)}
-                        />
+                      value={todo.content}
+                      onChange={e => handleTodoChange(idx, "content", e.target.value)}
+                    />
                       </td>
                       <td className="px-4 py-2">
-                        <select
+                      <select
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          value={todo.priority}
-                          onChange={e => handleTodoChange(idx, "priority", e.target.value)}
-                        >
-                          {PRIORITY_OPTIONS.map(opt => (
+                        value={todo.priority}
+                        onChange={e => handleTodoChange(idx, "priority", e.target.value)}
+                      >
+                        {PRIORITY_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
-                          ))}
-                        </select>
+                        ))}
+                      </select>
                       </td>
                       <td className="px-4 py-2">
                         <div className="relative w-full">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <CalendarIcon className="h-4 w-4 text-gray-400" />
                           </div>
-                          <input
-                            type="date"
-                            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                            value={todo.due_date}
-                            onChange={e => handleTodoChange(idx, "due_date", e.target.value)}
-                          />
+                      <input
+                        type="date"
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                        value={todo.due_date}
+                        onChange={e => handleTodoChange(idx, "due_date", e.target.value)}
+                      />
                         </div>
                       </td>
                       <td className="px-4 py-2">
@@ -1136,7 +1145,7 @@ export default function TodosPage() {
                     {/* 内容 */}
                     <div className="space-y-1">
                       <label className="block text-xs font-medium text-gray-500">内容</label>
-                      <input
+                          <input
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
                         placeholder="输入待办内容"
                         value={todo.content}
@@ -1167,7 +1176,7 @@ export default function TodosPage() {
                         </div>
                         <input
                           type="date"
-                          className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
                         />
@@ -1213,9 +1222,9 @@ export default function TodosPage() {
                         {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}优先级
                       </span>
                       <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
                     
                     {/* 内容 */}
                     <div className="space-y-1">
@@ -1239,7 +1248,7 @@ export default function TodosPage() {
                           <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
                         ))}
                       </select>
-                    </div>
+                  </div>
                     
                     {/* 截止时间 */}
                     <div className="space-y-1">
@@ -1247,10 +1256,10 @@ export default function TodosPage() {
                       <div className="relative w-full">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                           <CalendarIcon className="h-4 w-4 text-gray-400" />
-                        </div>
+                </div>
                         <input
                           type="date"
-                          className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleTodoChange(idx, "due_date", e.target.value)}
                         />
