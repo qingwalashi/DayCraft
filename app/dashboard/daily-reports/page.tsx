@@ -942,15 +942,6 @@ export default function DailyReportsPage() {
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
         <h1 className="text-xl md:text-2xl font-bold">日报管理</h1>
-        <div className="flex items-center space-x-2">
-          <Link
-            href="/dashboard/daily-reports/new"
-            className="inline-flex items-center px-3 py-1.5 md:px-4 md:py-2 border border-transparent text-xs md:text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <PlusIcon className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1 md:mr-2" />
-            <span>创建日报</span>
-          </Link>
-        </div>
       </div>
       
       {/* 今日日报提醒 */}

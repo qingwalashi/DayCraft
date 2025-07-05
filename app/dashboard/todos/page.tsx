@@ -989,8 +989,10 @@ export default function TodosPage() {
                       {/* 未开始的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'not_started').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                            <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                            <div className="flex items-center">
+                              <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -1051,8 +1053,10 @@ export default function TodosPage() {
                       {/* 进行中的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'in_progress').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                            <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                            <div className="flex items-center">
+                              <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -1113,8 +1117,10 @@ export default function TodosPage() {
                       {/* 已完成的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'completed').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                            <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                            <div className="flex items-center">
+                              <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -1484,8 +1490,10 @@ export default function TodosPage() {
                   {/* 未开始的待办 */}
                   {todos.filter(todo => todo.status === 'not_started').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                        <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                        <div className="flex items-center">
+                          <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -1550,8 +1558,10 @@ export default function TodosPage() {
                   {/* 进行中的待办 */}
                   {todos.filter(todo => todo.status === 'in_progress').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                        <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                        <div className="flex items-center">
+                          <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -1616,8 +1626,10 @@ export default function TodosPage() {
                   {/* 已完成的待办 */}
                   {todos.filter(todo => todo.status === 'completed').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 flex items-center">
-                        <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                        <div className="flex items-center">
+                          <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
+                        </div>
                       </td>
                     </tr>
                   )}

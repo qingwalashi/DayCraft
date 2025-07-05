@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon, XIcon, PencilIcon } from "lucide-react";
+import { BarChart3Icon, CalendarIcon, FileTextIcon, FolderIcon, CopyIcon, XIcon, PencilIcon, CheckCircleIcon, ClockIcon, PlayIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import { format, startOfWeek, endOfWeek, startOfMonth, parseISO, getWeek } from "date-fns";
@@ -38,6 +38,26 @@ interface Stats {
   monthlyWorkItemCount: number;
 }
 
+// 添加待办相关接口
+interface Todo {
+  id: string;
+  content: string;
+  priority: string;
+  due_date: string;
+  status: string;
+  completed_at?: string;
+  project_id: string;
+  projectName?: string;
+}
+
+// 添加项目待办接口
+interface ProjectWithTodos {
+  id: string;
+  name: string;
+  code: string;
+  todos: Todo[];
+}
+
 export default function DashboardOverview() {
   const { user: authUser, loading } = useAuth();
   const supabase = createClient();
@@ -55,7 +75,7 @@ export default function DashboardOverview() {
   });
   
   // 添加报告标签切换状态
-  const [activeReportTab, setActiveReportTab] = usePersistentState<'reports' | 'plans'>('dashboard-overview-report-tab', 'reports');
+  const [activeReportTab, setActiveReportTab] = usePersistentState<'reports' | 'plans' | 'todos'>('dashboard-overview-report-tab', 'reports');
   
   // 添加预览相关状态
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -71,6 +91,10 @@ export default function DashboardOverview() {
   const lastLoadTimeRef = useRef<number>(0);
   // 数据刷新间隔（毫秒），设置为5分钟
   const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
+
+  // 添加待办相关状态
+  const [projectsWithTodos, setProjectsWithTodos] = useState<ProjectWithTodos[]>([]);
+  const [isLoadingTodos, setIsLoadingTodos] = useState(false);
 
   // 获取项目数据
   const fetchProjects = useCallback(async () => {
@@ -467,14 +491,79 @@ export default function DashboardOverview() {
     setPreviewReport(null);
   };
 
+  // 获取未完成的待办项目及待办
+  const fetchUncompletedTodos = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoadingTodos(true);
+    try {
+      // 获取所有活跃项目
+      const { data: projectsData, error: projectsError } = await supabase
+        .from("projects")
+        .select("id, name, code, is_active")
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+        
+      if (projectsError) throw projectsError;
+      
+      // 获取所有未完成的待办
+      const { data: todosData, error: todosError } = await supabase
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at, project_id")
+        .eq("user_id", user.id)
+        .not("status", "eq", "completed")
+        .order("due_date", { ascending: true });
+        
+      if (todosError) throw todosError;
+      
+      // 按项目分组待办
+      const projectsMap: Record<string, ProjectWithTodos> = {};
+      
+      // 初始化项目映射
+      (projectsData || []).forEach((project: any) => {
+        projectsMap[project.id] = {
+          id: project.id,
+          name: project.name,
+          code: project.code,
+          todos: []
+        };
+      });
+      
+      // 将待办添加到对应项目
+      (todosData || []).forEach((todo: any) => {
+        if (projectsMap[todo.project_id]) {
+          projectsMap[todo.project_id].todos.push(todo);
+        }
+      });
+      
+      // 转换为数组并过滤掉没有待办的项目
+      const projectsWithTodosArray = Object.values(projectsMap)
+        .filter(project => project.todos.length > 0);
+        
+      setProjectsWithTodos(projectsWithTodosArray);
+    } catch (error) {
+      console.error('获取未完成待办失败', error);
+    } finally {
+      setIsLoadingTodos(false);
+    }
+  }, [user, supabase]);
+  
+  // 在组件加载时获取未完成待办
+  useEffect(() => {
+    if (user) {
+      fetchUncompletedTodos();
+    }
+  }, [user, fetchUncompletedTodos]);
+
   // 根据当前标签过滤报告
   const filteredReports = useMemo(() => {
     return reports.filter(report => {
       if (activeReportTab === 'reports') {
         return !report.is_plan;
-      } else {
+      } else if (activeReportTab === 'plans') {
         return !!report.is_plan;
       }
+      return false;
     }).slice(0, 3); // 只显示前3条
   }, [reports, activeReportTab]);
 
@@ -619,13 +708,6 @@ export default function DashboardOverview() {
 
       {/* 最近日报 */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-3 px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-base md:text-lg font-medium">最近工作记录</h2>
-          <Link href="/dashboard/daily-reports" className="text-xs md:text-sm text-blue-600 hover:text-blue-800">
-            查看全部
-          </Link>
-        </div>
-        
         {/* 切换标签 */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-4 md:space-x-8 px-4 md:px-6">
@@ -649,75 +731,172 @@ export default function DashboardOverview() {
             >
               最近计划
             </button>
+            <button
+              onClick={() => setActiveReportTab("todos")}
+              className={`py-3 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm ${
+                activeReportTab === "todos"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              待办计划
+            </button>
           </nav>
         </div>
         
-        <div className="divide-y divide-gray-200">
-          {filteredReports.length > 0 ? (
-            filteredReports.map((report) => (
-              <div 
-                key={report.id} 
-                className={`p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 ${isToday(report.date) ? 'bg-blue-50' : ''}`}
-                onClick={() => handleReportSelect(report)}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="w-full">
-                    <div className="flex items-center justify-between">
-                      <h3 className={`text-sm md:text-base font-medium ${isToday(report.date) ? 'text-blue-700' : ''}`}>
-                        {format(parseISO(report.date), 'yyyy-MM-dd')}
-                        {isToday(report.date) && (
-                          <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
-                            今日
-                          </span>
-                        )}
-                      </h3>
-                      <div className="flex items-center space-x-1 md:space-x-2">
-                        <button 
-                          onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
-                          className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
-                          title="复制日报内容"
-                        >
-                          <CopyIcon className="h-3 w-3 md:h-4 md:w-4" />
-                        </button>
-                        {report.is_plan ? (
-                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                            已计划
-                          </span>
-                        ) : (
-                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-green-100 text-green-800">
-                            {report.status}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">
-                      {report.is_plan ? '计划工作内容' : '今日工作内容'}
-                    </p>
-                    
-                    <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
-                      {getReportProjects(report).map(project => (
-                        <div key={project.id} className={`border-l-2 ${isToday(report.date) ? 'border-blue-600' : 'border-blue-500'} pl-2 md:pl-3`}>
-                          <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
-                            {project.name} ({project.code})
-                          </div>
-                          <ul className="space-y-0.5 md:space-y-1">
-                            {getProjectWorkItems(report, project.id).map((item, idx) => (
-                              <li key={idx} className="text-xs md:text-sm text-gray-500 flex items-start">
-                                <span className="mr-1 md:mr-2 text-gray-400">•</span>
-                                <span>{item.content}</span>
-                              </li>
-                            ))}
-                          </ul>
+        {/* 内容区域 */}
+        <div className="p-3 md:p-6">
+          {activeReportTab !== 'todos' ? (
+            // 日报和计划内容显示
+            <>
+              <div className="flex justify-end mb-2">
+                <Link 
+                  href={activeReportTab === 'reports' ? "/dashboard/daily-reports" : "/dashboard/daily-reports?tab=plans"} 
+                  className="text-xs md:text-sm text-blue-600 hover:text-blue-800"
+                >
+                  查看全部
+                </Link>
+              </div>
+              {filteredReports.length > 0 ? (
+                filteredReports.map((report) => (
+                <div 
+                  key={report.id} 
+                  className={`p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 ${isToday(report.date) ? 'bg-blue-50' : ''}`}
+                  onClick={() => handleReportSelect(report)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="w-full">
+                      <div className="flex items-center justify-between">
+                        <h3 className={`text-sm md:text-base font-medium ${isToday(report.date) ? 'text-blue-700' : ''}`}>
+                          {format(parseISO(report.date), 'yyyy-MM-dd')}
+                          {isToday(report.date) && (
+                            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
+                              今日
+                            </span>
+                          )}
+                        </h3>
+                        <div className="flex items-center space-x-1 md:space-x-2">
+                          <button 
+                            onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
+                            className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
+                            title="复制日报内容"
+                          >
+                            <CopyIcon className="h-3 w-3 md:h-4 md:w-4" />
+                          </button>
+                          {report.is_plan ? (
+                            <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                              已计划
+                            </span>
+                          ) : (
+                            <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-green-100 text-green-800">
+                              {report.status}
+                            </span>
+                          )}
                         </div>
-                      ))}
+                      </div>
+                      <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">
+                        {report.is_plan ? '计划工作内容' : '今日工作内容'}
+                      </p>
+                      
+                      <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
+                        {getReportProjects(report).map(project => (
+                          <div key={project.id} className={`border-l-2 ${isToday(report.date) ? 'border-blue-600' : 'border-blue-500'} pl-2 md:pl-3`}>
+                            <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
+                              {project.name} ({project.code})
+                            </div>
+                            <ul className="space-y-0.5 md:space-y-1">
+                              {getProjectWorkItems(report, project.id).map((item, idx) => (
+                                <li key={idx} className="text-xs md:text-sm text-gray-500 flex items-start">
+                                  <span className="mr-1 md:mr-2 text-gray-400">•</span>
+                                  <span>{item.content}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
+              ))
+            ) : (
+              <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
+                暂无{activeReportTab === 'reports' ? '日报' : '计划'}记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
               </div>
-            ))
+            )}
+          </>
           ) : (
-            <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
-              暂无{activeReportTab === 'reports' ? '日报' : '计划'}记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
+            // 待办计划内容显示
+            <div>
+              {isLoadingTodos ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-gray-500">加载中...</span>
+                </div>
+              ) : projectsWithTodos.length === 0 ? (
+                <div className="text-center py-8 text-sm text-gray-500">
+                  暂无未完成待办，<Link href="/dashboard/todos" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 flex justify-between items-center">
+                    <div className="text-xs text-gray-500 flex flex-wrap gap-3">
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-1"></span>
+                        <span>高优先级</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-yellow-500 mr-1"></span>
+                        <span>中优先级</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                        <span>低优先级</span>
+                      </div>
+                    </div>
+                    <Link href="/dashboard/todos" className="text-xs md:text-sm text-blue-600 hover:text-blue-800">
+                      查看全部
+                    </Link>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {projectsWithTodos.map(project => (
+                      <div key={project.id} className="border-l-2 border-blue-500 pl-3 py-1">
+                        <div className="text-sm font-medium text-blue-600 mb-2 flex items-center">
+                          <FileTextIcon className="h-3.5 w-3.5 mr-1.5" />
+                          {project.name} ({project.code})
+                        </div>
+                        <div className="space-y-2">
+                          {project.todos.map(todo => (
+                            <div key={todo.id} className="flex items-start">
+                              {/* 状态图标 */}
+                              {todo.status === 'not_started' ? (
+                                <ClockIcon className="h-3.5 w-3.5 mr-1.5 text-gray-600 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <PlayIcon className="h-3.5 w-3.5 mr-1.5 text-blue-600 mt-0.5 flex-shrink-0" />
+                              )}
+                              
+                              {/* 待办内容 */}
+                              <div className="flex-1">
+                                <div className="flex items-center">
+                                  <span className={`mr-2 inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+                                    todo.priority === 'high' ? 'bg-red-500' : 
+                                    todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                                  }`}></span>
+                                  <span className="text-xs md:text-sm text-gray-700">{todo.content}</span>
+                                </div>
+                                <div className="ml-4 text-xs text-gray-400 mt-0.5">
+                                  截止日期: {todo.due_date}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
