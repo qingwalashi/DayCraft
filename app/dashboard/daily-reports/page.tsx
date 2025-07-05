@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon, AlertCircleIcon, CalendarIcon, FileTextIcon } from "lucide-react";
+import { PlusIcon, SearchIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, CopyIcon, XIcon, AlertCircleIcon, CalendarIcon, FileTextIcon, ClipboardListIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, DailyReport, ReportItem, UserDingTalkSettings } from "@/lib/supabase/client";
@@ -101,6 +101,24 @@ const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
     </div>
   );
 };
+
+// 添加待办相关接口
+interface Todo {
+  id: string;
+  content: string;
+  priority: string;
+  due_date: string;
+  status: string;
+  completed_at?: string;
+  project_id: string;
+}
+
+interface ProjectWithTodos {
+  id: string;
+  name: string;
+  code: string;
+  todos: Todo[];
+}
 
 export default function DailyReportsPage() {
   const router = useRouter();
@@ -430,51 +448,26 @@ export default function DailyReportsPage() {
     }
   }, [user, currentWeekIndex, weekData.length]);
 
-  // 添加页面可见性监听，优化逻辑避免重复请求
+  // 在页面可见性变化时移除待办刷新
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          console.log('日报管理页面恢复可见，检查数据状态');
-          
-          // 检查是否需要重新加载当前周的数据
-          if (user && weekData.length > 0) {
-            const currentWeek = weekData[currentWeekIndex];
-            if (currentWeek) {
-              const weekKey = `${currentWeek.year}-${currentWeek.weekNumber}`;
-              const now = Date.now();
-              const timeSinceLastLoad = now - lastLoadTimeRef.current;
-              
-              // 如果超过刷新间隔，重新加载数据
-              if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-                console.log('数据超过刷新间隔，重新加载');
-                // 重置该周的加载状态
-                weekDataLoadedRef.current[weekKey] = false;
-                // 使用setTimeout避免在事件处理中直接调用
-                setTimeout(() => {
-                  fetchWeekReports(currentWeek);
-                }, 100);
-              } else {
-                console.log('数据在刷新间隔内，保持现有数据');
-              }
-            }
-          }
-          
-          // 更新今日日报状态，但避免重复检查
-          if (!todayReportReminder) {
-            setTimeout(() => {
-              checkTodayReport();
-            }, 100);
-          }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user) {
+        // 检查今日日报状态
+        checkTodayReport();
+        
+        // 如果当前周数据已加载，刷新当前周数据
+        if (currentWeekData && weekDataLoadedRef.current[`${currentWeekData.year}-${currentWeekData.weekNumber}`]) {
+          fetchWeekReports(currentWeekData, true);
         }
-      };
-      
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, [user, weekData.length, currentWeekIndex, todayReportReminder]);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, currentWeekData, checkTodayReport, fetchWeekReports]);
 
   // 处理周切换
   const handleWeekChange = (weekIndex: number) => {
@@ -946,11 +939,20 @@ export default function DailyReportsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">日报管理</h1>
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
+        <h1 className="text-xl md:text-2xl font-bold">日报管理</h1>
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/dashboard/daily-reports/new"
+            className="inline-flex items-center px-3 py-1.5 md:px-4 md:py-2 border border-transparent text-xs md:text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <PlusIcon className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1 md:mr-2" />
+            <span>创建日报</span>
+          </Link>
+        </div>
       </div>
-
+      
       {/* 今日日报提醒 */}
       {todayReportReminder && !todayReportReminder.hasReport && (
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md">

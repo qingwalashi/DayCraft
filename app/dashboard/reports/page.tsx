@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { CalendarIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon, AlertCircleIcon, EyeIcon, CopyIcon, XIcon, PencilIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { CalendarIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon, AlertCircleIcon, EyeIcon, CopyIcon, XIcon, PencilIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, PlusIcon, SaveIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
-import { createClient, DailyReport, ReportItem, UserAISettings } from "@/lib/supabase/client";
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, getYear, parseISO, isSameDay, startOfMonth, endOfMonth } from "date-fns";
+import { createClient, DailyReport, ReportItem, UserAISettings, WeeklyReport, MonthlyReport } from "@/lib/supabase/client";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, getMonth, getYear, parseISO, isSameDay, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { usePersistentState } from "@/lib/utils/page-persistence";

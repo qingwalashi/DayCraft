@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon, BookmarkIcon } from "lucide-react";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, CopyIcon, EyeIcon, FileTextIcon, PlusCircleIcon, AlertTriangleIcon, BookmarkIcon, ClipboardListIcon, Loader2Icon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -27,6 +27,24 @@ interface ReportItemData {
   id: string;
   content: string;
   project_id: string;
+}
+
+// 添加待办相关接口
+interface Todo {
+  id: string;
+  content: string;
+  priority: string;
+  due_date: string;
+  status: string;
+  completed_at?: string;
+  project_id: string;
+}
+
+interface ProjectWithTodos {
+  id: string;
+  name: string;
+  code: string;
+  todos: Todo[];
 }
 
 export default function NewDailyReportPage() {
@@ -61,6 +79,11 @@ export default function NewDailyReportPage() {
   const isRequestingRef = useRef<Record<string, boolean>>({});
   // 防抖延迟
   const DEBOUNCE_DELAY = 300;
+
+  // 添加未完成待办项目状态
+  const [projectsWithTodos, setProjectsWithTodos] = useState<ProjectWithTodos[]>([]);
+  const [isLoadingTodos, setIsLoadingTodos] = useState(false);
+  const [showTodos, setShowTodos] = useState(false); // 默认隐藏待办
 
   // 加载已有日报的内容 - 使用useCallback包装
   const loadExistingReportContent = useCallback(async (reportId: string) => {
@@ -870,6 +893,75 @@ export default function NewDailyReportPage() {
     }
   };
 
+  // 获取未完成的待办项目及待办
+  const fetchUncompletedTodos = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoadingTodos(true);
+    try {
+      // 获取所有活跃项目
+      const { data: projectsData, error: projectsError } = await supabase
+        .from("projects")
+        .select("id, name, code, is_active")
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+        
+      if (projectsError) throw projectsError;
+      
+      // 获取所有未完成的待办
+      const { data: todosData, error: todosError } = await supabase
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at, project_id")
+        .eq("user_id", user.id)
+        .not("status", "eq", "completed")
+        .order("due_date", { ascending: true });
+        
+      if (todosError) throw todosError;
+      
+      // 按项目分组待办
+      const projectsMap: Record<string, ProjectWithTodos> = {};
+      
+      // 初始化项目映射
+      (projectsData || []).forEach((project: any) => {
+        projectsMap[project.id] = {
+          id: project.id,
+          name: project.name,
+          code: project.code,
+          todos: []
+        };
+      });
+      
+      // 将待办添加到对应项目
+      (todosData || []).forEach((todo: any) => {
+        if (projectsMap[todo.project_id]) {
+          projectsMap[todo.project_id].todos.push(todo);
+        }
+      });
+      
+      // 转换为数组并过滤掉没有待办的项目
+      const projectsWithTodosArray = Object.values(projectsMap)
+        .filter(project => project.todos.length > 0);
+        
+      setProjectsWithTodos(projectsWithTodosArray);
+    } catch (error) {
+      console.error('获取未完成待办失败', error);
+    } finally {
+      setIsLoadingTodos(false);
+    }
+  }, [user, supabase]);
+  
+  // 在组件加载时获取未完成待办
+  useEffect(() => {
+    if (user) {
+      fetchUncompletedTodos();
+    }
+  }, [user, fetchUncompletedTodos]);
+
+  // 添加待办显示切换功能
+  const toggleTodosVisibility = () => {
+    setShowTodos(!showTodos);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -1064,6 +1156,77 @@ export default function NewDailyReportPage() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* 未完成待办项目部分 - 移到工作内容上方 */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div 
+              className="flex items-center justify-between p-3 md:p-4 border-b border-gray-200 cursor-pointer"
+              onClick={toggleTodosVisibility}
+            >
+              <div className="flex items-center">
+                <ClipboardListIcon className="h-4 w-4 md:h-5 md:w-5 text-blue-600 mr-2" />
+                <h2 className="text-sm md:text-base font-medium text-gray-800">未完成待办</h2>
+              </div>
+              <div className="text-xs md:text-sm text-gray-500">
+                {showTodos ? '点击隐藏' : '点击显示'}
+              </div>
+            </div>
+            
+            {showTodos && (
+              <div className="p-3 md:p-4">
+                {isLoadingTodos ? (
+                  <div className="flex justify-center items-center py-4">
+                    <Loader2Icon className="h-5 w-5 text-blue-500 animate-spin" />
+                    <span className="ml-2 text-sm text-gray-500">加载中...</span>
+                  </div>
+                ) : projectsWithTodos.length === 0 ? (
+                  <div className="text-center py-4 text-sm text-gray-500">
+                    暂无未完成待办
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-3 text-xs text-gray-500 flex flex-wrap gap-3">
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-1"></span>
+                        <span>高优先级</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-yellow-500 mr-1"></span>
+                        <span>中优先级</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                        <span>低优先级</span>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      {projectsWithTodos.map(project => (
+                        <div key={project.id} className="border-l-2 border-blue-500 pl-3 py-1">
+                          <div className="text-sm font-medium text-blue-600 mb-1">
+                            {project.name} ({project.code})
+                          </div>
+                          <ul className="space-y-1">
+                            {project.todos.map(todo => (
+                              <li key={todo.id} className="text-xs md:text-sm text-gray-600 flex items-center">
+                                <span className={`mr-2 inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+                                  todo.priority === 'high' ? 'bg-red-500' : 
+                                  todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}></span>
+                                <span className="flex-1">{todo.content}</span>
+                                <span className="text-xs text-gray-400 ml-2">
+                                  {todo.due_date}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 工作内容和预览区域 */}
