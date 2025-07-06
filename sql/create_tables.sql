@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   role TEXT[] NOT NULL DEFAULT ARRAY['user']::TEXT[] CHECK (role <@ ARRAY['user','admin']::TEXT[] AND array_length(role, 1) >= 1), -- 角色数组，只允许 'user' 或 'admin'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- 创建时间
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- 更新时间
-  last_sign_in_at TIMESTAMP WITH TIME ZONE
+  last_sign_in_at TIMESTAMP WITH TIME ZONE,
+  last_report_edit_at TIMESTAMP WITH TIME ZONE -- 最近日报编辑时间
 );
 
 -- =====================
@@ -37,6 +38,39 @@ CREATE POLICY IF NOT EXISTS "管理员可更新所有用户资料" ON public.use
   FOR UPDATE USING (
     'admin' = ANY (coalesce(auth.jwt() -> 'roles', ARRAY[]::TEXT[]))
   );
+
+-- =====================
+-- 用户最近日报编辑时间更新函数
+-- =====================
+CREATE OR REPLACE FUNCTION public.update_user_last_report_edit()
+RETURNS TRIGGER AS $$
+DECLARE
+  user_id_val UUID;
+BEGIN
+  -- 根据触发器来源表确定用户ID
+  IF TG_TABLE_NAME = 'daily_reports' THEN
+    -- 如果是日报表，直接使用user_id
+    user_id_val := NEW.user_id;
+  ELSIF TG_TABLE_NAME = 'report_items' THEN
+    -- 如果是日报条目表，需要通过report_id查询对应的user_id
+    SELECT user_id INTO user_id_val
+    FROM public.daily_reports
+    WHERE id = NEW.report_id;
+  ELSE
+    -- 其他情况不处理
+    RETURN NEW;
+  END IF;
+  
+  -- 更新用户最近日报编辑时间
+  IF user_id_val IS NOT NULL THEN
+    UPDATE public.user_profiles
+    SET last_report_edit_at = NOW()
+    WHERE id = user_id_val;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =====================
 -- JWT claims 同步角色 Hook
@@ -113,6 +147,11 @@ CREATE TABLE public.daily_reports (
   UNIQUE (user_id, date)
 );
 
+-- 为日报表添加触发器，在创建或更新日报时更新用户的last_report_edit_at
+CREATE TRIGGER update_user_report_edit_time
+  AFTER INSERT OR UPDATE ON public.daily_reports
+  FOR EACH ROW EXECUTE PROCEDURE public.update_user_last_report_edit();
+
 -- 日报条目表
 CREATE TABLE public.report_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -122,6 +161,11 @@ CREATE TABLE public.report_items (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 为日报条目表添加触发器，在创建或更新日报条目时更新用户的last_report_edit_at
+CREATE TRIGGER update_user_report_item_edit_time
+  AFTER INSERT OR UPDATE ON public.report_items
+  FOR EACH ROW EXECUTE PROCEDURE public.update_user_last_report_edit();
 
 -- 用户可以查看自己的项目
 CREATE POLICY "用户可以查看自己的项目" ON public.projects

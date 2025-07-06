@@ -12,7 +12,7 @@ interface UserRow {
   daily_count: number;
   system_ai_calls: number;
   custom_ai_calls: number;
-  last_active: string | null;
+  last_report_edit: string | null; // 修改为最近日报编辑时间
   is_active: boolean;
 }
 
@@ -34,69 +34,163 @@ export default function AdminPage() {
 
   async function fetchData() {
     setLoading(true);
-    // 1. 获取所有用户
-    const { data: userList, error: userError } = await supabase
-      .from("user_profiles")
-      .select("id, full_name, email, created_at, updated_at, last_sign_in_at");
-    if (userError) {
-      setLoading(false);
-      return;
-    }
-    // 2. 获取项目、日报、AI调用等统计
-    const userIds = userList.map((u: any) => u.id);
-    // 项目数
-    const { data: projects } = await supabase
-      .from("projects")
-      .select("id, user_id");
-    // 日报数
-    const { data: dailies } = await supabase
-      .from("daily_reports")
-      .select("id, user_id, created_at");
-    // AI调用
-    const { data: aiSettings } = await supabase
-      .from("user_ai_settings")
-      .select("user_id, system_ai_calls, custom_ai_calls, updated_at");
-    // 活跃用户统计
-    const now = new Date();
-    const monthAgo = new Date();
-    monthAgo.setDate(now.getDate() - 30);
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 7);
-    // 统计
-    let active = 0, mau = 0, wau = 0;
-    const userRows: UserRow[] = userList.map((u: any) => {
-      const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
-      const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
-      const daily_count = dailyUserReports.length;
+    try {
+      // 1. 获取所有用户
+      const { data: userList, error: userError } = await supabase
+        .from("user_profiles")
+        .select("id, full_name, email, created_at, updated_at, last_report_edit_at"); // 修改为获取最近日报编辑时间
+      if (userError) {
+        console.error("获取用户列表失败:", userError);
+        setLoading(false);
+        return;
+      }
+      
+      console.log("用户数据:", userList);
+      
+      // 2. 获取项目、日报、AI调用等统计
+      const userIds = userList.map((u: any) => u.id);
+      // 项目数
+      const { data: projects } = await supabase
+        .from("projects")
+        .select("id, user_id");
+      // 日报数
+      const { data: dailies } = await supabase
+        .from("daily_reports")
+        .select("id, user_id, created_at");
       // AI调用
-      const ai = aiSettings?.find(a => a.user_id === u.id);
-      const system_ai_calls = typeof ai?.system_ai_calls === 'number' ? ai.system_ai_calls : 0;
-      const custom_ai_calls = typeof ai?.custom_ai_calls === 'number' ? ai.custom_ai_calls : 0;
-      // last_sign_in_at判断
-      const lastSignIn = u.last_sign_in_at ? new Date(u.last_sign_in_at) : null;
-      if (lastSignIn) active++;
-      if (lastSignIn && lastSignIn >= monthAgo) mau++;
-      if (lastSignIn && lastSignIn >= sevenDaysAgo) wau++;
-      return {
-        id: u.id,
-        full_name: u.full_name || u.email?.split("@")?.[0] || "用户",
-        email: u.email,
-        project_count,
-        daily_count,
-        system_ai_calls,
-        custom_ai_calls,
-        last_active: lastSignIn ? lastSignIn.toLocaleString() : null,
-        is_active: !!lastSignIn
-      };
-    });
-    setStats({
-      total: userList.length,
-      active,
-      mau,
-      wau
-    });
-    setUsers(userRows);
-    setLoading(false);
+      const { data: aiSettings } = await supabase
+        .from("user_ai_settings")
+        .select("user_id, system_ai_calls, custom_ai_calls, updated_at");
+      // 活跃用户统计
+      const now = new Date();
+      const monthAgo = new Date();
+      monthAgo.setDate(now.getDate() - 30);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      
+      // 手动初始化触发器函数
+      // 这段代码仅用于测试，实际部署时应删除
+      if (userList && userList.length > 0) {
+        console.log("尝试手动更新用户最近日报编辑时间...");
+        const { data: recentReports, error: recentError } = await supabase
+          .from("daily_reports")
+          .select("id, user_id, updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(50);
+          
+        if (recentError) {
+          console.error("获取最近日报失败:", recentError);
+        } else if (recentReports && recentReports.length > 0) {
+          console.log("找到最近的日报:", recentReports.length);
+          
+          // 按用户分组，找到每个用户最近的日报
+          const userLatestReports = {};
+          recentReports.forEach((report) => {
+            if (report.user_id && report.updated_at) {
+              if (!userLatestReports[report.user_id] || 
+                  new Date(report.updated_at) > new Date(userLatestReports[report.user_id])) {
+                userLatestReports[report.user_id] = report.updated_at;
+              }
+            }
+          });
+          
+          // 更新用户资料表中的最近日报编辑时间
+          for (const userId in userLatestReports) {
+            console.log(`更新用户 ${userId} 的最近日报编辑时间:`, userLatestReports[userId]);
+            const { error: updateError } = await supabase
+              .from("user_profiles")
+              .update({ last_report_edit_at: userLatestReports[userId] })
+              .eq("id", userId);
+              
+            if (updateError) {
+              console.error(`更新用户 ${userId} 的最近日报编辑时间失败:`, updateError);
+            }
+          }
+          
+          // 重新获取用户数据
+          const { data: refreshedUsers, error: refreshError } = await supabase
+            .from("user_profiles")
+            .select("id, full_name, email, created_at, updated_at, last_report_edit_at");
+            
+          if (refreshError) {
+            console.error("刷新用户数据失败:", refreshError);
+          } else {
+            console.log("刷新后的用户数据:", refreshedUsers);
+            // 替换原始用户列表数据
+            if (refreshedUsers) {
+              userList.length = 0;
+              refreshedUsers.forEach(user => userList.push(user));
+            }
+          }
+        }
+      }
+      
+      // 统计
+      let active = 0, mau = 0, wau = 0;
+      const userRows = userList.map((u) => {
+        const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
+        const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
+        const daily_count = dailyUserReports.length;
+        // AI调用
+        const ai = aiSettings?.find(a => a.user_id === u.id);
+        const system_ai_calls = typeof ai?.system_ai_calls === 'number' ? ai.system_ai_calls : 0;
+        const custom_ai_calls = typeof ai?.custom_ai_calls === 'number' ? ai.custom_ai_calls : 0;
+        
+        // 使用last_report_edit_at判断活跃状态
+        console.log(`用户 ${u.email} 的最近日报编辑时间:`, u.last_report_edit_at);
+        
+        let lastReportEdit = null;
+        try {
+          if (u.last_report_edit_at) {
+            lastReportEdit = new Date(u.last_report_edit_at);
+            console.log(`解析后的日期对象:`, lastReportEdit);
+          }
+        } catch (e) {
+          console.error(`解析日期失败:`, e);
+        }
+        
+        if (lastReportEdit) active++;
+        if (lastReportEdit && lastReportEdit >= monthAgo) mau++;
+        if (lastReportEdit && lastReportEdit >= sevenDaysAgo) wau++;
+        
+        // 尝试获取最后一次日报编辑时间
+        let lastEditDate = null;
+        try {
+          if (u.last_report_edit_at) {
+            lastEditDate = new Date(u.last_report_edit_at as string).toLocaleString();
+          }
+        } catch (e) {
+          console.error(`处理日期显示失败:`, e);
+          lastEditDate = '日期处理错误';
+        }
+        
+        return {
+          id: u.id,
+          full_name: u.full_name || u.email?.split("@")?.[0] || "用户",
+          email: u.email,
+          project_count,
+          daily_count,
+          system_ai_calls,
+          custom_ai_calls,
+          last_report_edit: lastEditDate, // 使用处理后的日期
+          is_active: !!lastReportEdit // 只根据最近日报编辑时间判断活跃状态
+        };
+      });
+      
+      console.log("处理后的用户数据:", userRows);
+      
+      setStats({
+        total: userList.length,
+        active,
+        mau,
+        wau
+      });
+      setUsers(userRows);
+    } catch (error) {
+      console.error("获取数据失败:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   // 排序+搜索过滤：先按日报数量降序，再按搜索
@@ -123,7 +217,7 @@ export default function AdminPage() {
         <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
           <UserCheckIcon className="w-7 h-7 text-green-500" />
           <div>
-            <div className="text-xs text-gray-500">激活用户</div>
+            <div className="text-xs text-gray-500">活跃用户</div>
             <div className="text-xl font-bold">{stats.active}</div>
           </div>
         </div>
@@ -165,7 +259,7 @@ export default function AdminPage() {
               <th className="px-4 py-2 text-center font-semibold text-gray-600 w-20">日报数</th>
               <th className="px-4 py-2 text-center font-semibold text-gray-600 w-24">系统AI调用</th>
               <th className="px-4 py-2 text-center font-semibold text-gray-600 w-24">自定义AI调用</th>
-              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-36">最近活跃</th>
+              <th className="px-4 py-2 text-center font-semibold text-gray-600 w-36">最近日报编辑</th> {/* 修改列标题 */}
               <th className="px-4 py-2 text-center font-semibold text-gray-600 w-20">状态</th>
             </tr>
           </thead>
@@ -192,7 +286,7 @@ export default function AdminPage() {
                   <td className="px-4 py-2 text-center font-bold text-blue-700">{u.daily_count}</td>
                   <td className="px-4 py-2 text-center">{u.system_ai_calls}</td>
                   <td className="px-4 py-2 text-center">{u.custom_ai_calls}</td>
-                  <td className="px-4 py-2 text-center">{u.last_active || '-'}</td>
+                  <td className="px-4 py-2 text-center">{u.last_report_edit || '-'}</td> {/* 显示最近日报编辑时间 */}
                   <td className="px-4 py-2 text-center">
                     {u.is_active ? (
                       <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">活跃</span>
@@ -208,4 +302,4 @@ export default function AdminPage() {
       </div>
     </div>
   );
-} 
+}
