@@ -187,18 +187,18 @@ export default function TodosPage() {
       try {
         // 获取未开始和进行中的待办
         const { data: activeTodos, error: activeError } = await supabase
-          .from("project_todos")
-          .select("id, content, priority, due_date, status, completed_at")
-          .eq("user_id", user.id)
-          .eq("project_id", selectedProjectId)
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at")
+        .eq("user_id", user.id)
+        .eq("project_id", selectedProjectId)
           .in("status", ["not_started", "in_progress"])
-          .order("due_date", { ascending: true });
+        .order("due_date", { ascending: true });
           
         if (activeError) {
-          setError("加载待办失败");
+        setError("加载待办失败");
           setIsLoading(false);
-          return;
-        }
+        return;
+      }
         
         // 获取最近完成的10个待办
         const { data: completedTodos, error: completedError } = await supabase
@@ -223,7 +223,7 @@ export default function TodosPage() {
         ];
         
         setTodos(allTodos.filter(Boolean) as Todo[]);
-        setNewTodos([]);
+      setNewTodos([]);
       } catch (err) {
         console.error("加载待办失败:", err);
         setError("加载待办失败");
@@ -989,7 +989,7 @@ export default function TodosPage() {
                       {/* 未开始的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'not_started').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                             <div className="flex items-center">
                               <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
                             </div>
@@ -1053,7 +1053,7 @@ export default function TodosPage() {
                       {/* 进行中的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'in_progress').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                             <div className="flex items-center">
                               <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
                             </div>
@@ -1117,7 +1117,7 @@ export default function TodosPage() {
                       {/* 已完成的待办 */}
                       {allTodosEdited.filter(todo => todo.status === 'completed').length > 0 && (
                         <tr className="bg-gray-50">
-                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                          <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                             <div className="flex items-center">
                               <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
                             </div>
@@ -1428,7 +1428,7 @@ export default function TodosPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {/* 新增待办 */}
-                  {newTodos.map((todo, idx) => (
+              {newTodos.map((todo, idx) => (
                     <tr key={"desktop-new-"+idx} className="bg-blue-50 hover:bg-blue-100 transition-colors duration-150 ease-in-out">
                       <td className="px-4 py-2">
                     <input
@@ -1485,12 +1485,12 @@ export default function TodosPage() {
                       </button>
                       </td>
                     </tr>
-                  ))}
+              ))}
                   
                   {/* 未开始的待办 */}
                   {todos.filter(todo => todo.status === 'not_started').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                         <div className="flex items-center">
                           <ClockIcon className="h-4 w-4 mr-1.5 text-gray-600" />未开始
                         </div>
@@ -1500,34 +1500,34 @@ export default function TodosPage() {
                   {Array.isArray(todos) && todos.filter(todo => todo.status === 'not_started').map((todo, idx) => (
                     <tr key={`desktop-not-started-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
                       <td className="px-4 py-2">
-                        <input
+                    <input
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          value={todo.content}
+                      value={todo.content}
                           onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "content", e.target.value)}
-                        />
+                    />
                       </td>
                       <td className="px-4 py-2">
-                        <select
+                      <select
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300"
-                          value={todo.priority}
+                        value={todo.priority}
                           onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "priority", e.target.value)}
-                        >
-                          {PRIORITY_OPTIONS.map(opt => (
+                      >
+                        {PRIORITY_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
-                          ))}
-                        </select>
+                        ))}
+                      </select>
                       </td>
                       <td className="px-4 py-2">
                         <div className="relative w-full">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <CalendarIcon className="h-4 w-4 text-gray-400" />
                           </div>
-                          <input
-                            type="date"
+                      <input
+                        type="date"
                             className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
-                            value={todo.due_date}
+                        value={todo.due_date}
                             onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
-                          />
+                      />
                         </div>
                       </td>
                       <td className="px-4 py-2">
@@ -1558,7 +1558,7 @@ export default function TodosPage() {
                   {/* 进行中的待办 */}
                   {todos.filter(todo => todo.status === 'in_progress').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                         <div className="flex items-center">
                           <PlayIcon className="h-4 w-4 mr-1.5 text-blue-600" />进行中
                         </div>
@@ -1626,7 +1626,7 @@ export default function TodosPage() {
                   {/* 已完成的待办 */}
                   {todos.filter(todo => todo.status === 'completed').length > 0 && (
                     <tr className="bg-gray-50">
-                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700 block">
+                      <td colSpan={5} className="px-4 py-2 font-medium text-gray-700">
                         <div className="flex items-center">
                           <CheckCircleIcon className="h-4 w-4 mr-1.5 text-green-600" />已完成（最近10条）
                         </div>
@@ -1802,9 +1802,9 @@ export default function TodosPage() {
                         {PRIORITY_OPTIONS.find(opt => opt.value === todo.priority)?.label}优先级
                       </span>
                       <button className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors" onClick={() => handleShowTodoDeleteConfirm(todo.id)}>
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
                     
                     {/* 内容 */}
                     <div className="space-y-1">
@@ -1828,7 +1828,7 @@ export default function TodosPage() {
                           <option key={opt.value} value={opt.value} className={opt.color}>{opt.label}</option>
                         ))}
                       </select>
-                    </div>
+                  </div>
                     
                     {/* 截止时间 */}
                     <div className="space-y-1">
@@ -1836,7 +1836,7 @@ export default function TodosPage() {
                       <div className="relative w-full">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                           <CalendarIcon className="h-4 w-4 text-gray-400" />
-                        </div>
+                </div>
                         <input
                           type="date"
                           className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}

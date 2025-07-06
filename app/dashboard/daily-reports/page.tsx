@@ -450,23 +450,23 @@ export default function DailyReportsPage() {
 
   // 在页面可见性变化时移除待办刷新
   useEffect(() => {
-    const handleVisibilityChange = () => {
+      const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && user) {
         // 检查今日日报状态
         checkTodayReport();
-        
+          
         // 如果当前周数据已加载，刷新当前周数据
         if (currentWeekData && weekDataLoadedRef.current[`${currentWeekData.year}-${currentWeekData.weekNumber}`]) {
           fetchWeekReports(currentWeekData, true);
+          }
         }
-      }
-    };
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
   }, [user, currentWeekData, checkTodayReport, fetchWeekReports]);
 
   // 处理周切换
@@ -943,7 +943,7 @@ export default function DailyReportsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
         <h1 className="text-xl md:text-2xl font-bold">日报管理</h1>
       </div>
-      
+
       {/* 今日日报提醒 */}
       {todayReportReminder && !todayReportReminder.hasReport && (
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md">

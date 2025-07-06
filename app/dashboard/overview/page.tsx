@@ -757,73 +757,73 @@ export default function DashboardOverview() {
                   查看全部
                 </Link>
               </div>
-              {filteredReports.length > 0 ? (
-                filteredReports.map((report) => (
-                <div 
-                  key={report.id} 
-                  className={`p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 ${isToday(report.date) ? 'bg-blue-50' : ''}`}
-                  onClick={() => handleReportSelect(report)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="w-full">
-                      <div className="flex items-center justify-between">
-                        <h3 className={`text-sm md:text-base font-medium ${isToday(report.date) ? 'text-blue-700' : ''}`}>
-                          {format(parseISO(report.date), 'yyyy-MM-dd')}
-                          {isToday(report.date) && (
-                            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
-                              今日
-                            </span>
-                          )}
-                        </h3>
-                        <div className="flex items-center space-x-1 md:space-x-2">
-                          <button 
-                            onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
-                            className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
-                            title="复制日报内容"
-                          >
-                            <CopyIcon className="h-3 w-3 md:h-4 md:w-4" />
-                          </button>
-                          {report.is_plan ? (
-                            <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                              已计划
-                            </span>
-                          ) : (
-                            <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-green-100 text-green-800">
-                              {report.status}
-                            </span>
-                          )}
-                        </div>
+          {filteredReports.length > 0 ? (
+            filteredReports.map((report) => (
+              <div 
+                key={report.id} 
+                className={`p-3 md:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 ${isToday(report.date) ? 'bg-blue-50' : ''}`}
+                onClick={() => handleReportSelect(report)}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="w-full">
+                    <div className="flex items-center justify-between">
+                      <h3 className={`text-sm md:text-base font-medium ${isToday(report.date) ? 'text-blue-700' : ''}`}>
+                        {format(parseISO(report.date), 'yyyy-MM-dd')}
+                        {isToday(report.date) && (
+                          <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
+                            今日
+                          </span>
+                        )}
+                      </h3>
+                      <div className="flex items-center space-x-1 md:space-x-2">
+                        <button 
+                          onClick={(e) => {e.stopPropagation(); handleCopyReport(e, report);}}
+                          className="p-1 md:p-1.5 rounded-md hover:bg-blue-100 text-blue-600 transition-colors"
+                          title="复制日报内容"
+                        >
+                          <CopyIcon className="h-3 w-3 md:h-4 md:w-4" />
+                        </button>
+                        {report.is_plan ? (
+                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                            已计划
+                          </span>
+                        ) : (
+                          <span className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs rounded-full bg-green-100 text-green-800">
+                            {report.status}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">
-                        {report.is_plan ? '计划工作内容' : '今日工作内容'}
-                      </p>
-                      
-                      <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
-                        {getReportProjects(report).map(project => (
-                          <div key={project.id} className={`border-l-2 ${isToday(report.date) ? 'border-blue-600' : 'border-blue-500'} pl-2 md:pl-3`}>
-                            <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
-                              {project.name} ({project.code})
-                            </div>
-                            <ul className="space-y-0.5 md:space-y-1">
-                              {getProjectWorkItems(report, project.id).map((item, idx) => (
-                                <li key={idx} className="text-xs md:text-sm text-gray-500 flex items-start">
-                                  <span className="mr-1 md:mr-2 text-gray-400">•</span>
-                                  <span>{item.content}</span>
-                                </li>
-                              ))}
-                            </ul>
+                    </div>
+                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 md:mt-1">
+                      {report.is_plan ? '计划工作内容' : '今日工作内容'}
+                    </p>
+                    
+                    <div className="mt-2 md:mt-3 space-y-2 md:space-y-3">
+                      {getReportProjects(report).map(project => (
+                        <div key={project.id} className={`border-l-2 ${isToday(report.date) ? 'border-blue-600' : 'border-blue-500'} pl-2 md:pl-3`}>
+                          <div className="text-xs md:text-sm font-medium text-blue-600 mb-0.5 md:mb-1">
+                            {project.name} ({project.code})
                           </div>
-                        ))}
-                      </div>
+                          <ul className="space-y-0.5 md:space-y-1">
+                            {getProjectWorkItems(report, project.id).map((item, idx) => (
+                              <li key={idx} className="text-xs md:text-sm text-gray-500 flex items-start">
+                                <span className="mr-1 md:mr-2 text-gray-400">•</span>
+                                <span>{item.content}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
-                暂无{activeReportTab === 'reports' ? '日报' : '计划'}记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
               </div>
-            )}
+            ))
+          ) : (
+            <div className="p-3 md:p-6 text-center text-xs md:text-sm text-gray-500">
+              暂无{activeReportTab === 'reports' ? '日报' : '计划'}记录，<Link href="/dashboard/daily-reports/new" className="text-blue-600 hover:text-blue-800">去创建一个</Link>
+            </div>
+          )}
           </>
           ) : (
             // 待办计划内容显示
