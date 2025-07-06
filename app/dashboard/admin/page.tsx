@@ -16,6 +16,37 @@ interface UserRow {
   is_active: boolean;
 }
 
+// 定义数据类型
+interface UserProfile {
+  id: string;
+  full_name?: string;
+  email: string;
+  last_report_edit_at?: string;
+}
+
+interface Project {
+  id: string;
+  user_id: string;
+}
+
+interface DailyReport {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+interface AISettings {
+  user_id: string;
+  system_ai_calls?: number;
+  custom_ai_calls?: number;
+}
+
+interface RecentReport {
+  id: string;
+  user_id: string;
+  updated_at: string;
+}
+
 export default function AdminPage() {
   const supabase = createClient();
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -48,7 +79,6 @@ export default function AdminPage() {
       console.log("用户数据:", userList);
       
       // 2. 获取项目、日报、AI调用等统计
-      const userIds = userList.map((u: any) => u.id);
       // 项目数
       const { data: projects } = await supabase
         .from("projects")
@@ -84,8 +114,8 @@ export default function AdminPage() {
           console.log("找到最近的日报:", recentReports.length);
           
           // 按用户分组，找到每个用户最近的日报
-          const userLatestReports = {};
-          recentReports.forEach((report) => {
+          const userLatestReports: Record<string, string> = {};
+          (recentReports as RecentReport[]).forEach((report) => {
             if (report.user_id && report.updated_at) {
               if (!userLatestReports[report.user_id] || 
                   new Date(report.updated_at) > new Date(userLatestReports[report.user_id])) {
@@ -118,8 +148,9 @@ export default function AdminPage() {
             console.log("刷新后的用户数据:", refreshedUsers);
             // 替换原始用户列表数据
             if (refreshedUsers) {
-              userList.length = 0;
-              refreshedUsers.forEach(user => userList.push(user));
+              const typedUserList = userList as UserProfile[];
+              typedUserList.length = 0;
+              (refreshedUsers as UserProfile[]).forEach(user => typedUserList.push(user));
             }
           }
         }
@@ -127,12 +158,12 @@ export default function AdminPage() {
       
       // 统计
       let active = 0, mau = 0, wau = 0;
-      const userRows = userList.map((u) => {
-        const project_count = projects?.filter(p => p.user_id === u.id).length || 0;
-        const dailyUserReports = dailies?.filter(d => d.user_id === u.id) || [];
+      const userRows = (userList as UserProfile[]).map((u) => {
+        const project_count = (projects as Project[])?.filter(p => p.user_id === u.id).length || 0;
+        const dailyUserReports = (dailies as DailyReport[])?.filter(d => d.user_id === u.id) || [];
         const daily_count = dailyUserReports.length;
         // AI调用
-        const ai = aiSettings?.find(a => a.user_id === u.id);
+        const ai = (aiSettings as AISettings[])?.find(a => a.user_id === u.id);
         const system_ai_calls = typeof ai?.system_ai_calls === 'number' ? ai.system_ai_calls : 0;
         const custom_ai_calls = typeof ai?.custom_ai_calls === 'number' ? ai.custom_ai_calls : 0;
         
@@ -157,7 +188,7 @@ export default function AdminPage() {
         let lastEditDate = null;
         try {
           if (u.last_report_edit_at) {
-            lastEditDate = new Date(u.last_report_edit_at as string).toLocaleString();
+            lastEditDate = new Date(u.last_report_edit_at).toLocaleString();
           }
         } catch (e) {
           console.error(`处理日期显示失败:`, e);
