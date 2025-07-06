@@ -36,6 +36,7 @@ interface Stats {
   pendingWeeklyReports: number;
   projectCount: number;
   monthlyWorkItemCount: number;
+  monthlyPendingWorkItemCount: number; // 添加本月未完成的待办数量
 }
 
 // 添加待办相关接口
@@ -71,7 +72,8 @@ export default function DashboardOverview() {
     weeklyReportCount: 0,
     pendingWeeklyReports: 0,
     projectCount: 0,
-    monthlyWorkItemCount: 0
+    monthlyWorkItemCount: 0,
+    monthlyPendingWorkItemCount: 0
   });
   
   // 添加报告标签切换状态
@@ -197,6 +199,19 @@ export default function DashboardOverview() {
         monthlyWorkItemCount += (report.report_items || []).length;
       });
       
+      // 获取本月未完成的待办数量
+      const { data: monthlyPendingTodos, error: pendingTodosError } = await supabase
+        .from("project_todos")
+        .select("id")
+        .eq("user_id", userId)
+        .in("status", ["not_started", "in_progress"])
+        .order("due_date", { ascending: true });
+      
+      if (pendingTodosError) throw pendingTodosError;
+      
+      // 计算本月未完成待办数量
+      const monthlyPendingWorkItemCount = monthlyPendingTodos?.length || 0;
+      
       // 获取当前周的周报是否已生成
       const currentYear = today.getFullYear();
       const currentWeek = getWeek(today, { locale: zhCN });
@@ -229,7 +244,8 @@ export default function DashboardOverview() {
         weeklyReportCount: weeklyReports?.length || 0,
         pendingWeeklyReports,
         projectCount: projectCount || 0,
-        monthlyWorkItemCount
+        monthlyWorkItemCount,
+        monthlyPendingWorkItemCount
       });
       
     } catch (error) {
@@ -392,10 +408,10 @@ export default function DashboardOverview() {
       {
         id: 4,
         name: "本月工作量",
-        value: stats.monthlyWorkItemCount.toString(),
+        value: ((stats.monthlyWorkItemCount || 0) + (stats.monthlyPendingWorkItemCount || 0)).toString(),
         unit: "项",
         icon: <BarChart3Icon className="h-full w-full text-purple-600" />,
-        description: `本月已完成${stats.monthlyWorkItemCount}项工作`,
+        description: `本月已完成${stats.monthlyWorkItemCount || 0}项，待完成${stats.monthlyPendingWorkItemCount || 0}项`,
       },
     ];
   };
@@ -869,13 +885,6 @@ export default function DashboardOverview() {
                         <div className="space-y-2">
                           {project.todos.map(todo => (
                             <div key={todo.id} className="flex items-start">
-                              {/* 状态图标 */}
-                              {todo.status === 'not_started' ? (
-                                <ClockIcon className="h-3.5 w-3.5 mr-1.5 text-gray-600 mt-0.5 flex-shrink-0" />
-                              ) : (
-                                <PlayIcon className="h-3.5 w-3.5 mr-1.5 text-blue-600 mt-0.5 flex-shrink-0" />
-                              )}
-                              
                               {/* 待办内容 */}
                               <div className="flex-1">
                                 <div className="flex items-center">
