@@ -1278,14 +1278,14 @@ export default function TodosPage() {
                     {safeCount(project.inProgressCount) > 0 && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
                         进行中 {project.inProgressCount}
-                      </span>
-                    )}
+                    </span>
+                  )}
                     {safeCount(project.notStartedCount) > 0 && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
                         未开始 {project.notStartedCount}
-                      </span>
-                    )}
-                  </div>
+                    </span>
+                  )}
+                </div>
                 </button>
               </li>
             ))}

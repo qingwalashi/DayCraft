@@ -97,6 +97,11 @@ export default function DashboardOverview() {
   // 添加待办相关状态
   const [projectsWithTodos, setProjectsWithTodos] = useState<ProjectWithTodos[]>([]);
   const [isLoadingTodos, setIsLoadingTodos] = useState(false);
+  
+  // 添加待办预览相关状态
+  const [isTodoPreviewOpen, setIsTodoPreviewOpen] = useState(false);
+  const [previewProjectWithTodos, setPreviewProjectWithTodos] = useState<ProjectWithTodos[]>([]);
+  const [showOnlyTomorrow, setShowOnlyTomorrow] = useState(false);
 
   // 获取项目数据
   const fetchProjects = useCallback(async () => {
@@ -677,6 +682,154 @@ export default function DashboardOverview() {
     }
   };
 
+  // 处理待办预览
+  const handleTodoPreview = () => {
+    setPreviewProjectWithTodos([...projectsWithTodos]);
+    setIsTodoPreviewOpen(true);
+  };
+  
+  // 关闭待办预览
+  const closeTodoPreview = () => {
+    setIsTodoPreviewOpen(false);
+  };
+  
+  // 切换待办显示模式（全部/截至明天）
+  const toggleTodoFilter = () => {
+    setShowOnlyTomorrow(!showOnlyTomorrow);
+  };
+  
+  // 根据过滤条件筛选待办
+  const getFilteredTodos = (projects: ProjectWithTodos[]) => {
+    if (!showOnlyTomorrow) return projects;
+    
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+    
+    return projects.map(project => ({
+      ...project,
+      todos: project.todos.filter(todo => todo.due_date <= tomorrowStr)
+    })).filter(project => project.todos.length > 0);
+  };
+  
+  // 复制待办内容
+  const handleCopyTodos = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const filteredProjects = getFilteredTodos(previewProjectWithTodos);
+    let content = '';
+    
+    filteredProjects.forEach(project => {
+      content += `${project.name}:\n`;
+      
+      project.todos.forEach(todo => {
+        content += `  - ${todo.content}${todo.status === 'in_progress' ? ' [进行中]' : ''}\n`;
+      });
+    });
+    
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(content)
+          .then(() => {
+            toast.success('待办内容已复制到剪贴板');
+          })
+          .catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyTextToClipboard(content);
+          });
+      } else {
+        fallbackCopyTextToClipboard(content);
+      }
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast.error('复制失败，请重试');
+    }
+  };
+
+  // 复制待办到钉钉
+  const handleCopyTodosToDingTalk = () => {
+    if (!dingTalkSettings || !dingTalkSettings.is_enabled) return;
+    
+    const filteredProjects = getFilteredTodos(previewProjectWithTodos);
+    let yamlContent = '';
+    
+    // 按项目组织工作内容
+    filteredProjects.forEach(project => {
+      yamlContent += `${project.name}:\n`;
+      
+      project.todos.forEach(todo => {
+        yamlContent += `  - ${todo.content}${todo.status === 'in_progress' ? ' [进行中]' : ''}\n`;
+      });
+    });
+    
+    try {
+      // 判断是否是iOS设备
+      if (isIOS) {
+        try {
+          // 先尝试复制内容到剪贴板
+          fallbackCopyTextToClipboard(yamlContent);
+          toast.success('内容已复制到剪贴板');
+          
+          // 延迟一下再跳转，确保复制操作完成
+          setTimeout(() => {
+            try {
+              // 构建URL Scheme，确保URL编码正确
+              const encodedContent = encodeURIComponent(yamlContent);
+              
+              // 检查URL scheme格式是否正确，确保以正确的格式结尾
+              let dingTalkUrl = dingTalkSettings.ios_url_scheme;
+              if (!dingTalkUrl.endsWith('=')) {
+                // 如果URL不是以=结尾，确保有合适的连接符
+                if (!dingTalkUrl.endsWith('/') && !dingTalkUrl.endsWith('=') && !dingTalkUrl.endsWith('?')) {
+                  dingTalkUrl += '?url=';
+                }
+              }
+              
+              // 构建最终URL
+              const finalUrl = `${dingTalkUrl}${encodedContent}`;
+              console.log('跳转到钉钉URL:', finalUrl);
+              
+              // 使用iframe方式跳转，这在iOS上更可靠
+              const iframe = document.createElement('iframe');
+              iframe.style.display = 'none';
+              iframe.src = finalUrl;
+              document.body.appendChild(iframe);
+              
+              // 短暂延迟后移除iframe
+              setTimeout(() => {
+                document.body.removeChild(iframe);
+                
+                // 作为备用，也尝试直接跳转
+                window.location.href = finalUrl;
+              }, 100);
+            } catch (err) {
+              console.error('钉钉跳转失败:', err);
+              toast.error('跳转到钉钉失败，请手动粘贴内容');
+            }
+          }, 300);
+        } catch (err) {
+          console.error('复制或跳转失败:', err);
+          toast.error('操作失败，请重试');
+        }
+      } else {
+        // 非iOS设备只复制内容并提示
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，此功能仅支持iOS客户端直接跳转到钉钉');
+      }
+    } catch (err) {
+      console.error('操作失败:', err);
+      toast.error('操作失败，请重试');
+      
+      // 作为最后的备用方案，至少尝试复制内容
+      try {
+        fallbackCopyTextToClipboard(yamlContent);
+        toast.info('内容已复制到剪贴板，但跳转失败');
+      } catch (e) {
+        console.error('备用复制也失败:', e);
+      }
+    }
+  };
+
   if (loading || isLoading || !user) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -877,7 +1030,11 @@ export default function DashboardOverview() {
                   
                   <div className="space-y-4">
                     {projectsWithTodos.map(project => (
-                      <div key={project.id} className="border-l-2 border-blue-500 pl-3 py-1">
+                      <div 
+                        key={project.id} 
+                        className="border-l-2 border-blue-500 pl-3 py-1 cursor-pointer hover:bg-gray-50"
+                        onClick={handleTodoPreview}
+                      >
                         <div className="text-sm font-medium text-blue-600 mb-2 flex items-center">
                           <FileTextIcon className="h-3.5 w-3.5 mr-1.5" />
                           {project.name} ({project.code})
@@ -892,7 +1049,12 @@ export default function DashboardOverview() {
                                     todo.priority === 'high' ? 'bg-red-500' : 
                                     todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
                                   }`}></span>
-                                  <span className="text-xs md:text-sm text-gray-700">{todo.content}</span>
+                                  <span className="text-xs md:text-sm text-gray-700">
+                                    {todo.content}
+                                    {todo.status === 'in_progress' && (
+                                      <span className="text-blue-600 font-medium"> [进行中]</span>
+                                    )}
+                                  </span>
                                 </div>
                                 <div className="ml-4 text-xs text-gray-400 mt-0.5">
                                   截止日期: {todo.due_date}
@@ -999,6 +1161,144 @@ export default function DashboardOverview() {
               </Link>
               <button
                 onClick={closePreview}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 待办预览弹窗 */}
+      {isTodoPreviewOpen && (
+        <div 
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 overflow-hidden"
+          onClick={closeTodoPreview}
+        >
+          <div 
+            className="bg-white rounded-lg p-3 md:p-6 max-w-4xl w-full mx-2 md:mx-4 max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-2 md:mb-4">
+              <h3 className="text-sm md:text-lg font-medium text-gray-900 truncate pr-2">
+                待办计划详情
+              </h3>
+              <button
+                onClick={closeTodoPreview}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <XIcon className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </div>
+            
+            <div className="flex items-center mb-2 md:mb-4 justify-between">
+              <div className="text-xs text-gray-500 flex flex-wrap gap-3">
+                <div className="flex items-center">
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-1"></span>
+                  <span>高优先级</span>
+                </div>
+                <div className="flex items-center">
+                  <span className="inline-block h-2 w-2 rounded-full bg-yellow-500 mr-1"></span>
+                  <span>中优先级</span>
+                </div>
+                <div className="flex items-center">
+                  <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                  <span>低优先级</span>
+                </div>
+                <span className="text-xs text-gray-500 ml-2 border-l border-gray-200 pl-2">
+                  {getFilteredTodos(previewProjectWithTodos).reduce((acc, project) => acc + project.todos.length, 0)} 个待办
+                </span>
+              </div>
+              <div className="flex items-center">
+                <div className="flex items-center">
+                  <span className="text-xs text-gray-500 mr-2">全部时间</span>
+                  <button
+                    onClick={toggleTodoFilter}
+                    className="relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                    style={{ backgroundColor: showOnlyTomorrow ? '#3b82f6' : '#e5e7eb' }}
+                    role="switch"
+                    aria-checked={showOnlyTomorrow}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        showOnlyTomorrow ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-xs text-gray-500 ml-2">截至明天</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-grow overflow-auto">
+              <div className="space-y-3 md:space-y-4">
+                {getFilteredTodos(previewProjectWithTodos).map(project => (
+                  <div key={project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
+                    <div className="flex items-center mb-1 md:mb-2">
+                      <div className="text-sm font-medium text-blue-600">
+                        {project.name}
+                      </div>
+                      <div className="text-sm text-gray-500 ml-1">
+                        ({project.code})
+                      </div>
+                    </div>
+                    <ul className="space-y-1 md:space-y-2">
+                      {project.todos.map((todo, idx) => (
+                        <li key={idx} className="text-xs md:text-sm text-gray-600 flex items-start">
+                          <span className={`mr-1 md:mr-2 flex-shrink-0 inline-block h-2 w-2 rounded-full ${
+                            todo.priority === 'high' ? 'bg-red-500' : 
+                            todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}></span>
+                          <div>
+                            <span className="break-words">
+                              {todo.content}
+                              {todo.status === 'in_progress' && (
+                                <span className="text-blue-600 font-medium"> [进行中]</span>
+                              )}
+                            </span>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              截止日期: {todo.due_date}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-1 md:space-x-3 mt-3 md:mt-4">
+              <button
+                onClick={handleCopyTodos}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <CopyIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                复制内容
+              </button>
+              {dingTalkSettings && dingTalkSettings.is_enabled && (
+                <button
+                  onClick={(e) => {e.stopPropagation(); handleCopyTodosToDingTalk();}}
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                >
+                  <svg viewBox="0 0 1024 1024" width="16" height="16" className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1 fill-current text-blue-600">
+                    <path d="M573.7 252.5C422.5 197.4 201.3 96.7 201.3 96.7c-15.7-4.1-17.9 11.1-17.9 11.1-5 61.1 33.6 160.5 53.6 182.8 19.9 22.3 319.1 113.7 319.1 113.7S326 357.9 270.5 341.9c-55.6-16-37.9 17.8-37.9 17.8 11.4 61.7 64.9 131.8 107.2 138.4 42.2 6.6 220.1 4 220.1 4s-35.5 4.1-93.2 11.9c-42.7 5.8-97 12.5-111.1 17.8-33.1 12.5 24 62.6 24 62.6 84.7 76.8 129.7 50.5 129.7 50.5 33.3-10.7 61.4-18.5 85.2-24.2L565 743.1h84.6L603 928l205.3-271.9H700.8l22.3-38.7c.3.5.4.8.4.8S799.8 496.1 829 433.8l.6-1h-.1c5-10.8 8.6-19.7 10-25.8 17-71.3-114.5-99.4-265.8-154.5z"/>
+                  </svg>
+                  复制到钉钉
+                </button>
+              )}
+              <Link
+                href="/dashboard/todos"
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-blue-300 text-xs md:text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                管理待办
+              </Link>
+              <button
+                onClick={closeTodoPreview}
                 className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
                 关闭
