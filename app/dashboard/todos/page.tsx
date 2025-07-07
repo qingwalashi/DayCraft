@@ -30,6 +30,8 @@ interface Project {
   highCount?: number;
   mediumCount?: number;
   lowCount?: number;
+  inProgressCount?: number; // 新增：进行中的待办数量
+  notStartedCount?: number; // 新增：未开始的待办数量
 }
 interface Todo {
   id?: string;
@@ -91,7 +93,13 @@ export default function TodosPage() {
   const [allTodosEdited, setAllTodosEdited] = useState<(Todo & { projectName: string })[]>([]);
   const [isAllTodosSaving, setIsAllTodosSaving] = useState(false);
   // 新增：全部视图优先级统计
-  const [allPriorityCount, setAllPriorityCount] = useState({ high: 0, medium: 0, low: 0 });
+  const [allPriorityCount, setAllPriorityCount] = useState({ 
+    high: 0, 
+    medium: 0, 
+    low: 0,
+    inProgress: 0, // 新增：进行中的待办数量
+    notStarted: 0  // 新增：未开始的待办数量
+  });
   
   // 新增：完成时间确认相关状态
   const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
@@ -162,10 +170,35 @@ export default function TodosPage() {
                 .not("status", "eq", "completed");
               return count || 0;
             };
-            const [highCount, mediumCount, lowCount] = await Promise.all([
+            
+            // 统计进行中的待办数量
+            const getInProgressCount = async () => {
+              const { count } = await supabase
+                .from("project_todos")
+                .select("id", { count: 'exact', head: true })
+                .eq("user_id", user.id)
+                .eq("project_id", project.id)
+                .eq("status", "in_progress");
+              return count || 0;
+            };
+            
+            // 统计未开始的待办数量
+            const getNotStartedCount = async () => {
+              const { count } = await supabase
+                .from("project_todos")
+                .select("id", { count: 'exact', head: true })
+                .eq("user_id", user.id)
+                .eq("project_id", project.id)
+                .eq("status", "not_started");
+              return count || 0;
+            };
+            
+            const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
               getCount("high"),
               getCount("medium"),
-              getCount("low")
+              getCount("low"),
+              getInProgressCount(),
+              getNotStartedCount()
             ]);
             // 总数
             const todoCount = highCount + mediumCount + lowCount;
@@ -174,7 +207,9 @@ export default function TodosPage() {
               todoCount,
               highCount,
               mediumCount,
-              lowCount
+              lowCount,
+              inProgressCount,
+              notStartedCount
             };
           })
         );
@@ -320,13 +355,21 @@ export default function TodosPage() {
           setAllTodos(allTodosWithProject);
           
           // 统计优先级数量
-          const count = { high: 0, medium: 0, low: 0 };
+          const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
           for (const t of allTodosWithProject) {
             // 只统计未完成的待办（未开始和进行中）
             if (t.status !== 'completed') {
               if (t.priority === 'high') count.high++;
               else if (t.priority === 'medium') count.medium++;
               else if (t.priority === 'low') count.low++;
+            }
+            // 单独统计进行中的待办
+            if (t.status === 'in_progress') {
+              count.inProgress++;
+            }
+            // 单独统计未开始的待办
+            if (t.status === 'not_started') {
+              count.notStarted++;
             }
           }
           setAllPriorityCount(count);
@@ -424,13 +467,21 @@ export default function TodosPage() {
                   setAllTodos(allTodosWithProject);
                   
                   // 统计优先级数量
-                  const count = { high: 0, medium: 0, low: 0 };
+                  const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
                   for (const t of allTodosWithProject) {
                     // 只统计未完成的待办（未开始和进行中）
                     if (t.status !== 'completed') {
                       if (t.priority === 'high') count.high++;
                       else if (t.priority === 'medium') count.medium++;
                       else if (t.priority === 'low') count.low++;
+                    }
+                    // 单独统计进行中的待办
+                    if (t.status === 'in_progress') {
+                      count.inProgress++;
+                    }
+                    // 单独统计未开始的待办
+                    if (t.status === 'not_started') {
+                      count.notStarted++;
                     }
                   }
                   setAllPriorityCount(count);
@@ -533,10 +584,35 @@ export default function TodosPage() {
                           .not("status", "eq", "completed");
                         return count || 0;
                       };
-                      const [highCount, mediumCount, lowCount] = await Promise.all([
+                      
+                      // 统计进行中的待办数量
+                      const getInProgressCount = async () => {
+                        const { count } = await supabase
+                          .from("project_todos")
+                          .select("id", { count: 'exact', head: true })
+                          .eq("user_id", user.id)
+                          .eq("project_id", project.id)
+                          .eq("status", "in_progress");
+                        return count || 0;
+                      };
+                      
+                      // 统计未开始的待办数量
+                      const getNotStartedCount = async () => {
+                        const { count } = await supabase
+                          .from("project_todos")
+                          .select("id", { count: 'exact', head: true })
+                          .eq("user_id", user.id)
+                          .eq("project_id", project.id)
+                          .eq("status", "not_started");
+                        return count || 0;
+                      };
+                      
+                      const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
                         getCount("high"),
                         getCount("medium"),
-                        getCount("low")
+                        getCount("low"),
+                        getInProgressCount(),
+                        getNotStartedCount()
                       ]);
                       // 总数
                       const todoCount = highCount + mediumCount + lowCount;
@@ -545,7 +621,9 @@ export default function TodosPage() {
                         todoCount,
                         highCount,
                         mediumCount,
-                        lowCount
+                        lowCount,
+                        inProgressCount,
+                        notStartedCount
                       };
                     })
                   );
@@ -875,10 +953,35 @@ export default function TodosPage() {
               .not("status", "eq", "completed");
             return count || 0;
           };
-          const [highCount, mediumCount, lowCount] = await Promise.all([
+          
+          // 统计进行中的待办数量
+          const getInProgressCount = async () => {
+            const { count } = await supabase
+              .from("project_todos")
+              .select("id", { count: 'exact', head: true })
+              .eq("user_id", user.id)
+              .eq("project_id", project.id)
+              .eq("status", "in_progress");
+            return count || 0;
+          };
+          
+          // 统计未开始的待办数量
+          const getNotStartedCount = async () => {
+            const { count } = await supabase
+              .from("project_todos")
+              .select("id", { count: 'exact', head: true })
+              .eq("user_id", user.id)
+              .eq("project_id", project.id)
+              .eq("status", "not_started");
+            return count || 0;
+          };
+          
+          const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
             getCount("high"),
             getCount("medium"),
-            getCount("low")
+            getCount("low"),
+            getInProgressCount(),
+            getNotStartedCount()
           ]);
           const todoCount = highCount + mediumCount + lowCount;
           return {
@@ -886,7 +989,9 @@ export default function TodosPage() {
             todoCount,
             highCount,
             mediumCount,
-            lowCount
+            lowCount,
+            inProgressCount,
+            notStartedCount
           };
         })
       );
@@ -1068,6 +1173,26 @@ export default function TodosPage() {
       }));
       
       setAllTodos(todosWithProject);
+      
+      // 统计优先级数量
+      const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
+      for (const t of todosWithProject) {
+        // 只统计未完成的待办（未开始和进行中）
+        if (t.status !== 'completed') {
+          if (t.priority === 'high') count.high++;
+          else if (t.priority === 'medium') count.medium++;
+          else if (t.priority === 'low') count.low++;
+        }
+        // 单独统计进行中的待办
+        if (t.status === 'in_progress') {
+          count.inProgress++;
+        }
+        // 单独统计未开始的待办
+        if (t.status === 'not_started') {
+          count.notStarted++;
+        }
+      }
+      setAllPriorityCount(count);
       setError(null);
       
       // 刷新项目统计
@@ -1120,16 +1245,18 @@ export default function TodosPage() {
               >
                 <CalendarIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                 <span className="truncate flex-1 text-left">全部</span>
+                
+                {/* 添加进行中和未开始数量 */}
                 <div className="flex flex-shrink-0 gap-1">
-                  {/* 优先级统计标签 */}
-                  {allPriorityCount.high > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">高 {allPriorityCount.high}</span>
+                  {allPriorityCount.inProgress > 0 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                      进行中 {allPriorityCount.inProgress}
+                    </span>
                   )}
-                  {allPriorityCount.medium > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">中 {allPriorityCount.medium}</span>
-                  )}
-                  {allPriorityCount.low > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">低 {allPriorityCount.low}</span>
+                  {allPriorityCount.notStarted > 0 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                      未开始 {allPriorityCount.notStarted}
+                    </span>
                   )}
                 </div>
               </button>
@@ -1145,23 +1272,20 @@ export default function TodosPage() {
                 >
                   <ChevronRightIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                   <span className="truncate flex-1 text-left">{project.name}</span>
+                  
+                  {/* 添加进行中和未开始数量 */}
                   <div className="flex flex-shrink-0 gap-1">
-                  {safeCount(project.highCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
-                      高 {project.highCount}
-                    </span>
-                  )}
-                  {safeCount(project.mediumCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
-                      中 {project.mediumCount}
-                    </span>
-                  )}
-                  {safeCount(project.lowCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                      低 {project.lowCount}
-                    </span>
-                  )}
-                </div>
+                    {safeCount(project.inProgressCount) > 0 && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                        进行中 {project.inProgressCount}
+                      </span>
+                    )}
+                    {safeCount(project.notStartedCount) > 0 && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                        未开始 {project.notStartedCount}
+                      </span>
+                    )}
+                  </div>
                 </button>
               </li>
             ))}
