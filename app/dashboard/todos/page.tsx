@@ -44,7 +44,10 @@ interface Todo {
 const ALL_PROJECTS = "ALL_PROJECTS";
 
 // 工具函数：判断截止日期是否为今天或更早
-function isPastOrToday(dateStr: string) {
+function isPastOrToday(dateStr: string, status?: string) {
+  // 如果是已完成状态，不标红
+  if (status === 'completed') return false;
+  
   if (!dateStr) return false;
   const today = new Date();
   const date = parseISO(dateStr);
@@ -235,8 +238,10 @@ export default function TodosPage() {
 
   // 添加新待办
   const handleAddTodo = () => {
-    if (newTodos.length + todos.length >= 10) {
-      setError("每个项目最多只能添加10个待办");
+    // 只统计未开始和进行中的待办数量
+    const activeCount = todos.filter(todo => todo.status !== 'completed').length;
+    if (newTodos.length + activeCount >= 10) {
+      setError("每个项目未开始和进行中的待办最多只能添加10个");
       return;
     }
     setNewTodos([
@@ -919,7 +924,7 @@ export default function TodosPage() {
                 <button
                     className="flex items-center px-4 py-2 border rounded-lg text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition"
                   onClick={handleAddTodo}
-                  disabled={newTodos.length + todos.length >= 10}
+                  disabled={newTodos.length + todos.filter(todo => todo.status !== 'completed').length >= 10}
                 >
                   <PlusIcon className="h-5 w-5 mr-2" /> 
                   <span>添加待办</span>
@@ -1024,7 +1029,7 @@ export default function TodosPage() {
                               </div>
                               <input
                                 type="date"
-                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                                 value={todo.due_date}
                                 onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                               />
@@ -1088,7 +1093,7 @@ export default function TodosPage() {
                               </div>
                               <input
                                 type="date"
-                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                                 value={todo.due_date}
                                 onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                               />
@@ -1152,7 +1157,7 @@ export default function TodosPage() {
                               </div>
                               <input
                                 type="date"
-                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                                className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                                 value={todo.due_date}
                                 onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                               />
@@ -1226,7 +1231,7 @@ export default function TodosPage() {
                             </div>
                             <input
                               type="date"
-                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                               value={todo.due_date}
                               onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                             />
@@ -1299,7 +1304,7 @@ export default function TodosPage() {
                             </div>
                             <input
                               type="date"
-                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                               value={todo.due_date}
                               onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                             />
@@ -1372,7 +1377,7 @@ export default function TodosPage() {
                             </div>
                             <input
                               type="date"
-                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                              className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                               value={todo.due_date}
                               onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                             />
@@ -1410,8 +1415,8 @@ export default function TodosPage() {
           <>
             <div className="mb-4 flex flex-wrap items-center gap-2 md:gap-4">
               <span className="text-base md:text-lg font-semibold text-gray-700">{projects.find(p => p.id === selectedProjectId)?.name}</span>
-              {(newTodos.length + todos.length >= 10) && (
-                <span className="text-xs md:text-sm text-red-500 flex items-center"><AlertCircleIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />每个项目最多只能添加10个待办</span>
+              {(newTodos.length + todos.filter(todo => todo.status !== 'completed').length >= 10) && (
+                <span className="text-xs md:text-sm text-red-500 flex items-center"><AlertCircleIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />每个项目未开始和进行中的待办最多只能添加10个</span>
               )}
               {error && <span className="text-xs md:text-sm text-red-500 flex items-center"><AlertCircleIcon className="h-3 w-3 md:h-4 md:w-4 mr-1" />{error}</span>}
             </div>
@@ -1456,7 +1461,7 @@ export default function TodosPage() {
                           </div>
                       <input
                         type="date"
-                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                         value={todo.due_date}
                         onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
                       />
@@ -1524,7 +1529,7 @@ export default function TodosPage() {
                           </div>
                       <input
                         type="date"
-                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                         value={todo.due_date}
                             onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                       />
@@ -1592,7 +1597,7 @@ export default function TodosPage() {
                           </div>
                           <input
                             type="date"
-                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                             value={todo.due_date}
                             onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                           />
@@ -1660,7 +1665,7 @@ export default function TodosPage() {
                           </div>
                           <input
                             type="date"
-                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                            className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                             value={todo.due_date}
                             onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                           />
@@ -1750,7 +1755,7 @@ export default function TodosPage() {
                         </div>
                         <input
                           type="date"
-                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleNewTodoChange(idx, "due_date", e.target.value)}
                         />
@@ -1839,7 +1844,7 @@ export default function TodosPage() {
                 </div>
                         <input
                           type="date"
-                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                         />
@@ -1928,7 +1933,7 @@ export default function TodosPage() {
                         </div>
                         <input
                           type="date"
-                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                         />
@@ -2017,7 +2022,7 @@ export default function TodosPage() {
                         </div>
                         <input
                           type="date"
-                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
+                          className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
                           value={todo.due_date}
                           onChange={e => handleTodoChange(todos.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
                         />
@@ -2051,7 +2056,7 @@ export default function TodosPage() {
               <button
                 className="w-full flex items-center justify-center px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-blue-600 hover:bg-blue-100 transition-colors"
                 onClick={handleAddTodo}
-                disabled={newTodos.length + todos.length >= 10}
+                disabled={newTodos.length + todos.filter(todo => todo.status !== 'completed').length >= 10}
               >
                 <PlusIcon className="h-5 w-5 mr-2" /> 
                 <span>添加待办</span>
