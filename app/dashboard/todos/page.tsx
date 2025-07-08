@@ -1223,8 +1223,8 @@ export default function TodosPage() {
         md:block w-full md:w-80 border-r bg-white overflow-y-auto flex-shrink-0
         ${isMobile ? 'absolute z-10 top-16 left-0 right-0 bottom-0 bg-white' : ''}
       `}>
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="p-3">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">项目列表</h2>
             {isMobile && (
               <button
@@ -1235,26 +1235,26 @@ export default function TodosPage() {
               </button>
             )}
           </div>
-          <ul className="space-y-2">
+          <ul className="space-y-1">
             {/* 全部按钮 - 特殊样式突出显示 */}
             <li>
               <button
-                className={`flex items-center w-full px-3 py-2.5 rounded-lg transition font-medium text-sm ${selectedProjectId === ALL_PROJECTS ? "bg-blue-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}
+                className={`flex items-center w-full px-2.5 py-1.5 rounded-lg transition font-medium text-sm ${selectedProjectId === ALL_PROJECTS ? "bg-blue-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}
                 onClick={() => handleProjectSelect(ALL_PROJECTS)}
                 title="全部项目待办"
               >
-                <CalendarIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                <CalendarIcon className="h-4 w-4 mr-1.5 text-gray-400 flex-shrink-0" />
                 <span className="truncate flex-1 text-left">全部</span>
                 
                 {/* 添加进行中和未开始数量 */}
                 <div className="flex flex-shrink-0 gap-1">
                   {allPriorityCount.inProgress > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                    <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
                       进行中 {allPriorityCount.inProgress}
                     </span>
                   )}
                   {allPriorityCount.notStarted > 0 && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                    <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
                       未开始 {allPriorityCount.notStarted}
                     </span>
                   )}
@@ -1265,23 +1265,23 @@ export default function TodosPage() {
             {projects.map((project) => (
               <li key={project.id}>
                 <button
-                  className={`flex items-center w-full px-3 py-2.5 rounded-lg transition font-medium text-sm
+                  className={`flex items-center w-full px-2.5 py-1.5 rounded-lg transition font-medium text-sm
                     ${selectedProjectId === project.id ? "bg-blue-100 text-blue-700" : "hover:bg-gray-100 text-gray-700"}`}
                   onClick={() => handleProjectSelect(project.id)}
                   title={project.name}
                 >
-                  <ChevronRightIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                  <ChevronRightIcon className="h-4 w-4 mr-1.5 text-gray-400 flex-shrink-0" />
                   <span className="truncate flex-1 text-left">{project.name}</span>
                   
                   {/* 添加进行中和未开始数量 */}
                   <div className="flex flex-shrink-0 gap-1">
                     {safeCount(project.inProgressCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                      <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
                         进行中 {project.inProgressCount}
                     </span>
                   )}
                     {safeCount(project.notStartedCount) > 0 && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                      <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">
                         未开始 {project.notStartedCount}
                     </span>
                   )}
@@ -1294,7 +1294,7 @@ export default function TodosPage() {
       </div>
 
       {/* 右侧待办编辑区 - 响应式 */}
-      <div className={`flex-1 p-4 md:p-8 overflow-y-auto flex flex-col ${!sidebarVisible || !isMobile ? 'block' : 'hidden md:block'}`}>
+      <div className={`flex-1 p-3 md:p-6 overflow-y-auto flex flex-col ${!sidebarVisible || !isMobile ? 'block' : 'hidden md:block'}`}>
         {/* 全部视图下，隐藏添加待办和原保存按钮，仅显示全部保存按钮 */}
         {selectedProjectId === ALL_PROJECTS ? null : (
         <div className="flex items-center justify-between mb-6">
@@ -1365,11 +1365,11 @@ export default function TodosPage() {
                   <table className="w-full border-collapse bg-white">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">项目</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">内容</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">优先级</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">截止时间</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">状态</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">项目</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">内容</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">优先级</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">截止时间</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">状态</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
