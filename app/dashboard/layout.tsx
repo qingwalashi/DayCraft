@@ -348,7 +348,16 @@ export default function DashboardLayout({
                           : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                       }
                     `}
-                    onClick={() => window.innerWidth < 768 && setIsSidebarOpen(false)}
+                    onClick={(e) => {
+                      if (window.innerWidth < 768) {
+                        setIsSidebarOpen(false);
+                      }
+                      // 如果点击的是"报告"菜单项，直接导航到日报页面
+                      if (item.name === "报告" && item.href === "#") {
+                        e.preventDefault();
+                        router.push("/dashboard/daily-reports");
+                      }
+                    }}
                     title={!sidebarExpanded ? item.name : ""}
                   >
                     <item.icon className={`h-5 w-5 flex-shrink-0 ${
@@ -375,7 +384,13 @@ export default function DashboardLayout({
                                 ? "bg-blue-50 text-blue-700"
                                 : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                             }`}
-                            onClick={() => window.innerWidth < 768 && setIsSidebarOpen(false)}
+                            onClick={(e) => {
+                              if (window.innerWidth < 768) {
+                                setIsSidebarOpen(false);
+                              }
+                              // 阻止事件冒泡，避免触发父菜单项的点击处理程序
+                              e.stopPropagation();
+                            }}
                           >
                             <span className="ml-3">{subItem.name}</span>
                           </Link>
