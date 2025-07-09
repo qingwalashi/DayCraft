@@ -47,7 +47,15 @@ const getNavigation = (role: string[] = []) => {
   if (isUser && !isAdmin && role.length === 1) {
     return [
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
-      { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      { 
+        name: "项目", 
+        href: "#", 
+        icon: FolderIcon,
+        subItems: [
+          { name: "项目管理", href: "/dashboard/projects" },
+          { name: "工作分解", href: "/dashboard/work-breakdown" }
+        ]
+      },
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
@@ -65,7 +73,15 @@ const getNavigation = (role: string[] = []) => {
   if (isAdmin && isUser) {
     return [
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
-      { name: "项目", href: "/dashboard/projects", icon: FolderIcon },
+      { 
+        name: "项目", 
+        href: "#", 
+        icon: FolderIcon,
+        subItems: [
+          { name: "项目管理", href: "/dashboard/projects" },
+          { name: "工作分解", href: "/dashboard/work-breakdown" }
+        ]
+      },
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
