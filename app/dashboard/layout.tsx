@@ -49,7 +49,7 @@ const getNavigation = (role: string[] = []) => {
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
       { 
         name: "项目", 
-        href: "/dashboard/projects", // 修改为实际链接而不是"#"
+        href: "/dashboard/projects", // 修改为项目管理页面链接
         icon: FolderIcon,
         subItems: [
           { name: "项目管理", href: "/dashboard/projects" },
@@ -368,10 +368,7 @@ export default function DashboardLayout({
                       if (window.innerWidth < 768) {
                         setIsSidebarOpen(false);
                       }
-                      // 如果有子项但没有点击子项，阻止默认行为
-                      if (item.subItems && item.subItems.length > 0) {
-                        e.preventDefault();
-                      }
+                      // 如果有子项，不阻止默认行为，让链接正常跳转
                     }}
                     title={!sidebarExpanded ? item.name : ""}
                   >
