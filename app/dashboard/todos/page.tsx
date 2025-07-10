@@ -82,8 +82,6 @@ export default function TodosPage() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
-  const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
   // 新增：待办删除确认
   const [todoToDelete, setTodoToDelete] = useState<string | null>(null);
   const [showDeleteTodoConfirm, setShowDeleteTodoConfirm] = useState(false);
@@ -131,222 +129,182 @@ export default function TodosPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // 初始加载项目数据
+  // 加载项目数据和统计信息
   useEffect(() => {
     if (user && !dataLoadedRef.current) {
-      // 直接内联调用，而不是引用函数
-    if (!user) return;
-      setIsLoading(true);
       (async () => {
-      try {
-        // 获取所有活跃项目
-        const { data: projectsData, error: projectsError } = await supabase
-          .from("projects")
-          .select("id, name, code, is_active")
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false });
-        
-        if (projectsError) {
-          setError("加载项目失败");
-          setIsLoading(false);
-          return;
-        }
-        
-        // 确保 projectsData 有正确的类型
-        const typedProjectsData = (projectsData || []) as Project[];
-        
-        // 获取每个项目的待办数量（按优先级统计）
-        const projectsWithTodoCount = await Promise.all(
-          (typedProjectsData || []).map(async (project) => {
-            // 统计各优先级数量
-            const getCount = async (priority: string) => {
-              const { count } = await supabase
-                .from("project_todos")
-                .select("id", { count: 'exact', head: true })
-                .eq("user_id", user.id)
-                .eq("project_id", project.id)
-                .eq("priority", priority)
-                .not("status", "eq", "completed");
-              return count || 0;
-            };
-            
-            // 统计进行中的待办数量
-            const getInProgressCount = async () => {
-              const { count } = await supabase
-                .from("project_todos")
-                .select("id", { count: 'exact', head: true })
-                .eq("user_id", user.id)
-                .eq("project_id", project.id)
-                .eq("status", "in_progress");
-              return count || 0;
-            };
-            
-            // 统计未开始的待办数量
-            const getNotStartedCount = async () => {
-              const { count } = await supabase
-                .from("project_todos")
-                .select("id", { count: 'exact', head: true })
-                .eq("user_id", user.id)
-                .eq("project_id", project.id)
-                .eq("status", "not_started");
-              return count || 0;
-            };
-            
-            const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
-              getCount("high"),
-              getCount("medium"),
-              getCount("low"),
-              getInProgressCount(),
-              getNotStartedCount()
-            ]);
-            // 总数
-            const todoCount = highCount + mediumCount + lowCount;
-            return {
-              ...project,
-              todoCount,
-              highCount,
-              mediumCount,
-              lowCount,
-              inProgressCount,
-              notStartedCount
-            };
-          })
-        );
-        
-        setProjects(projectsWithTodoCount);
-          dataLoadedRef.current = true;
-          lastLoadTimeRef.current = Date.now();
-      } catch (err) {
-        console.error("加载项目和待办数量失败:", err);
-        setError("加载项目失败");
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-    }
-  }, [user, supabase]);
-
-  // 加载选中项目的待办
-  useEffect(() => {
-    if (user && selectedProjectId && selectedProjectId !== ALL_PROJECTS && !dataLoadedRef.current) {
-      console.log(`开始加载项目 ${selectedProjectId} 的待办，dataLoadedRef.current = ${dataLoadedRef.current}`);
-      // 直接内联调用，而不是引用函数
-    (async () => {
-        if (!user || !selectedProjectId || selectedProjectId === ALL_PROJECTS) return;
-      setIsLoading(true);
-        try {
-          // 获取未开始和进行中的待办
-          const { data: activeTodos, error: activeError } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at")
-        .eq("user_id", user.id)
-        .eq("project_id", selectedProjectId)
-            .in("status", ["not_started", "in_progress"])
-        .order("due_date", { ascending: true });
-            
-          if (activeError) {
-          setError("加载待办失败");
-      setIsLoading(false);
-          return;
-        }
-          
-          // 获取最近完成的10个待办
-          const { data: completedTodos, error: completedError } = await supabase
-            .from("project_todos")
-            .select("id, content, priority, due_date, status, completed_at")
-            .eq("user_id", user.id)
-            .eq("project_id", selectedProjectId)
-            .eq("status", "completed")
-            .order("completed_at", { ascending: false })
-            .limit(10);
-            
-          if (completedError) {
-            setError("加载已完成待办失败");
-            setIsLoading(false);
-            return;
-          }
-          
-          // 合并所有待办
-          const allTodos = [
-            ...(Array.isArray(activeTodos) ? activeTodos : []),
-            ...(Array.isArray(completedTodos) ? completedTodos : [])
-          ];
-          
-          setTodos(allTodos.filter(Boolean) as Todo[]);
-          setNewTodos([]);
-          console.log(`项目 ${selectedProjectId} 的待办加载完成，共 ${allTodos.length} 条`);
-          dataLoadedRef.current = true;
-          lastLoadTimeRef.current = Date.now();
-        } catch (err) {
-          console.error("加载待办失败:", err);
-        setError("加载待办失败");
-        } finally {
-          setIsLoading(false);
-        }
-      })();
-    }
-  }, [user, selectedProjectId, supabase]);
-
-  // 加载全部项目的待办
-  useEffect(() => {
-    if (user && selectedProjectId === ALL_PROJECTS && !dataLoadedRef.current) {
-      console.log(`开始加载全部项目的待办，dataLoadedRef.current = ${dataLoadedRef.current}`);
-      // 直接内联调用，而不是引用函数
-      (async () => {
-        if (!user) return;
-        setIsLoading(true);
         try {
           // 获取所有活跃项目
           const { data: projectsData, error: projectsError } = await supabase
             .from("projects")
             .select("id, name, code, is_active")
             .eq("user_id", user.id)
-            .eq("is_active", true);
+            .eq("is_active", true)
+            .order("created_at", { ascending: false });
+          
           if (projectsError) {
             setError("加载项目失败");
             setIsLoading(false);
-        return;
-      }
-          const typedProjectsData = (projectsData || []) as Project[];
-          const projectMap = typedProjectsData.reduce((acc: Record<string, string>, p: Project) => {
-            acc[p.id] = p.name;
-            return acc;
-          }, {});
+            return;
+          }
           
-          // 获取所有未开始和进行中的待办
-          const { data: activeTodos, error: activeError } = await supabase
+          // 确保 projectsData 有正确的类型
+          const typedProjectsData = (projectsData || []) as Project[];
+          
+          // 获取所有待办数据（一次性查询所有待办）
+          const { data: allTodosData, error: allTodosError } = await supabase
+            .from("project_todos")
+            .select("id, project_id, priority, status")
+            .eq("user_id", user.id)
+            .not("status", "eq", "completed");
+            
+          if (allTodosError) {
+            setError("加载待办统计信息失败");
+            setIsLoading(false);
+            return;
+          }
+          
+          // 处理待办数据，按项目和状态分组
+          const todosByProject: Record<string, { 
+            high: number, 
+            medium: number, 
+            low: number,
+            inProgress: number,
+            notStarted: number
+          }> = {};
+          
+          // 初始化全局计数器
+          const allCount = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
+          
+          // 遍历所有待办，统计各种数量
+          (allTodosData || []).forEach((todo: any) => {
+            // 初始化项目计数器
+            if (!todosByProject[todo.project_id]) {
+              todosByProject[todo.project_id] = { 
+                high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 
+              };
+            }
+            
+            // 按优先级统计
+            if (todo.priority === "high") {
+              todosByProject[todo.project_id].high++;
+              allCount.high++;
+            } else if (todo.priority === "medium") {
+              todosByProject[todo.project_id].medium++;
+              allCount.medium++;
+            } else if (todo.priority === "low") {
+              todosByProject[todo.project_id].low++;
+              allCount.low++;
+            }
+            
+            // 按状态统计
+            if (todo.status === "in_progress") {
+              todosByProject[todo.project_id].inProgress++;
+              allCount.inProgress++;
+            } else if (todo.status === "not_started") {
+              todosByProject[todo.project_id].notStarted++;
+              allCount.notStarted++;
+            }
+          });
+          
+          // 构建项目列表，包含待办统计
+          const projectsWithTodoCount = typedProjectsData.map(project => {
+            const counts = todosByProject[project.id] || { 
+              high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 
+            };
+            
+            return {
+              ...project,
+              highPriorityCount: counts.high,
+              mediumPriorityCount: counts.medium,
+              lowPriorityCount: counts.low,
+              inProgressCount: counts.inProgress,
+              notStartedCount: counts.notStarted,
+              totalCount: counts.high + counts.medium + counts.low
+            };
+          });
+          
+          setProjects(projectsWithTodoCount);
+          setAllPriorityCount(allCount);
+          
+          // 加载完成后设置标志
+          dataLoadedRef.current = true;
+          lastLoadTimeRef.current = Date.now();
+        } catch (error) {
+          console.error("加载项目和待办统计失败:", error);
+          setError("加载数据失败");
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    }
+  }, [user, supabase]);
+
+  // 加载选中项目的待办
+  useEffect(() => {
+    if (!user || !selectedProjectId) return;
+    
+    // 如果是全部项目，加载所有项目的待办
+    if (selectedProjectId === ALL_PROJECTS) {
+      (async () => {
+        setIsLoading(true);
+        try {
+          // 获取所有活跃项目（如果还没有加载）
+          let projectMap: Record<string, string> = {};
+          if (projects.length === 0) {
+            const { data: projectsData, error: projectsError } = await supabase
+              .from("projects")
+              .select("id, name")
+              .eq("user_id", user.id)
+              .eq("is_active", true);
+              
+            if (projectsError) {
+              setError("加载项目失败");
+              setIsLoading(false);
+              return;
+            }
+            
+            projectMap = (projectsData || []).reduce((acc: Record<string, string>, p: any) => {
+              acc[p.id] = p.name;
+              return acc;
+            }, {});
+          } else {
+            projectMap = projects.reduce((acc: Record<string, string>, p: Project) => {
+              acc[p.id] = p.name;
+              return acc;
+            }, {});
+          }
+          
+          // 合并查询：一次性获取所有待办（活跃和已完成）
+          const { data: allTodosData, error: todosError } = await supabase
             .from("project_todos")
             .select("id, content, priority, due_date, status, completed_at, project_id")
             .eq("user_id", user.id)
-            .in("status", ["not_started", "in_progress"])
+            .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
             .order("due_date", { ascending: true });
             
-          if (activeError) {
+          if (todosError) {
             setError("加载待办失败");
             setIsLoading(false);
             return;
           }
           
-          // 获取最近完成的10个待办
-          const { data: completedTodos, error: completedError } = await supabase
-            .from("project_todos")
-            .select("id, content, priority, due_date, status, completed_at, project_id")
-            .eq("user_id", user.id)
-            .eq("status", "completed")
-            .order("completed_at", { ascending: false })
-            .limit(10);
-            
-          if (completedError) {
-            setError("加载已完成待办失败");
-            setIsLoading(false);
-            return;
-          }
+          // 处理待办数据
+          const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
+          const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
+          
+          // 按最近完成时间排序并限制数量
+          completedTodos.sort((a, b) => {
+            const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+            const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+            return dateB - dateA;
+          });
+          const recentCompletedTodos = completedTodos.slice(0, 10);
           
           // 合并所有待办并添加项目名称
           const allTodosWithProject = [
-            ...(Array.isArray(activeTodos) ? activeTodos : []),
-            ...(Array.isArray(completedTodos) ? completedTodos : [])
+            ...activeTodos,
+            ...recentCompletedTodos
           ].map((t: any) => ({
             ...t,
             projectName: projectMap[t.project_id] || "",
@@ -354,293 +312,87 @@ export default function TodosPage() {
           
           setAllTodos(allTodosWithProject);
           
-          // 统计优先级数量
-          const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
-          for (const t of allTodosWithProject) {
-            // 只统计未完成的待办（未开始和进行中）
-            if (t.status !== 'completed') {
-              if (t.priority === 'high') count.high++;
-              else if (t.priority === 'medium') count.medium++;
-              else if (t.priority === 'low') count.low++;
-            }
-            // 单独统计进行中的待办
-            if (t.status === 'in_progress') {
-              count.inProgress++;
-            }
-            // 单独统计未开始的待办
-            if (t.status === 'not_started') {
-              count.notStarted++;
-            }
-          }
-          setAllPriorityCount(count);
-          console.log(`全部项目的待办加载完成，共 ${allTodosWithProject.length} 条`);
+          // 统计优先级数量（重用之前计算的数据）
           dataLoadedRef.current = true;
           lastLoadTimeRef.current = Date.now();
         } catch (err) {
-          setError("加载全部待办失败");
+          console.error("加载全部待办失败:", err);
+          setError("加载待办失败");
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    } else {
+      // 加载特定项目的待办
+      (async () => {
+        setIsLoading(true);
+        try {
+          // 合并查询：一次性获取所有待办（活跃和已完成）
+          const { data: allTodosData, error: todosError } = await supabase
+            .from("project_todos")
+            .select("id, content, priority, due_date, status, completed_at")
+            .eq("user_id", user.id)
+            .eq("project_id", selectedProjectId)
+            .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
+            .order("due_date", { ascending: true });
+            
+          if (todosError) {
+            setError("加载待办失败");
+            setIsLoading(false);
+            return;
+          }
+          
+          // 处理待办数据
+          const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
+          const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
+          
+          // 按最近完成时间排序并限制数量
+          completedTodos.sort((a, b) => {
+            const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+            const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+            return dateB - dateA;
+          });
+          const recentCompletedTodos = completedTodos.slice(0, 10);
+          
+          // 合并所有待办
+          const allTodos = [
+            ...activeTodos,
+            ...recentCompletedTodos
+          ] as Todo[];
+          
+          setTodos(allTodos);
+          setNewTodos([]);
+          dataLoadedRef.current = true;
+          lastLoadTimeRef.current = Date.now();
+        } catch (err) {
+          console.error("加载项目待办失败:", err);
+          setError("加载待办失败");
         } finally {
           setIsLoading(false);
         }
       })();
     }
-  }, [user, selectedProjectId, supabase]);
+  }, [user, selectedProjectId, supabase, projects]);
 
-  // 添加页面可见性监听
+  // 处理页面可见性变化，用于刷新数据
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('待办管理页面恢复可见，检查数据状态');
-          
-          // 检查是否需要重新加载数据
           const now = Date.now();
-          const timeSinceLastLoad = now - lastLoadTimeRef.current;
-          
-          // 如果超过刷新间隔，重新加载数据
-          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-            console.log('数据超过刷新间隔，重新加载');
-            // 重置数据加载状态
+          // 如果距离上次加载超过5分钟，刷新数据
+          if (now - lastLoadTimeRef.current > DATA_REFRESH_INTERVAL) {
+            console.log('页面恢复可见，重新加载数据');
             dataLoadedRef.current = false;
             
-            // 根据当前选中的项目类型加载数据
+            // 根据当前选择的项目决定刷新哪些数据
             if (selectedProjectId === ALL_PROJECTS) {
-              // 内联加载全部待办
-              (async () => {
-                if (!user) return;
-                setIsLoading(true);
-                try {
-                  // 获取所有活跃项目
-                  const { data: projectsData, error: projectsError } = await supabase
-                    .from("projects")
-                    .select("id, name, code, is_active")
-                    .eq("user_id", user.id)
-                    .eq("is_active", true);
-                  if (projectsError) {
-                    setError("加载项目失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  const typedProjectsData = (projectsData || []) as Project[];
-                  const projectMap = typedProjectsData.reduce((acc: Record<string, string>, p: Project) => {
-                    acc[p.id] = p.name;
-                    return acc;
-                  }, {});
-                  
-                  // 获取所有未开始和进行中的待办
-                  const { data: activeTodos, error: activeError } = await supabase
-                    .from("project_todos")
-                    .select("id, content, priority, due_date, status, completed_at, project_id")
-                    .eq("user_id", user.id)
-                    .in("status", ["not_started", "in_progress"])
-                    .order("due_date", { ascending: true });
-                    
-                  if (activeError) {
-                    setError("加载待办失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  
-                  // 获取最近完成的10个待办
-                  const { data: completedTodos, error: completedError } = await supabase
-                    .from("project_todos")
-                    .select("id, content, priority, due_date, status, completed_at, project_id")
-                    .eq("user_id", user.id)
-                    .eq("status", "completed")
-                    .order("completed_at", { ascending: false })
-                    .limit(10);
-                    
-                  if (completedError) {
-                    setError("加载已完成待办失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  
-                  // 合并所有待办并添加项目名称
-                  const allTodosWithProject = [
-                    ...(Array.isArray(activeTodos) ? activeTodos : []),
-                    ...(Array.isArray(completedTodos) ? completedTodos : [])
-                  ].map((t: any) => ({
-                    ...t,
-                    projectName: projectMap[t.project_id] || "",
-                  }));
-                  
-                  setAllTodos(allTodosWithProject);
-                  
-                  // 统计优先级数量
-                  const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
-                  for (const t of allTodosWithProject) {
-                    // 只统计未完成的待办（未开始和进行中）
-                    if (t.status !== 'completed') {
-                      if (t.priority === 'high') count.high++;
-                      else if (t.priority === 'medium') count.medium++;
-                      else if (t.priority === 'low') count.low++;
-                    }
-                    // 单独统计进行中的待办
-                    if (t.status === 'in_progress') {
-                      count.inProgress++;
-                    }
-                    // 单独统计未开始的待办
-                    if (t.status === 'not_started') {
-                      count.notStarted++;
-                    }
-                  }
-                  setAllPriorityCount(count);
-                  dataLoadedRef.current = true;
-                  lastLoadTimeRef.current = Date.now();
-                } catch (err) {
-                  setError("加载全部待办失败");
-                } finally {
-                  setIsLoading(false);
-                }
-              })();
+              // 重置加载标志，触发重新加载
+              dataLoadedRef.current = false;
             } else if (selectedProjectId) {
-              // 内联加载项目待办
-              (async () => {
-                if (!user || !selectedProjectId || selectedProjectId === ALL_PROJECTS) return;
-                setIsLoading(true);
-                try {
-                  // 获取未开始和进行中的待办
-                  const { data: activeTodos, error: activeError } = await supabase
-                  .from("project_todos")
-                  .select("id, content, priority, due_date, status, completed_at")
-                  .eq("user_id", user.id)
-                  .eq("project_id", selectedProjectId)
-                    .in("status", ["not_started", "in_progress"])
-                  .order("due_date", { ascending: true });
-                    
-                  if (activeError) {
-                  setError("加载待办失败");
-                    setIsLoading(false);
-                  return;
-                }
-                  
-                  // 获取最近完成的10个待办
-                  const { data: completedTodos, error: completedError } = await supabase
-                    .from("project_todos")
-                    .select("id, content, priority, due_date, status, completed_at")
-                    .eq("user_id", user.id)
-                    .eq("project_id", selectedProjectId)
-                    .eq("status", "completed")
-                    .order("completed_at", { ascending: false })
-                    .limit(10);
-                    
-                  if (completedError) {
-                    setError("加载已完成待办失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  
-                  // 合并所有待办
-                  const allTodos = [
-                    ...(Array.isArray(activeTodos) ? activeTodos : []),
-                    ...(Array.isArray(completedTodos) ? completedTodos : [])
-                  ];
-                  
-                  setTodos(allTodos.filter(Boolean) as Todo[]);
-      setNewTodos([]);
-                  dataLoadedRef.current = true;
-                  lastLoadTimeRef.current = Date.now();
-                } catch (err) {
-                  console.error("加载待办失败:", err);
-                  setError("加载待办失败");
-                } finally {
-                  setIsLoading(false);
-                }
-    })();
-            } else {
-              // 内联加载项目列表
-              (async () => {
-                if (!user) return;
-                setIsLoading(true);
-                try {
-                  // 获取所有活跃项目
-                  const { data: projectsData, error: projectsError } = await supabase
-                    .from("projects")
-                    .select("id, name, code, is_active")
-                    .eq("user_id", user.id)
-                    .eq("is_active", true)
-                    .order("created_at", { ascending: false });
-                  
-                  if (projectsError) {
-                    setError("加载项目失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  
-                  // 确保 projectsData 有正确的类型
-                  const typedProjectsData = (projectsData || []) as Project[];
-                  
-                  // 获取每个项目的待办数量（按优先级统计）
-                  const projectsWithTodoCount = await Promise.all(
-                    (typedProjectsData || []).map(async (project) => {
-                      // 统计各优先级数量
-                      const getCount = async (priority: string) => {
-                        const { count } = await supabase
-                          .from("project_todos")
-                          .select("id", { count: 'exact', head: true })
-                          .eq("user_id", user.id)
-                          .eq("project_id", project.id)
-                          .eq("priority", priority)
-                          .not("status", "eq", "completed");
-                        return count || 0;
-                      };
-                      
-                      // 统计进行中的待办数量
-                      const getInProgressCount = async () => {
-                        const { count } = await supabase
-                          .from("project_todos")
-                          .select("id", { count: 'exact', head: true })
-                          .eq("user_id", user.id)
-                          .eq("project_id", project.id)
-                          .eq("status", "in_progress");
-                        return count || 0;
-                      };
-                      
-                      // 统计未开始的待办数量
-                      const getNotStartedCount = async () => {
-                        const { count } = await supabase
-                          .from("project_todos")
-                          .select("id", { count: 'exact', head: true })
-                          .eq("user_id", user.id)
-                          .eq("project_id", project.id)
-                          .eq("status", "not_started");
-                        return count || 0;
-                      };
-                      
-                      const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
-                        getCount("high"),
-                        getCount("medium"),
-                        getCount("low"),
-                        getInProgressCount(),
-                        getNotStartedCount()
-                      ]);
-                      // 总数
-                      const todoCount = highCount + mediumCount + lowCount;
-                      return {
-                        ...project,
-                        todoCount,
-                        highCount,
-                        mediumCount,
-                        lowCount,
-                        inProgressCount,
-                        notStartedCount
-                      };
-                    })
-                  );
-                  
-                  setProjects(projectsWithTodoCount);
-                  dataLoadedRef.current = true;
-                  lastLoadTimeRef.current = Date.now();
-                } catch (err) {
-                  console.error("加载项目和待办数量失败:", err);
-                  setError("加载项目失败");
-                } finally {
-                  setIsLoading(false);
-                }
-              })();
+              // 重置加载标志，触发重新加载
+              dataLoadedRef.current = false;
             }
-          } else {
-            console.log('数据在刷新间隔内，保持现有数据');
           }
         }
       };
@@ -650,7 +402,7 @@ export default function TodosPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [user, selectedProjectId, supabase]);
+  }, [selectedProjectId]);
 
   // 添加新待办
   const handleAddTodo = () => {
@@ -831,7 +583,7 @@ export default function TodosPage() {
       setShowCompletedConfirm(false);
       setCompletingTodo(null);
       
-      // 刷新项目统计
+      // 一次性刷新所有统计和视图数据
       await updateAllProjectTodoCounts();
     } catch (err) {
       console.error("更新完成状态失败:", err);
@@ -861,21 +613,20 @@ export default function TodosPage() {
     if (!selectedProjectId) return;
     setIsLoading(true);
     try {
-      await supabase.from("project_todos").delete().eq("id", id);
-      setTodos((prev) => prev.filter((t) => t.id !== id));
-      // 检查该项目下是否还有未完成的待办
-      const { count } = await supabase
-        .from("project_todos")
-        .select("id", { count: 'exact', head: true })
-        .eq("user_id", user.id)
-        .eq("project_id", selectedProjectId)
-        .not("status", "eq", "completed");
-      if ((count || 0) === 0) {
-        setProjectToDelete(selectedProjectId);
-        setShowDeleteProjectConfirm(true); // 只弹窗，不自动删除
+      // 删除待办
+      const { error } = await supabase.from("project_todos").delete().eq("id", id);
+      
+      if (error) {
+        throw error;
       }
-      // 刷新项目统计
+      
+      // 删除成功后更新前端状态
+      setTodos((prev) => prev.filter((t) => t.id !== id));
+      
+      // 一次性刷新所有统计和视图数据
       await updateAllProjectTodoCounts();
+      
+      toast.success("待办已删除");
     } catch (err) {
       console.error("删除待办失败:", err);
       setError("删除失败，请重试");
@@ -891,24 +642,24 @@ export default function TodosPage() {
     if (!selectedProjectId) return;
     setIsLoading(true);
     try {
-      await supabase.from("project_todos").delete().eq("id", todoToDelete);
-      setTodos((prev) => prev.filter((t) => t.id !== todoToDelete));
-      // 检查该项目下是否还有未完成的待办
-      const { count } = await supabase
-        .from("project_todos")
-        .select("id", { count: 'exact', head: true })
-        .eq("user_id", user.id)
-        .eq("project_id", selectedProjectId)
-        .not("status", "eq", "completed");
-      if ((count || 0) === 0) {
-        setProjectToDelete(selectedProjectId);
-        setShowDeleteProjectConfirm(true);
+      // 删除待办
+      const { error } = await supabase.from("project_todos").delete().eq("id", todoToDelete);
+      
+      if (error) {
+        throw error;
       }
-      // 刷新项目统计
+      
+      // 删除成功后更新前端状态
+      setTodos((prev) => prev.filter((t) => t.id !== todoToDelete));
+      
+      // 一次性刷新所有统计和视图数据
       await updateAllProjectTodoCounts();
+      
       // 关闭确认对话框
       setShowDeleteTodoConfirm(false);
       setTodoToDelete(null);
+      
+      toast.success("待办已删除");
     } catch (err) {
       console.error("删除待办失败:", err);
       setError("删除失败，请重试");
@@ -925,82 +676,209 @@ export default function TodosPage() {
     if (!user) return;
     setIsLoading(true);
     try {
-      const { data: projectsData, error: projectsError } = await supabase
-        .from("projects")
-        .select("id, name, code, is_active")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-      if (projectsError) {
+      // 获取项目和待办数据（一次性查询）
+      const [projectsResult, todosResult] = await Promise.all([
+        supabase
+          .from("projects")
+          .select("id, name, code, is_active")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false }),
+        
+        supabase
+          .from("project_todos")
+          .select("id, project_id, priority, status")
+          .eq("user_id", user.id)
+          .not("status", "eq", "completed")
+      ]);
+      
+      if (projectsResult.error) {
         setError("加载项目失败");
         setIsLoading(false);
         return;
       }
-      const typedProjectsData = (projectsData || []) as Project[];
-      const projectMap = typedProjectsData.reduce((acc: Record<string, string>, p: Project) => {
-        acc[p.id] = p.name;
-        return acc;
-      }, {});
-      const projectsWithTodoCount = await Promise.all(
-        (typedProjectsData || []).map(async (project) => {
-          const getCount = async (priority: string) => {
-            const { count } = await supabase
-              .from("project_todos")
-              .select("id", { count: 'exact', head: true })
-              .eq("user_id", user.id)
-              .eq("project_id", project.id)
-              .eq("priority", priority)
-              .not("status", "eq", "completed");
-            return count || 0;
+      
+      if (todosResult.error) {
+        setError("加载待办统计信息失败");
+        setIsLoading(false);
+        return;
+      }
+      
+      const typedProjectsData = (projectsResult.data || []) as Project[];
+      const allTodosData = todosResult.data || [];
+      
+      // 处理待办数据，按项目和状态分组
+      const todosByProject: Record<string, { 
+        high: number, 
+        medium: number, 
+        low: number,
+        inProgress: number,
+        notStarted: number
+      }> = {};
+      
+      // 初始化全局计数器
+      const allCount = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
+      
+      // 遍历所有待办，统计各种数量
+      allTodosData.forEach((todo: any) => {
+        // 初始化项目计数器
+        if (!todosByProject[todo.project_id]) {
+          todosByProject[todo.project_id] = { 
+            high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 
           };
-          
-          // 统计进行中的待办数量
-          const getInProgressCount = async () => {
-            const { count } = await supabase
-              .from("project_todos")
-              .select("id", { count: 'exact', head: true })
-              .eq("user_id", user.id)
-              .eq("project_id", project.id)
-              .eq("status", "in_progress");
-            return count || 0;
-          };
-          
-          // 统计未开始的待办数量
-          const getNotStartedCount = async () => {
-            const { count } = await supabase
-              .from("project_todos")
-              .select("id", { count: 'exact', head: true })
-              .eq("user_id", user.id)
-              .eq("project_id", project.id)
-              .eq("status", "not_started");
-            return count || 0;
-          };
-          
-          const [highCount, mediumCount, lowCount, inProgressCount, notStartedCount] = await Promise.all([
-            getCount("high"),
-            getCount("medium"),
-            getCount("low"),
-            getInProgressCount(),
-            getNotStartedCount()
-          ]);
-          const todoCount = highCount + mediumCount + lowCount;
-          return {
-            ...project,
-            todoCount,
-            highCount,
-            mediumCount,
-            lowCount,
-            inProgressCount,
-            notStartedCount
-          };
-        })
-      );
+        }
+        
+        // 按优先级统计
+        if (todo.priority === "high") {
+          todosByProject[todo.project_id].high++;
+          allCount.high++;
+        } else if (todo.priority === "medium") {
+          todosByProject[todo.project_id].medium++;
+          allCount.medium++;
+        } else if (todo.priority === "low") {
+          todosByProject[todo.project_id].low++;
+          allCount.low++;
+        }
+        
+        // 按状态统计
+        if (todo.status === "in_progress") {
+          todosByProject[todo.project_id].inProgress++;
+          allCount.inProgress++;
+        } else if (todo.status === "not_started") {
+          todosByProject[todo.project_id].notStarted++;
+          allCount.notStarted++;
+        }
+      });
+      
+      // 构建项目列表，包含待办统计
+      const projectsWithTodoCount = typedProjectsData.map(project => {
+        const counts = todosByProject[project.id] || { 
+          high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 
+        };
+        
+        return {
+          ...project,
+          highPriorityCount: counts.high,
+          mediumPriorityCount: counts.medium,
+          lowPriorityCount: counts.low,
+          inProgressCount: counts.inProgress,
+          notStartedCount: counts.notStarted,
+          totalCount: counts.high + counts.medium + counts.low
+        };
+      });
+      
       setProjects(projectsWithTodoCount);
+      setAllPriorityCount(allCount);
+      
+      // 如果当前是全部视图，也更新全部视图的数据
+      if (selectedProjectId === ALL_PROJECTS) {
+        await refreshAllProjectsView();
+      } else if (selectedProjectId) {
+        // 如果是单项目视图，刷新当前项目的待办
+        await refreshSingleProjectView(selectedProjectId);
+      }
     } catch (err) {
-      console.error("加载项目和待办数量失败:", err);
+      console.error("加载项目和待办统计失败:", err);
       setError("加载项目失败");
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // 新增：刷新全部项目视图的待办
+  const refreshAllProjectsView = async () => {
+    if (!user) return;
+    
+    try {
+      // 获取项目名称映射
+      const projectMap = projects.reduce((acc: Record<string, string>, p: Project) => {
+        acc[p.id] = p.name;
+        return acc;
+      }, {});
+      
+      // 一次性获取所有待办（活跃和已完成）
+      const { data: allTodosData, error: todosError } = await supabase
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at, project_id")
+        .eq("user_id", user.id)
+        .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
+        .order("due_date", { ascending: true });
+        
+      if (todosError) {
+        setError("加载待办失败");
+        return;
+      }
+      
+      // 处理待办数据
+      const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
+      const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
+      
+      // 按最近完成时间排序并限制数量
+      completedTodos.sort((a, b) => {
+        const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+        const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        return dateB - dateA;
+      });
+      const recentCompletedTodos = completedTodos.slice(0, 10);
+      
+      // 合并所有待办并添加项目名称
+      const allTodosWithProject = [
+        ...activeTodos,
+        ...recentCompletedTodos
+      ].map((t: any) => ({
+        ...t,
+        projectName: projectMap[t.project_id] || "",
+      }));
+      
+      setAllTodos(allTodosWithProject);
+    } catch (err) {
+      console.error("刷新全部待办视图失败:", err);
+      setError("刷新数据失败");
+    }
+  };
+  
+  // 新增：刷新单项目视图的待办
+  const refreshSingleProjectView = async (projectId: string) => {
+    if (!user) return;
+    
+    try {
+      // 一次性获取所有待办（活跃和已完成）
+      const { data: allTodosData, error: todosError } = await supabase
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at")
+        .eq("user_id", user.id)
+        .eq("project_id", projectId)
+        .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
+        .order("due_date", { ascending: true });
+        
+      if (todosError) {
+        setError("加载待办失败");
+        return;
+      }
+      
+      // 处理待办数据
+      const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
+      const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
+      
+      // 按最近完成时间排序并限制数量
+      completedTodos.sort((a, b) => {
+        const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+        const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        return dateB - dateA;
+      });
+      const recentCompletedTodos = completedTodos.slice(0, 10);
+      
+      // 合并所有待办
+      const allTodos = [
+        ...activeTodos,
+        ...recentCompletedTodos
+      ] as Todo[];
+      
+      setTodos(allTodos);
+      setNewTodos([]);
+    } catch (err) {
+      console.error("刷新项目待办视图失败:", err);
+      setError("刷新数据失败");
     }
   };
 
@@ -1010,47 +888,48 @@ export default function TodosPage() {
     setIsSaving(true);
     setError(null);
     try {
-      // 新增
+      // 收集所有操作，准备批量执行
+      const operations = [];
+      
+      // 新增待办
       for (const todo of newTodos) {
         if (!todo.content.trim()) continue;
-        await supabase.from("project_todos").insert({
-          user_id: user.id,
-          project_id: selectedProjectId,
-          content: todo.content,
-          priority: todo.priority,
-          due_date: todo.due_date,
-          status: todo.status || 'not_started',
-        });
+        operations.push(
+          supabase.from("project_todos").insert({
+            user_id: user.id,
+            project_id: selectedProjectId,
+            content: todo.content,
+            priority: todo.priority,
+            due_date: todo.due_date,
+            status: todo.status || 'not_started',
+          })
+        );
       }
       
-      // 更新
+      // 更新待办
       for (const todo of todos) {
         if (!todo.id) continue;
-        await supabase.from("project_todos").update({
-          content: todo.content,
-          priority: todo.priority,
-          due_date: todo.due_date,
-          status: todo.status,
-          // 如果状态是completed但没有完成时间，自动设置为当前时间
-          completed_at: todo.status === 'completed' 
-            ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
-            : todo.completed_at
-        }).eq("id", todo.id);
+        operations.push(
+          supabase.from("project_todos").update({
+            content: todo.content,
+            priority: todo.priority,
+            due_date: todo.due_date,
+            status: todo.status,
+            // 如果状态是completed但没有完成时间，自动设置为当前时间
+            completed_at: todo.status === 'completed' 
+              ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
+              : todo.completed_at
+          }).eq("id", todo.id)
+        );
       }
       
-      // 重新加载
-      const { data } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status")
-        .eq("user_id", user.id)
-        .eq("project_id", selectedProjectId)
-        .order("created_at", { ascending: false });
+      // 并行执行所有操作
+      await Promise.all(operations);
       
-      setTodos(Array.isArray(data) ? (data.filter(Boolean) as Todo[]) : []);
-      setNewTodos([]);
-      
-      // 保存后刷新所有项目统计
+      // 一次性刷新所有统计和视图数据
       await updateAllProjectTodoCounts();
+      
+      toast.success("待办已保存");
     } catch (error) {
       console.error("保存待办失败:", error);
       setError("保存失败，请重试");
@@ -1069,25 +948,6 @@ export default function TodosPage() {
     dataLoadedRef.current = false;
     if (isMobile) {
       setSidebarVisible(false);
-    }
-  };
-
-  // 新增删除项目函数
-  const handleDeleteProject = async () => {
-    if (!projectToDelete) return;
-    if (!user) return;
-    setIsLoading(true);
-    try {
-      await supabase.from("projects").delete().eq("id", projectToDelete).eq("user_id", user.id);
-      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete));
-      if (selectedProjectId === projectToDelete) setSelectedProjectId(null);
-      setProjectToDelete(null);
-      setShowDeleteProjectConfirm(false);
-    } catch (err) {
-      console.error("删除项目失败:", err);
-      setError("删除项目失败，请重试");
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -1123,80 +983,30 @@ export default function TodosPage() {
     setIsAllTodosSaving(true);
     setError(null);
     try {
+      // 收集所有更新操作，准备批量执行
+      const updateOperations = [];
+      
       for (const todo of allTodosEdited) {
         if (!todo.id) continue;
-        await supabase.from("project_todos").update({
-          content: todo.content,
-          status: todo.status,
-          // 如果状态是completed但没有完成时间，自动设置为当前时间
-          completed_at: todo.status === 'completed' 
-            ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
-            : todo.completed_at
-        }).eq("id", todo.id);
+        updateOperations.push(
+          supabase.from("project_todos").update({
+            content: todo.content,
+            status: todo.status,
+            // 如果状态是completed但没有完成时间，自动设置为当前时间
+            completed_at: todo.status === 'completed' 
+              ? (todo.completed_at ? todo.completed_at : format(new Date(), "yyyy-MM-dd") + "T00:00:00Z")
+              : todo.completed_at
+          }).eq("id", todo.id)
+        );
       }
-      // 保存后刷新
-      const { data: projectsData } = await supabase
-        .from("projects")
-        .select("id, name, code, is_active")
-        .eq("user_id", user.id)
-        .eq("is_active", true);
-      const typedProjectsData = (projectsData || []) as Project[];
-      const projectMap = typedProjectsData.reduce((acc: Record<string, string>, p: Project) => {
-        acc[p.id] = p.name;
-        return acc;
-      }, {});
       
-      // 获取所有未开始和进行中的待办
-      const { data: activeTodos } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at, project_id")
-        .eq("user_id", user.id)
-        .in("status", ["not_started", "in_progress"])
-        .order("due_date", { ascending: true });
-        
-      // 获取最近完成的10个待办
-      const { data: completedTodos } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at, project_id")
-        .eq("user_id", user.id)
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
-        .limit(10);
-        
-      // 合并所有待办并添加项目名称
-      const todosWithProject = [
-        ...(Array.isArray(activeTodos) ? activeTodos : []),
-        ...(Array.isArray(completedTodos) ? completedTodos : [])
-      ].map((t: any) => ({
-        ...t,
-        projectName: projectMap[t.project_id] || "",
-      }));
+      // 并行执行所有更新操作
+      await Promise.all(updateOperations);
       
-      setAllTodos(todosWithProject);
-      
-      // 统计优先级数量
-      const count = { high: 0, medium: 0, low: 0, inProgress: 0, notStarted: 0 };
-      for (const t of todosWithProject) {
-        // 只统计未完成的待办（未开始和进行中）
-        if (t.status !== 'completed') {
-          if (t.priority === 'high') count.high++;
-          else if (t.priority === 'medium') count.medium++;
-          else if (t.priority === 'low') count.low++;
-        }
-        // 单独统计进行中的待办
-        if (t.status === 'in_progress') {
-          count.inProgress++;
-        }
-        // 单独统计未开始的待办
-        if (t.status === 'not_started') {
-          count.notStarted++;
-        }
-      }
-      setAllPriorityCount(count);
-      setError(null);
-      
-      // 刷新项目统计
+      // 一次性刷新所有统计和视图数据
       await updateAllProjectTodoCounts();
+      
+      toast.success("所有待办已保存");
     } catch (err) {
       setError("保存失败，请重试");
     } finally {
@@ -2449,24 +2259,6 @@ export default function TodosPage() {
           <div className="text-gray-400 mt-10 md:mt-20 text-center text-base md:text-lg">请选择左侧项目后进行待办管理</div>
         )}
       </div>
-      {showDeleteProjectConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-96 max-w-[90%] border border-gray-100 transform transition-all">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">确认删除项目</h3>
-            <p className="mb-6 text-gray-600">该项目下所有待办已删除，是否确认删除该项目？此操作不可恢复。</p>
-            <div className="flex justify-end gap-3">
-              <button
-                className="px-5 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium text-sm"
-                onClick={() => { setShowDeleteProjectConfirm(false); setProjectToDelete(null); }}
-              >取消</button>
-              <button
-                className="px-5 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors font-medium text-sm shadow-sm"
-                onClick={handleDeleteProject}
-              >确认删除</button>
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* 待办删除确认弹窗 */}
       {showDeleteTodoConfirm && (
