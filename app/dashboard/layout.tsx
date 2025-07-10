@@ -49,7 +49,7 @@ const getNavigation = (role: string[] = []) => {
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
       { 
         name: "项目", 
-        href: "#", 
+        href: "/dashboard/projects", // 修改为实际链接而不是"#"
         icon: FolderIcon,
         subItems: [
           { name: "项目管理", href: "/dashboard/projects" },
@@ -59,7 +59,7 @@ const getNavigation = (role: string[] = []) => {
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
-        href: "#",
+        href: "/dashboard/daily-reports", // 修改为实际链接而不是"#"
         icon: FileTextIcon,
         subItems: [
           { name: "日报", href: "/dashboard/daily-reports" },
@@ -75,7 +75,7 @@ const getNavigation = (role: string[] = []) => {
       { name: "概览", href: "/dashboard/overview", icon: LayoutDashboardIcon },
       { 
         name: "项目", 
-        href: "#", 
+        href: "/dashboard/projects", // 修改为实际链接而不是"#"
         icon: FolderIcon,
         subItems: [
           { name: "项目管理", href: "/dashboard/projects" },
@@ -85,7 +85,7 @@ const getNavigation = (role: string[] = []) => {
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
       {
         name: "报告",
-        href: "#",
+        href: "/dashboard/daily-reports", // 修改为实际链接而不是"#"
         icon: FileTextIcon,
         subItems: [
           { name: "日报", href: "/dashboard/daily-reports" },
@@ -354,7 +354,7 @@ export default function DashboardLayout({
               {navigation.map((item) => (
                 <li key={item.href}>
                   <Link
-                    href={item.href !== "#" ? item.href : pathname}
+                    href={item.href}
                     className={`
                       flex items-center ${sidebarExpanded ? "px-2" : "justify-center"} py-2.5 text-sm font-medium rounded-md group
                       transition-all duration-200 ease-in-out
@@ -368,10 +368,9 @@ export default function DashboardLayout({
                       if (window.innerWidth < 768) {
                         setIsSidebarOpen(false);
                       }
-                      // 如果点击的是"报告"菜单项，直接导航到日报页面
-                      if (item.name === "报告" && item.href === "#") {
+                      // 如果有子项但没有点击子项，阻止默认行为
+                      if (item.subItems && item.subItems.length > 0) {
                         e.preventDefault();
-                        router.push("/dashboard/daily-reports");
                       }
                     }}
                     title={!sidebarExpanded ? item.name : ""}

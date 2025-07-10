@@ -222,6 +222,91 @@ CREATE POLICY "用户可以删除自己日报中的条目" ON public.report_item
     )
   );
 
+-- =====================
+-- 工作分解表
+-- =====================
+
+-- 确保uuid扩展已启用
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 创建工作分解表
+CREATE TABLE public.work_breakdown_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  parent_id UUID REFERENCES public.work_breakdown_items(id),
+  level INTEGER NOT NULL CHECK (level >= 0 AND level <= 4), -- 限制最多5级（0-4级）
+  position INTEGER NOT NULL DEFAULT 0, -- 同级项目中的排序位置
+  is_expanded BOOLEAN DEFAULT true,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 创建索引
+CREATE INDEX work_breakdown_items_project_id_idx ON public.work_breakdown_items(project_id);
+CREATE INDEX work_breakdown_items_parent_id_idx ON public.work_breakdown_items(parent_id);
+CREATE INDEX work_breakdown_items_user_id_idx ON public.work_breakdown_items(user_id);
+CREATE INDEX work_breakdown_items_level_idx ON public.work_breakdown_items(level);
+
+-- 为工作分解表启用行级安全策略
+ALTER TABLE public.work_breakdown_items ENABLE ROW LEVEL SECURITY;
+
+-- 用户可以查看自己的工作分解项
+CREATE POLICY "用户可以查看自己的工作分解项" ON public.work_breakdown_items
+  FOR SELECT USING (user_id = auth.uid());
+
+-- 用户可以创建自己的工作分解项
+CREATE POLICY "用户可以创建自己的工作分解项" ON public.work_breakdown_items
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+-- 用户可以更新自己的工作分解项
+CREATE POLICY "用户可以更新自己的工作分解项" ON public.work_breakdown_items
+  FOR UPDATE USING (user_id = auth.uid());
+
+-- 用户可以删除自己的工作分解项
+CREATE POLICY "用户可以删除自己的工作分解项" ON public.work_breakdown_items
+  FOR DELETE USING (user_id = auth.uid());
+
+-- 管理员可以查看所有工作分解项
+CREATE POLICY "管理员可查所有工作分解项" ON public.work_breakdown_items
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
+-- 创建触发器函数，更新updated_at字段
+CREATE OR REPLACE FUNCTION public.update_work_breakdown_items_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 添加触发器，在更新工作分解项时更新updated_at
+CREATE TRIGGER update_work_breakdown_items_timestamp
+  BEFORE UPDATE ON public.work_breakdown_items
+  FOR EACH ROW EXECUTE PROCEDURE public.update_work_breakdown_items_updated_at();
+
+-- 创建触发器函数，级联删除子工作项
+CREATE OR REPLACE FUNCTION public.cascade_delete_work_breakdown_items()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- 递归删除所有子项
+  DELETE FROM public.work_breakdown_items
+  WHERE parent_id = OLD.id;
+  
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 添加触发器，在删除工作分解项时级联删除子项
+CREATE TRIGGER cascade_delete_work_breakdown_items
+  BEFORE DELETE ON public.work_breakdown_items
+  FOR EACH ROW EXECUTE PROCEDURE public.cascade_delete_work_breakdown_items(); 
+
 -- 周报表
 CREATE TABLE public.weekly_reports (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
