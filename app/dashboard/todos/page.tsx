@@ -295,8 +295,8 @@ export default function TodosPage() {
           
           // 按最近完成时间排序并限制数量
           completedTodos.sort((a, b) => {
-            const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-            const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+            const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
+            const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
             return dateB - dateA;
           });
           const recentCompletedTodos = completedTodos.slice(0, 10);
@@ -348,8 +348,8 @@ export default function TodosPage() {
           
           // 按最近完成时间排序并限制数量
           completedTodos.sort((a, b) => {
-            const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-            const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+            const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
+            const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
             return dateB - dateA;
           });
           const recentCompletedTodos = completedTodos.slice(0, 10);
@@ -815,8 +815,8 @@ export default function TodosPage() {
       
       // 按最近完成时间排序并限制数量
       completedTodos.sort((a, b) => {
-        const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-        const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
+        const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
         return dateB - dateA;
       });
       const recentCompletedTodos = completedTodos.slice(0, 10);
@@ -862,8 +862,8 @@ export default function TodosPage() {
       
       // 按最近完成时间排序并限制数量
       completedTodos.sort((a, b) => {
-        const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-        const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
+        const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
         return dateB - dateA;
       });
       const recentCompletedTodos = completedTodos.slice(0, 10);
