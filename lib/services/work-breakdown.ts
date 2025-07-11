@@ -1,5 +1,6 @@
 import { createClient, WorkBreakdownItem } from "@/lib/supabase/client";
 import { XMindConverter } from "./xmind-converter";
+import { ExcelConverter } from "./excel-converter";
 import { saveAs } from 'file-saver';
 
 // 前端工作项类型
@@ -41,6 +42,7 @@ export class WorkBreakdownService {
   private cache: Cache = {};
   private cacheDuration = 60000; // 缓存有效期1分钟
   private xmindConverter = new XMindConverter();
+  private excelConverter = new ExcelConverter();
   
   // 获取项目的工作分解项
   async getWorkBreakdownItems(projectId: any, userId: any): Promise<WorkItem[]> {
@@ -188,6 +190,30 @@ export class WorkBreakdownService {
     }
   }
   
+  // 导出为Excel文件
+  exportToExcel(workItems: WorkItem[], projectName: string): void {
+    try {
+      const blob = this.excelConverter.exportToExcel(workItems, projectName);
+      // 使用file-saver保存文件
+      saveAs(blob, `${projectName || '工作分解'}.xlsx`);
+    } catch (error) {
+      console.error('导出Excel文件失败', error);
+      throw new Error('导出Excel文件失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  // 下载Excel导入模板
+  downloadExcelTemplate(): void {
+    try {
+      const blob = this.excelConverter.createImportTemplate();
+      // 使用file-saver保存文件
+      saveAs(blob, '工作分解导入模板.xlsx');
+    } catch (error) {
+      console.error('下载Excel模板失败', error);
+      throw new Error('下载Excel模板失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
   // 从XMind文件导入
   async importFromXMind(file: File, projectId: string, userId: string): Promise<WorkItem[]> {
     try {
@@ -205,6 +231,26 @@ export class WorkBreakdownService {
     } catch (error) {
       console.error('导入XMind文件失败', error);
       throw new Error('导入XMind文件失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  // 从Excel文件导入
+  async importFromExcel(file: File, projectId: string, userId: string): Promise<WorkItem[]> {
+    try {
+      // 解析Excel文件
+      const importedItems = await this.excelConverter.importFromExcel(file);
+      
+      // 保存到数据库
+      await this.saveImportedItems(importedItems, projectId, userId);
+      
+      // 清除缓存
+      this.invalidateCache(projectId, userId);
+      
+      // 重新获取工作分解项
+      return this.getWorkBreakdownItems(projectId, userId);
+    } catch (error) {
+      console.error('导入Excel文件失败', error);
+      throw new Error('导入Excel文件失败：' + (error instanceof Error ? error.message : '未知错误'));
     }
   }
   
@@ -261,10 +307,10 @@ export class WorkBreakdownService {
         status: item.status,
         tags: item.tags || '',
         members: item.members || '',
-        planned_start_time: item.planned_start_time,
-        planned_end_time: item.planned_end_time,
-        actual_start_time: item.actual_start_time,
-        actual_end_time: item.actual_end_time
+        planned_start_time: item.planned_start_time || undefined,
+        planned_end_time: item.planned_end_time || undefined,
+        actual_start_time: item.actual_start_time || undefined,
+        actual_end_time: item.actual_end_time || undefined
       };
     });
     

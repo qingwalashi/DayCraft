@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown } from "lucide-react";
 import WorkBreakdownGuide from "./guide";
 
 // 视图模式
@@ -317,8 +317,12 @@ export default function WorkBreakdownPage() {
   
   // 添加导入导出相关状态
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportingExcel, setIsImportingExcel] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
   
   // 添加新状态用于标签和人员输入
   const [tagInput, setTagInput] = useState('');
@@ -332,6 +336,28 @@ export default function WorkBreakdownPage() {
   
   // 添加状态用于强制重新渲染
   const [refreshKey, setRefreshKey] = useState(0);
+  
+  // 添加导入导出菜单状态
+  const [showImportExportMenu, setShowImportExportMenu] = useState(false);
+  const importExportMenuRef = useRef<HTMLDivElement>(null);
+  
+  // 添加点击外部关闭导入导出菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        importExportMenuRef.current && 
+        !importExportMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowImportExportMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   // 加载项目数据
   const fetchProjects = useCallback(async () => {
@@ -1091,7 +1117,7 @@ export default function WorkBreakdownPage() {
     setIsExporting(true);
     try {
       await workBreakdownService.exportToXMind(workItems, selectedProject.name);
-      toast.success('导出成功');
+      toast.success('导出XMind成功');
     } catch (error) {
       console.error('导出失败', error);
       toast.error(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -1100,16 +1126,61 @@ export default function WorkBreakdownPage() {
     }
   };
   
-  // 触发文件选择
+  // 导出为Excel
+  const handleExportExcel = () => {
+    if (!selectedProject || !workItems.length) {
+      toast.error('没有可导出的工作项');
+      return;
+    }
+    
+    setIsExportingExcel(true);
+    try {
+      workBreakdownService.exportToExcel(workItems, selectedProject.name);
+      toast.success('导出Excel成功');
+    } catch (error) {
+      console.error('导出失败', error);
+      toast.error(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+  
+  // 下载Excel导入模板
+  const handleDownloadTemplate = () => {
+    setIsDownloadingTemplate(true);
+    try {
+      workBreakdownService.downloadExcelTemplate();
+      toast.success('下载Excel模板成功');
+    } catch (error) {
+      console.error('下载模板失败', error);
+      toast.error(`下载模板失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsDownloadingTemplate(false);
+      setShowImportExportMenu(false);
+    }
+  };
+  
+  // 触发XMind文件选择
   const handleImportClick = () => {
     if (!selectedProject) {
       toast.error('请先选择一个项目');
       return;
     }
     fileInputRef.current?.click();
+    setShowImportExportMenu(false);
   };
   
-  // 处理文件选择
+  // 触发Excel文件选择
+  const handleImportExcelClick = () => {
+    if (!selectedProject) {
+      toast.error('请先选择一个项目');
+      return;
+    }
+    excelFileInputRef.current?.click();
+    setShowImportExportMenu(false);
+  };
+  
+  // 处理XMind文件选择
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedProject || !user) {
@@ -1140,7 +1211,7 @@ export default function WorkBreakdownPage() {
       
       // 更新状态
       setWorkItems(importedItems);
-      toast.success('导入成功');
+      toast.success('导入XMind成功');
     } catch (error) {
       console.error('导入失败', error);
       toast.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -1149,6 +1220,50 @@ export default function WorkBreakdownPage() {
       // 重置文件输入
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  // 处理Excel文件选择
+  const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedProject || !user) {
+      // 重置文件输入
+      if (excelFileInputRef.current) {
+        excelFileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    // 检查文件类型
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('请选择Excel格式的文件(.xlsx或.xls)');
+      if (excelFileInputRef.current) {
+        excelFileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    setIsImportingExcel(true);
+    try {
+      // 导入文件
+      const importedItems = await workBreakdownService.importFromExcel(
+        file,
+        selectedProject.id,
+        user.id
+      );
+      
+      // 更新状态
+      setWorkItems(importedItems);
+      toast.success('导入Excel成功');
+    } catch (error) {
+      console.error('导入失败', error);
+      toast.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsImportingExcel(false);
+      // 重置文件输入
+      if (excelFileInputRef.current) {
+        excelFileInputRef.current.value = '';
       }
     }
   };
@@ -1555,44 +1670,120 @@ export default function WorkBreakdownPage() {
             </select>
           </div>
           
-          {/* 导入导出按钮 */}
+          {/* 导入导出下拉菜单 */}
           {selectedProject && (
-            <>
+            <div className="relative">
+              {/* 导入导出按钮 */}
               <button
-                onClick={handleExport}
-                disabled={isExporting || !workItems.length}
-                className="text-xs px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 flex items-center border border-indigo-200 transition-colors"
+                onClick={() => setShowImportExportMenu(!showImportExportMenu)}
+                className="px-4 py-2 text-sm font-medium flex items-center bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md transition-colors"
               >
-                {isExporting ? (
-                  <>
-                    <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-indigo-700 rounded-full"></div>
-                    导出中...
-                  </>
-                ) : (
-                  <>
-                    <DownloadIcon className="h-3.5 w-3.5 mr-1" />
-                    导出XMind
-                  </>
-                )}
+                <FileDownIcon className="h-4 w-4 mr-1" />
+                导入导出
+                <ChevronDown className="h-4 w-4 ml-1" />
               </button>
               
-              <button
-                onClick={handleImportClick}
-                disabled={isImporting}
-                className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-md hover:bg-green-100 flex items-center border border-green-200 transition-colors"
-              >
-                {isImporting ? (
-                  <>
-                    <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-green-700 rounded-full"></div>
-                    导入中...
-                  </>
-                ) : (
-                  <>
-                    <UploadIcon className="h-3.5 w-3.5 mr-1" />
-                    导入XMind
-                  </>
-                )}
-              </button>
+              {/* 导入导出菜单 */}
+              {showImportExportMenu && (
+                <div 
+                  ref={importExportMenuRef}
+                  className="absolute right-0 mt-1 py-1 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200"
+                >
+                  <button
+                    onClick={handleExport}
+                    disabled={isExporting || !workItems.length}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isExporting ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        导出XMind中...
+                      </>
+                    ) : (
+                      <>
+                        <DownloadIcon className="h-4 w-4 mr-2" />
+                        导出XMind
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={handleImportClick}
+                    disabled={isImporting}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isImporting ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        导入XMind中...
+                      </>
+                    ) : (
+                      <>
+                        <UploadIcon className="h-4 w-4 mr-2" />
+                        导入XMind
+                      </>
+                    )}
+                  </button>
+                  
+                  <div className="border-t border-gray-200 my-1"></div>
+                  
+                  <button
+                    onClick={handleExportExcel}
+                    disabled={isExportingExcel || !workItems.length}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isExportingExcel ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        导出Excel中...
+                      </>
+                    ) : (
+                      <>
+                        <FileSpreadsheetIcon className="h-4 w-4 mr-2" />
+                        导出Excel
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={handleImportExcelClick}
+                    disabled={isImportingExcel}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isImportingExcel ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        导入Excel中...
+                      </>
+                    ) : (
+                      <>
+                        <UploadIcon className="h-4 w-4 mr-2" />
+                        导入Excel
+                      </>
+                    )}
+                  </button>
+                  
+                  <div className="border-t border-gray-200 my-1"></div>
+                  
+                  <button
+                    onClick={handleDownloadTemplate}
+                    disabled={isDownloadingTemplate}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isDownloadingTemplate ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        下载中...
+                      </>
+                    ) : (
+                      <>
+                        <FileDownIcon className="h-4 w-4 mr-2" />
+                        下载Excel模板
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
               
               {/* 隐藏的文件输入 */}
               <input
@@ -1602,23 +1793,20 @@ export default function WorkBreakdownPage() {
                 onChange={handleFileChange}
                 className="hidden"
               />
-            </>
+              
+              {/* 隐藏的Excel文件输入 */}
+              <input
+                ref={excelFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleExcelFileChange}
+                className="hidden"
+              />
+            </div>
           )}
           
           {/* 视图切换按钮 - 放在右侧 */}
-          <div className="flex rounded-md shadow-sm" role="group">
-            <button
-              type="button"
-              onClick={() => setViewMode('preview')}
-              className={`px-4 py-2 text-sm font-medium flex items-center ${
-                viewMode === 'preview' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              } border border-gray-300 rounded-l-md transition-colors`}
-            >
-              <EyeIcon className="h-4 w-4 mr-1" />
-              预览
-            </button>
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setViewMode('edit')}
@@ -1626,10 +1814,22 @@ export default function WorkBreakdownPage() {
                 viewMode === 'edit' 
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              } border border-gray-300 border-l-0 rounded-r-md transition-colors`}
+              } border border-gray-300 rounded-md transition-colors`}
             >
               <EditIcon className="h-4 w-4 mr-1" />
               编辑
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('preview')}
+              className={`px-4 py-2 text-sm font-medium flex items-center ${
+                viewMode === 'preview' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              } border border-gray-300 rounded-md transition-colors`}
+            >
+              <EyeIcon className="h-4 w-4 mr-1" />
+              预览
             </button>
           </div>
         </div>
