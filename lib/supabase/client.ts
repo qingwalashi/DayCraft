@@ -239,6 +239,9 @@ export type WorkBreakdownItem = {
   level: number;
   position: number;
   is_expanded: boolean;
+  status: string;
+  tags: string | null;
+  members: string | null;
   user_id: string;
   created_at: string;
   updated_at: string;

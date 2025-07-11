@@ -239,6 +239,9 @@ CREATE TABLE public.work_breakdown_items (
   level INTEGER NOT NULL CHECK (level >= 0 AND level <= 4), -- 限制最多5级（0-4级）
   position INTEGER NOT NULL DEFAULT 0, -- 同级项目中的排序位置
   is_expanded BOOLEAN DEFAULT true,
+  status TEXT DEFAULT '未开始' CHECK (status IN ('未开始', '进行中', '已暂停', '已完成')), -- 工作进展状态
+  tags TEXT, -- 工作标签，用逗号分隔
+  members TEXT, -- 参与人员，用逗号分隔
   user_id UUID REFERENCES auth.users(id) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

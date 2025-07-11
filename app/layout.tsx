@@ -1,6 +1,6 @@
 import "./globals.css";
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import RootLayoutClient from "./layout-client";
 import { Toaster } from "sonner";
@@ -11,20 +11,25 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+export const viewport: Viewport = {
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#35155D" }],
+  width: "device-width",
+  initialScale: 1,
+  minimumScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "DayCraft - 智能日报助手",
   description: "简化日报和周报创建过程的专业工具",
   generator: "Next.js",
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   keywords: ["日报", "周报", "工作报告", "效率工具", "PWA"],
-  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#35155D" }],
   authors: [
     {
       name: "DayCraft团队",
     },
   ],
-  viewport:
-    "minimum-scale=1, initial-scale=1, width=device-width, shrink-to-fit=no, viewport-fit=cover",
   icons: [
     { rel: "apple-touch-icon", url: "/icons/apple-icon-180x180.png" },
     { rel: "icon", url: "/icons/icon-192x192.png" },

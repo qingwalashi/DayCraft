@@ -1,14 +1,300 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon } from "lucide-react";
 
 // 视图模式
 type ViewMode = 'edit' | 'preview';
+
+// 工作进展状态选项
+const STATUS_OPTIONS = [
+  { value: '未开始', color: 'bg-gray-200 text-gray-800 border-gray-300' },
+  { value: '进行中', color: 'bg-blue-200 text-blue-800 border-blue-300' },
+  { value: '已暂停', color: 'bg-yellow-200 text-yellow-800 border-yellow-300' },
+  { value: '已完成', color: 'bg-green-200 text-green-800 border-green-300' },
+];
+
+// 工作标签选项
+const TAG_OPTIONS = [
+  '需求对接', '产品设计', 'UI 设计', '前端开发', '后端开发', 
+  '前后端联调', '功能测试', '功能确认', 'BUG 处理', 
+  '数据开发', '基础资源', '数据资源'
+];
+
+// 工作标签组件
+interface TagInputProps {
+  itemId: string;
+  initialTags: string;
+  onTagsChange: (tags: string) => void;
+}
+
+const TagInput: React.FC<TagInputProps> = ({ itemId, initialTags, onTagsChange }) => {
+  const [tags, setTags] = useState<string[]>(initialTags ? initialTags.split('，').filter(Boolean) : []);
+  const [inputValue, setInputValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>(TAG_OPTIONS);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // 添加点击外部关闭下拉框的处理函数
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        inputRef.current && 
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    // 添加全局点击事件监听
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    // 清理函数
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // 更新父组件的隐藏输入框
+  useEffect(() => {
+    const hiddenInput = document.getElementById(`tags-hidden-${itemId}`) as HTMLInputElement;
+    if (hiddenInput) {
+      hiddenInput.value = tags.join('，');
+      onTagsChange(tags.join('，'));
+    }
+  }, [tags, itemId, onTagsChange]);
+
+  // 处理输入变化
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    
+    // 过滤建议
+    if (value) {
+      setFilteredSuggestions(TAG_OPTIONS.filter(tag => 
+        tag.toLowerCase().includes(value.toLowerCase())
+      ));
+    } else {
+      setFilteredSuggestions(TAG_OPTIONS);
+    }
+    
+    // 如果输入以逗号结束，添加标签
+    if (value.endsWith('，') || value.endsWith(',')) {
+      const newTag = value.slice(0, -1).trim();
+      if (newTag && !tags.includes(newTag)) {
+        setTags(prev => [...prev, newTag]);
+        setInputValue('');
+      } else if (newTag) {
+        setInputValue('');
+      }
+    }
+  };
+
+  // 处理按键事件
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && inputValue.trim()) {
+      e.preventDefault();
+      if (!tags.includes(inputValue.trim())) {
+        setTags(prev => [...prev, inputValue.trim()]);
+      }
+      setInputValue('');
+    } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
+      // 如果输入框为空且按下退格键，删除最后一个标签
+      setTags(prev => prev.slice(0, -1));
+    }
+  };
+
+  // 添加标签
+  const addTag = (tag: string) => {
+    if (!tags.includes(tag)) {
+      setTags(prev => [...prev, tag]);
+    }
+    setShowSuggestions(false);
+    setInputValue('');
+    inputRef.current?.focus();
+  };
+
+  // 删除标签
+  const removeTag = (tagToRemove: string) => {
+    setTags(prev => prev.filter(tag => tag !== tagToRemove));
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md bg-white min-h-[42px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
+        {tags.map((tag, index) => (
+          <span 
+            key={`tag-${index}-${tag}`} 
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100 text-xs font-medium group hover:bg-indigo-100 transition-colors"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              className="rounded-full p-0.5 hover:bg-indigo-200 text-indigo-500 opacity-70 hover:opacity-100 transition-all"
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <div className="flex-1 min-w-[120px] flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setShowSuggestions(true)}
+            className="w-full outline-none border-none focus:ring-0 py-1 text-sm"
+            placeholder={tags.length > 0 ? "" : "输入标签并按回车添加"}
+          />
+          <button
+            type="button"
+            onClick={() => setShowSuggestions(!showSuggestions)}
+            className="p-1 rounded hover:bg-gray-100"
+          >
+            <ChevronDownIcon className="h-4 w-4 text-gray-500" />
+          </button>
+        </div>
+      </div>
+      
+      {/* 标签建议下拉菜单 */}
+      {showSuggestions && (
+        <div 
+          ref={dropdownRef}
+          className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto"
+        >
+          {filteredSuggestions.length > 0 ? (
+            filteredSuggestions.map((tag, index) => (
+              <div
+                key={index}
+                className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-sm transition-colors flex items-center justify-between"
+                onClick={() => addTag(tag)}
+              >
+                <span>{tag}</span>
+                {tags.includes(tag) && (
+                  <span className="text-blue-500 text-xs">已添加</span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="px-4 py-2 text-sm text-gray-500">无匹配标签</div>
+          )}
+        </div>
+      )}
+      
+      {/* 隐藏输入框，用于表单提交 */}
+      <input 
+        type="hidden" 
+        id={`tags-hidden-${itemId}`} 
+        defaultValue={tags.join('，')} 
+      />
+    </div>
+  );
+};
+
+// 参与人员组件
+interface MemberInputProps {
+  itemId: string;
+  initialMembers: string;
+  onMembersChange: (members: string) => void;
+}
+
+const MemberInput: React.FC<MemberInputProps> = ({ itemId, initialMembers, onMembersChange }) => {
+  const [members, setMembers] = useState<string[]>(initialMembers ? initialMembers.split('，').filter(Boolean) : []);
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 更新父组件的隐藏输入框
+  useEffect(() => {
+    const hiddenInput = document.getElementById(`members-hidden-${itemId}`) as HTMLInputElement;
+    if (hiddenInput) {
+      hiddenInput.value = members.join('，');
+      onMembersChange(members.join('，'));
+    }
+  }, [members, itemId, onMembersChange]);
+
+  // 处理输入变化
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    
+    // 如果输入以逗号结束，添加人员
+    if (value.endsWith('，') || value.endsWith(',')) {
+      const newMember = value.slice(0, -1).trim();
+      if (newMember && !members.includes(newMember)) {
+        setMembers(prev => [...prev, newMember]);
+        setInputValue('');
+      } else if (newMember) {
+        setInputValue('');
+      }
+    }
+  };
+
+  // 处理按键事件
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && inputValue.trim()) {
+      e.preventDefault();
+      if (!members.includes(inputValue.trim())) {
+        setMembers(prev => [...prev, inputValue.trim()]);
+      }
+      setInputValue('');
+    } else if (e.key === 'Backspace' && !inputValue && members.length > 0) {
+      // 如果输入框为空且按下退格键，删除最后一个人员
+      setMembers(prev => prev.slice(0, -1));
+    }
+  };
+
+  // 删除人员
+  const removeMember = (memberToRemove: string) => {
+    setMembers(prev => prev.filter(member => member !== memberToRemove));
+  };
+
+  return (
+    <div className="w-full">
+      <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md bg-white min-h-[42px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
+        {members.map((member, index) => (
+          <span 
+            key={`member-${index}-${member}`} 
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100 text-xs font-medium group hover:bg-blue-100 transition-colors"
+          >
+            {member}
+            <button
+              type="button"
+              onClick={() => removeMember(member)}
+              className="rounded-full p-0.5 hover:bg-blue-200 text-blue-500 opacity-70 hover:opacity-100 transition-all"
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          className="flex-1 min-w-[120px] outline-none border-none focus:ring-0 py-1 text-sm"
+          placeholder={members.length > 0 ? "" : "输入人员名称并按回车添加"}
+        />
+      </div>
+      
+      {/* 隐藏输入框，用于表单提交 */}
+      <input 
+        type="hidden" 
+        id={`members-hidden-${itemId}`} 
+        defaultValue={members.join('，')} 
+      />
+    </div>
+  );
+};
 
 export default function WorkBreakdownPage() {
   const { user } = useAuth();
@@ -27,6 +313,19 @@ export default function WorkBreakdownPage() {
   // 添加请求控制状态
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
+  
+  // 添加新状态用于标签和人员输入
+  const [tagInput, setTagInput] = useState('');
+  const [memberInput, setMemberInput] = useState('');
+  const [filteredTags, setFilteredTags] = useState<string[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  
+  // 添加引用以便访问输入框
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const memberInputRef = useRef<HTMLInputElement>(null);
+  
+  // 添加状态用于强制重新渲染
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // 加载项目数据
   const fetchProjects = useCallback(async () => {
@@ -165,7 +464,10 @@ export default function WorkBreakdownPage() {
       isExpanded: true,
       isEditing: true,
       level: 0,  // 确保level为0表示一级工作项
-      position: newPosition  // 确保position正确设置
+      position: newPosition,  // 确保position正确设置
+      status: '未开始',
+      tags: '',
+      members: ''
     };
     
     console.log('添加一级工作项:', newItem);
@@ -245,7 +547,10 @@ export default function WorkBreakdownPage() {
       children: [],
       isEditing: true,
       level: level + 1,
-      position: newPosition
+      position: newPosition,
+      status: '未开始',
+      tags: '',
+      members: ''
     };
     
     console.log('添加子工作项:', { 
@@ -369,8 +674,8 @@ export default function WorkBreakdownPage() {
   };
   
   // 更新工作项（保存到数据库）
-  const updateWorkItem = async (id: string, name: string, description: string) => {
-    console.log('开始保存工作项:', { id, name, description });
+  const updateWorkItem = async (id: string, name: string, description: string, status: string = '未开始', tags: string = '', members: string = '') => {
+    console.log('开始保存工作项:', { id, name, description, status, tags, members });
     
     // 设置当前保存的工作项ID
     setSavingItemId(id);
@@ -464,20 +769,41 @@ export default function WorkBreakdownPage() {
         throw new Error('未找到工作项');
       }
       
+      // 获取最新的标签和人员值
+      const tagsHiddenInput = document.getElementById(`tags-hidden-${id}`) as HTMLInputElement;
+      const membersHiddenInput = document.getElementById(`members-hidden-${id}`) as HTMLInputElement;
+      
+      // 如果能找到隐藏输入框，使用其值
+      const updatedTags = tagsHiddenInput ? tagsHiddenInput.value : tags;
+      const updatedMembers = membersHiddenInput ? membersHiddenInput.value : members;
+      
+      console.log('保存前的标签和人员:', {
+        tags: updatedTags,
+        members: updatedMembers
+      });
+      
       // 强制检查是否为临时项
       const forceCheckIsTemp = foundItem.id.startsWith('temp-');
       
       // 递归更新子项的编辑状态
-      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string): WorkItem[] => {
+      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string, newStatus: string, newTags: string, newMembers: string): WorkItem[] => {
         return children.map(child => {
           if (isIdMatch(child.id, targetId) || isIdMatch(child.dbId, targetId)) {
-            return { ...child, name: newName, description: newDescription, isEditing: false };
+            return { 
+              ...child, 
+              name: newName, 
+              description: newDescription,
+              status: newStatus,
+              tags: newTags,
+              members: newMembers,
+              isEditing: false 
+            };
           }
           
           if (child.children.length > 0) {
             return {
               ...child,
-              children: updateChildrenEditState(child.children, targetId, newName, newDescription)
+              children: updateChildrenEditState(child.children, targetId, newName, newDescription, newStatus, newTags, newMembers)
             };
           }
           
@@ -488,7 +814,15 @@ export default function WorkBreakdownPage() {
       // 立即更新前端状态，确保编辑状态关闭
       const updatedItems = workItems.map(item => {
         if (isIdMatch(item.id, id) || isIdMatch(item.dbId, id)) {
-          return { ...item, name, description, isEditing: false };
+          return { 
+            ...item, 
+            name, 
+            description, 
+            status, 
+            tags: updatedTags, 
+            members: updatedMembers, 
+            isEditing: false 
+          };
         }
         
         // 递归处理子项
@@ -497,14 +831,22 @@ export default function WorkBreakdownPage() {
             ...item, 
             children: item.children.map(child => {
               if (isIdMatch(child.id, id) || isIdMatch(child.dbId, id)) {
-                return { ...child, name, description, isEditing: false };
+                return { 
+                  ...child, 
+                  name, 
+                  description, 
+                  status, 
+                  tags: updatedTags, 
+                  members: updatedMembers, 
+                  isEditing: false 
+                };
               }
               
               // 递归处理更深层级的子项
               if (child.children.length > 0) {
                 return {
                   ...child,
-                  children: updateChildrenEditState(child.children, id, name, description)
+                  children: updateChildrenEditState(child.children, id, name, description, status, updatedTags, updatedMembers)
                 };
               }
               
@@ -528,7 +870,10 @@ export default function WorkBreakdownPage() {
           description,
           parentId: parentInfo.parentId,
           level: parentInfo.level,
-          position: parentInfo.position
+          position: parentInfo.position,
+          status,
+          tags: updatedTags,
+          members: updatedMembers
         });
         
         // 确保selectedProject和user不为null
@@ -544,7 +889,10 @@ export default function WorkBreakdownPage() {
           description,
           parentInfo.parentId,
           parentInfo.level,
-          parentInfo.position
+          parentInfo.position,
+          status,
+          updatedTags,
+          updatedMembers
         );
         
         console.log('保存结果:', result);
@@ -588,8 +936,14 @@ export default function WorkBreakdownPage() {
         toast.success('添加工作项成功');
       } else if (foundItem.dbId) {
         // 如果是已有的项，直接更新
-        console.log('更新现有工作项:', { id: foundItem.dbId, name, description });
-        await workBreakdownService.updateWorkItem(foundItem.dbId, { name, description });
+        console.log('更新现有工作项:', { id: foundItem.dbId, name, description, status, tags: updatedTags, members: updatedMembers });
+        await workBreakdownService.updateWorkItem(foundItem.dbId, { 
+          name, 
+          description,
+          status,
+          tags: updatedTags,
+          members: updatedMembers
+        });
         toast.success('更新工作项成功');
       } else {
         // 如果既不是临时项又没有dbId，可能是数据不一致
@@ -720,7 +1074,45 @@ export default function WorkBreakdownPage() {
   const cancelDeleteWorkItem = () => {
     setItemToDelete(null);
   };
+
+  // 渲染工作项标签
+  const renderTags = (tags: string | undefined) => {
+    if (!tags) return null;
+    
+    const tagList = tags.split('，').filter(Boolean);
+    if (tagList.length === 0) return null;
+    
+    return (
+      <div className="flex flex-wrap gap-2 items-center">
+        <TagIcon className="h-3.5 w-3.5 text-gray-500" />
+        {tagList.map((tag, idx) => (
+          <span key={`tag-${idx}`} className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 transition-colors">
+            {tag}
+          </span>
+        ))}
+      </div>
+    );
+  };
   
+  // 渲染工作项人员
+  const renderMembers = (members: string | undefined) => {
+    if (!members) return null;
+    
+    const memberList = members.split('，').filter(Boolean);
+    if (memberList.length === 0) return null;
+    
+    return (
+      <div className="flex flex-wrap gap-2 items-center">
+        <UsersIcon className="h-3.5 w-3.5 text-gray-500" />
+        {memberList.map((member, idx) => (
+          <span key={`member-${idx}`} className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition-colors">
+            {member}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   // 渲染工作项组件
   const renderWorkItem = (item: WorkItem, level: number) => {
     // 限制最多5级（0-4级）
@@ -729,8 +1121,8 @@ export default function WorkBreakdownPage() {
     // 预览模式下的简化渲染
     if (viewMode === 'preview') {
       return (
-        <div key={item.id} className="mb-2">
-          <div className={`flex items-start p-3 bg-white rounded-lg shadow border-l-4 ${
+        <div key={item.id} className="mb-4">
+          <div className={`flex items-start p-4 bg-white rounded-lg shadow-sm border-l-4 transition-all hover:shadow-md ${
             level === 0 ? 'border-l-blue-500' :
             level === 1 ? 'border-l-green-500' :
             level === 2 ? 'border-l-yellow-500' :
@@ -738,31 +1130,61 @@ export default function WorkBreakdownPage() {
             'border-l-red-500'
           }`}>
             <div className="flex-grow">
-              <div>
-                <div className="flex items-center">
+              {/* 优化布局：PC端更紧凑，移动端自适应 */}
+              <div className="flex flex-col sm:flex-row sm:items-center">
+                {/* 第一行/左侧：标题和状态 */}
+                <div className="flex items-center flex-grow">
                   {item.children.length > 0 && (
                     <button
                       onClick={() => toggleExpand(item.id)}
-                      className="mr-2 p-1 rounded-md hover:bg-gray-100"
+                      className="mr-2 p-1 rounded-md hover:bg-gray-100 transition-colors"
                     >
                       {item.isExpanded ? (
-                        <ChevronDownIcon className="h-4 w-4" />
+                        <ChevronDownIcon className="h-5 w-5 text-gray-600" />
                       ) : (
-                        <ChevronRightIcon className="h-4 w-4" />
+                        <ChevronRightIcon className="h-5 w-5 text-gray-600" />
                       )}
                     </button>
                   )}
-                  <h3 className="font-medium">{item.name}</h3>
+                  <h3 className="font-medium text-lg">{item.name}</h3>
+                  
+                  {/* 显示工作状态徽章 */}
+                  {item.status && (
+                    <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
+                      item.status === '未开始' ? 'bg-gray-200 text-gray-800 border border-gray-300' :
+                      item.status === '进行中' ? 'bg-blue-200 text-blue-800 border border-blue-300' :
+                      item.status === '已暂停' ? 'bg-yellow-200 text-yellow-800 border border-yellow-300' :
+                      item.status === '已完成' ? 'bg-green-200 text-green-800 border border-green-300' :
+                      'bg-gray-200 text-gray-800 border border-gray-300'
+                    }`}>
+                      {item.status}
+                    </span>
+                  )}
                 </div>
+              </div>
+              
+              {/* 描述和标签区域 */}
+              <div className="mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+                {/* 描述 */}
                 {item.description && (
-                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                  <div className="text-sm text-gray-600 leading-relaxed sm:flex-1 sm:min-w-[200px]">
+                    {item.description}
+                  </div>
                 )}
+                
+                <div className="flex flex-wrap gap-x-4 mt-2 sm:mt-0">
+                  {/* 显示工作标签 */}
+                  {renderTags(item.tags)}
+                  
+                  {/* 显示参与人员 */}
+                  {renderMembers(item.members)}
+                </div>
               </div>
             </div>
           </div>
           
           {item.children.length > 0 && item.isExpanded && (
-            <div className={`pl-6 mt-2 ${level < 4 ? 'border-l border-gray-200' : ''}`}>
+            <div className={`pl-8 mt-3 ${level < 4 ? 'border-l border-gray-200' : ''}`}>
               {item.children.map(child => renderWorkItem(child, level + 1))}
             </div>
           )}
@@ -772,8 +1194,8 @@ export default function WorkBreakdownPage() {
     
     // 编辑模式下的渲染
     return (
-      <div key={item.id} className="mb-2">
-        <div className={`flex items-start p-3 bg-white rounded-lg shadow border-l-4 ${
+      <div key={item.id} className="mb-4">
+        <div className={`flex items-start p-4 bg-white rounded-lg shadow-sm border-l-4 transition-all hover:shadow-md ${
           level === 0 ? 'border-l-blue-500' :
           level === 1 ? 'border-l-green-500' :
           level === 2 ? 'border-l-yellow-500' :
@@ -782,41 +1204,105 @@ export default function WorkBreakdownPage() {
         }`}>
           <div className="flex-grow">
             {item.isEditing ? (
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border rounded-md"
-                  defaultValue={item.name}
-                  placeholder="工作项名称"
-                  id={`name-${item.id}`}
-                />
-                <textarea
-                  className="w-full px-3 py-2 border rounded-md"
-                  defaultValue={item.description}
-                  placeholder="工作描述（可选）"
-                  rows={3}
-                  id={`desc-${item.id}`}
-                />
-                <div className="flex space-x-2">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor={`name-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                    工作项名称
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    defaultValue={item.name}
+                    placeholder="工作项名称"
+                    id={`name-${item.id}`}
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor={`desc-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                    工作描述
+                  </label>
+                  <textarea
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    defaultValue={item.description}
+                    placeholder="工作描述（可选）"
+                    rows={3}
+                    id={`desc-${item.id}`}
+                  />
+                </div>
+                
+                {/* 工作进展状态选择 */}
+                <div className="mb-2">
+                  <label htmlFor={`status-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                    <ClockIcon className="h-4 w-4 mr-1" />
+                    工作进展
+                  </label>
+                  <select
+                    id={`status-${item.id}`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    defaultValue={item.status || '未开始'}
+                  >
+                    {STATUS_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.value}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* 工作标签输入 - 使用新组件 */}
+                <div className="mb-2">
+                  <label htmlFor={`tags-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                    <TagIcon className="h-4 w-4 mr-1" />
+                    工作标签
+                  </label>
+                  <TagInput 
+                    itemId={item.id} 
+                    initialTags={item.tags || ''} 
+                    onTagsChange={(tags) => {
+                      // 可以在这里添加额外的处理逻辑
+                      console.log('标签已更新:', tags);
+                    }}
+                  />
+                </div>
+                
+                {/* 参与人员输入 - 使用新组件 */}
+                <div className="mb-2">
+                  <label htmlFor={`members-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                    <UsersIcon className="h-4 w-4 mr-1" />
+                    参与人员
+                  </label>
+                  <MemberInput 
+                    itemId={item.id} 
+                    initialMembers={item.members || ''} 
+                    onMembersChange={(members) => {
+                      // 可以在这里添加额外的处理逻辑
+                      console.log('人员已更新:', members);
+                    }}
+                  />
+                </div>
+                
+                <div className="flex space-x-3 pt-2">
                   <button
                     onClick={() => updateWorkItem(
                       item.id,
                       (document.getElementById(`name-${item.id}`) as HTMLInputElement).value,
-                      (document.getElementById(`desc-${item.id}`) as HTMLTextAreaElement).value
+                      (document.getElementById(`desc-${item.id}`) as HTMLTextAreaElement).value,
+                      (document.getElementById(`status-${item.id}`) as HTMLSelectElement).value,
+                      (document.getElementById(`tags-hidden-${item.id}`) as HTMLInputElement).value,
+                      (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value
                     )}
-                    className="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                     disabled={isSaving}
                   >
                     {isSaving && savingItemId === item.id ? (
                       <>
-                        <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-white rounded-full inline-block"></div>
+                        <div className="animate-spin h-4 w-4 mr-2 border-2 border-t-transparent border-white rounded-full inline-block"></div>
                         保存中...
                       </>
                     ) : "保存"}
                   </button>
                   <button
                     onClick={() => toggleEdit(item.id, true)}
-                    className="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
                     disabled={isSaving}
                   >
                     取消
@@ -825,60 +1311,94 @@ export default function WorkBreakdownPage() {
               </div>
             ) : (
               <div>
-                <div className="flex items-center">
-                  {item.children.length > 0 && (
+                {/* 优化布局：PC端更紧凑，移动端自适应 */}
+                <div className="flex flex-col sm:flex-row sm:items-center">
+                  {/* 第一行/左侧：标题和状态 */}
+                  <div className="flex items-center flex-grow">
+                    {item.children.length > 0 && (
+                      <button
+                        onClick={() => toggleExpand(item.id)}
+                        className="mr-2 p-1 rounded-md hover:bg-gray-100 transition-colors"
+                      >
+                        {item.isExpanded ? (
+                          <ChevronDownIcon className="h-5 w-5 text-gray-600" />
+                        ) : (
+                          <ChevronRightIcon className="h-5 w-5 text-gray-600" />
+                        )}
+                      </button>
+                    )}
+                    <h3 className="font-medium text-lg">{item.name}</h3>
+                    
+                    {/* 显示工作状态徽章 */}
+                    {item.status && (
+                      <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
+                        item.status === '未开始' ? 'bg-gray-200 text-gray-800 border border-gray-300' :
+                        item.status === '进行中' ? 'bg-blue-200 text-blue-800 border border-blue-300' :
+                        item.status === '已暂停' ? 'bg-yellow-200 text-yellow-800 border border-yellow-300' :
+                        item.status === '已完成' ? 'bg-green-200 text-green-800 border border-green-300' :
+                        'bg-gray-200 text-gray-800 border border-gray-300'
+                      }`}>
+                        {item.status}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* 操作按钮：在PC端放在右侧，移动端放在下方 */}
+                  <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
+                    {canAddChildren && (
+                      <button
+                        onClick={() => addChildWorkItem(item.id, level)}
+                        className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-md hover:bg-green-100 flex items-center border border-green-200 transition-colors"
+                        disabled={isSaving}
+                      >
+                        {isSaving && savingItemId === item.id ? (
+                          <>
+                            <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-green-700 rounded-full"></div>
+                            处理中...
+                          </>
+                        ) : (
+                          <>
+                            <PlusIcon className="h-3.5 w-3.5 mr-1" />
+                            添加{level + 2}级工作项
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button
-                      onClick={() => toggleExpand(item.id)}
-                      className="mr-2 p-1 rounded-md hover:bg-gray-100"
-                    >
-                      {item.isExpanded ? (
-                        <ChevronDownIcon className="h-4 w-4" />
-                      ) : (
-                        <ChevronRightIcon className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
-                  <h3 className="font-medium">{item.name}</h3>
-                </div>
-                {item.description && (
-                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                )}
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {canAddChildren && (
-                    <button
-                      onClick={() => addChildWorkItem(item.id, level)}
-                      className="text-xs px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100 flex items-center"
+                      onClick={() => toggleEdit(item.id)}
+                      className="text-xs px-3 py-1.5 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 flex items-center border border-gray-200 transition-colors"
                       disabled={isSaving}
                     >
-                      {isSaving && savingItemId === item.id ? (
-                        <>
-                          <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-green-700 rounded-full"></div>
-                          处理中...
-                        </>
-                      ) : (
-                        <>
-                          <PlusIcon className="h-3 w-3 mr-1" />
-                          添加{level + 2}级工作项
-                        </>
-                      )}
+                      <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                      编辑
                     </button>
+                    <button
+                      onClick={() => deleteWorkItem(item.id)}
+                      className="text-xs px-3 py-1.5 bg-red-50 text-red-700 rounded-md hover:bg-red-100 flex items-center border border-red-200 transition-colors"
+                      disabled={isSaving}
+                    >
+                      <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                      删除
+                    </button>
+                  </div>
+                </div>
+                
+                {/* 描述和标签区域 */}
+                <div className="mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+                  {/* 描述 */}
+                  {item.description && (
+                    <div className="text-sm text-gray-600 leading-relaxed sm:flex-1 sm:min-w-[200px]">
+                      {item.description}
+                    </div>
                   )}
-                  <button
-                    onClick={() => toggleEdit(item.id)}
-                    className="text-xs px-2 py-1 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 flex items-center"
-                    disabled={isSaving}
-                  >
-                    <PencilIcon className="h-3 w-3 mr-1" />
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => deleteWorkItem(item.id)}
-                    className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 flex items-center"
-                    disabled={isSaving}
-                  >
-                    <TrashIcon className="h-3 w-3 mr-1" />
-                    删除
-                  </button>
+                  
+                  <div className="flex flex-wrap gap-x-4 mt-2 sm:mt-0">
+                    {/* 显示工作标签 */}
+                    {renderTags(item.tags)}
+                    
+                    {/* 显示参与人员 */}
+                    {renderMembers(item.members)}
+                  </div>
                 </div>
               </div>
             )}
@@ -886,7 +1406,7 @@ export default function WorkBreakdownPage() {
         </div>
         
         {item.children.length > 0 && item.isExpanded && (
-          <div className={`pl-6 mt-2 ${level < 4 ? 'border-l border-gray-200' : ''}`}>
+          <div className={`pl-8 mt-3 ${level < 4 ? 'border-l border-gray-200' : ''}`}>
             {item.children.map(child => renderWorkItem(child, level + 1))}
           </div>
         )}
@@ -895,11 +1415,11 @@ export default function WorkBreakdownPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 删除确认对话框 */}
       {itemToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
             <h3 className="text-lg font-medium mb-4">确认删除</h3>
             <p className="text-gray-600 mb-6">
               您确定要删除此工作项吗？此操作无法撤销，删除后将同时删除所有子工作项。
@@ -907,14 +1427,14 @@ export default function WorkBreakdownPage() {
             <div className="flex justify-end space-x-3">
               <button
                 onClick={cancelDeleteWorkItem}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
                 disabled={isSaving}
               >
                 取消
               </button>
               <button
                 onClick={confirmDeleteWorkItem}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
                 disabled={isSaving}
               >
                 {isSaving ? (
@@ -938,7 +1458,7 @@ export default function WorkBreakdownPage() {
           {/* 项目选择器 - 放在左侧 */}
           <div className="w-full sm:w-auto">
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               value={selectedProject?.id || ""}
               onChange={(e) => {
                 const project = projects.find(p => p.id === e.target.value);
@@ -963,7 +1483,7 @@ export default function WorkBreakdownPage() {
                 viewMode === 'preview' 
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              } border border-gray-300 rounded-l-md`}
+              } border border-gray-300 rounded-l-md transition-colors`}
             >
               <EyeIcon className="h-4 w-4 mr-1" />
               预览
@@ -975,7 +1495,7 @@ export default function WorkBreakdownPage() {
                 viewMode === 'edit' 
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              } border border-gray-300 border-l-0 rounded-r-md`}
+              } border border-gray-300 border-l-0 rounded-r-md transition-colors`}
             >
               <EditIcon className="h-4 w-4 mr-1" />
               编辑
@@ -986,8 +1506,8 @@ export default function WorkBreakdownPage() {
       
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-          <span className="ml-2 text-gray-600">加载中...</span>
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3 text-gray-600">加载中...</span>
         </div>
       ) : (
         <div>
@@ -999,10 +1519,10 @@ export default function WorkBreakdownPage() {
                   
                   {/* 底部添加一级工作项按钮 */}
                   {viewMode === 'edit' && (
-                    <div className="mt-6 flex justify-center">
+                    <div className="mt-8 flex justify-center">
                       <button
                         onClick={addRootWorkItem}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                         disabled={isSaving}
                       >
                         {isSaving ? (
@@ -1021,12 +1541,12 @@ export default function WorkBreakdownPage() {
                   )}
                 </div>
               ) : (
-                <div className="bg-white p-8 rounded-lg shadow text-center">
-                  <p className="text-gray-500 mb-4">当前项目没有工作分解项</p>
+                <div className="bg-white p-10 rounded-lg shadow-sm text-center border border-gray-200">
+                  <p className="text-gray-500 mb-6">当前项目没有工作分解项</p>
                   {viewMode === 'edit' && (
                     <button
                       onClick={addRootWorkItem}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                       disabled={isSaving}
                     >
                       {isSaving ? (
@@ -1046,11 +1566,11 @@ export default function WorkBreakdownPage() {
               )}
             </div>
           ) : (
-            <div className="bg-white p-8 rounded-lg shadow text-center">
-              <p className="text-gray-500 mb-4">没有可用的活跃项目</p>
+            <div className="bg-white p-10 rounded-lg shadow-sm text-center border border-gray-200">
+              <p className="text-gray-500 mb-6">没有可用的活跃项目</p>
               <a
                 href="/dashboard/projects"
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
               >
                 <PlusIcon className="h-5 w-5 mr-2" />
                 创建新项目

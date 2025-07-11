@@ -12,6 +12,9 @@ export interface WorkItem {
   dbId?: string;
   level: number;
   position: number;
+  status?: string;
+  tags?: string;
+  members?: string;
 }
 
 interface WorkBreakdownItemResponse {
@@ -80,7 +83,10 @@ export class WorkBreakdownService {
     description: string, 
     parentId: string | null, 
     level: number, 
-    position: number
+    position: number,
+    status: string = '未开始',
+    tags: string = '',
+    members: string = ''
   ): Promise<{ id: string }> {
     const { data, error } = await this.supabase
       .from('work_breakdown_items')
@@ -92,6 +98,9 @@ export class WorkBreakdownService {
         level,
         position,
         is_expanded: true,
+        status,
+        tags,
+        members,
         user_id: userId
       })
       .select('id')
@@ -183,7 +192,10 @@ export class WorkBreakdownService {
         children: [],
         isExpanded: item.is_expanded,
         level: item.level,
-        position: item.position
+        position: item.position,
+        status: item.status,
+        tags: item.tags || '',
+        members: item.members || ''
       };
     });
     
