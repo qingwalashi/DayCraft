@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -931,12 +930,31 @@ export default function WorkBreakdownPage() {
       )}
       
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4 sm:mb-0">
           {selectedProject ? `${selectedProject.name} 工作分解` : '工作分解'}
         </h1>
         
-        <div className="flex items-center gap-4">
-          {/* 视图切换按钮 */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 项目选择器 - 放在左侧 */}
+          <div className="w-full sm:w-auto">
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={selectedProject?.id || ""}
+              onChange={(e) => {
+                const project = projects.find(p => p.id === e.target.value);
+                setSelectedProject(project || null);
+              }}
+              disabled={isLoading || isSaving}
+            >
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {/* 视图切换按钮 - 放在右侧 */}
           <div className="flex rounded-md shadow-sm" role="group">
             <button
               type="button"
@@ -962,25 +980,6 @@ export default function WorkBreakdownPage() {
               <EditIcon className="h-4 w-4 mr-1" />
               编辑
             </button>
-          </div>
-          
-          {/* 项目选择器 */}
-          <div className="w-full sm:w-64">
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={selectedProject?.id || ""}
-              onChange={(e) => {
-                const project = projects.find(p => p.id === e.target.value);
-                setSelectedProject(project || null);
-              }}
-              disabled={isLoading || isSaving}
-            >
-              {projects.map(project => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
       </div>
