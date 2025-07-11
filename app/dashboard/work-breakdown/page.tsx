@@ -324,6 +324,10 @@ export default function WorkBreakdownPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
   
+  // 添加Excel导入进度状态
+  const [importExcelProgress, setImportExcelProgress] = useState(0);
+  const [importExcelStage, setImportExcelStage] = useState('');
+  
   // 添加新状态用于标签和人员输入
   const [tagInput, setTagInput] = useState('');
   const [memberInput, setMemberInput] = useState('');
@@ -1245,12 +1249,38 @@ export default function WorkBreakdownPage() {
     }
     
     setIsImportingExcel(true);
+    setImportExcelProgress(0);
+    setImportExcelStage('准备导入');
+    
     try {
+      // 定义进度回调函数
+      const updateProgress = (progress: number) => {
+        setImportExcelProgress(progress);
+        
+        // 根据进度更新阶段描述
+        if (progress <= 10) {
+          setImportExcelStage('准备读取文件');
+        } else if (progress <= 30) {
+          setImportExcelStage('读取Excel文件');
+        } else if (progress <= 50) {
+          setImportExcelStage('解析Excel数据');
+        } else if (progress <= 70) {
+          setImportExcelStage('构建工作项结构');
+        } else if (progress <= 80) {
+          setImportExcelStage('保存到数据库');
+        } else if (progress <= 90) {
+          setImportExcelStage('更新缓存');
+        } else {
+          setImportExcelStage('导入完成');
+        }
+      };
+      
       // 导入文件
       const importedItems = await workBreakdownService.importFromExcel(
         file,
         selectedProject.id,
-        user.id
+        user.id,
+        updateProgress
       );
       
       // 更新状态
@@ -1261,6 +1291,8 @@ export default function WorkBreakdownPage() {
       toast.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsImportingExcel(false);
+      setImportExcelProgress(0);
+      setImportExcelStage('');
       // 重置文件输入
       if (excelFileInputRef.current) {
         excelFileInputRef.current.value = '';
@@ -1638,6 +1670,30 @@ export default function WorkBreakdownPage() {
                 ) : "确认删除"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Excel导入进度对话框 */}
+      {isImportingExcel && importExcelProgress > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+            <h3 className="text-lg font-medium mb-4">导入Excel中</h3>
+            <div className="mb-4">
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-gray-700">{importExcelStage}</span>
+                <span className="text-sm font-medium text-gray-700">{importExcelProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
+                  style={{ width: `${importExcelProgress}%` }}
+                ></div>
+              </div>
+            </div>
+            <p className="text-gray-600 text-sm">
+              请耐心等待，导入过程中请勿关闭或刷新页面...
+            </p>
           </div>
         </div>
       )}

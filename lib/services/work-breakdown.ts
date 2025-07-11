@@ -235,16 +235,25 @@ export class WorkBreakdownService {
   }
   
   // 从Excel文件导入
-  async importFromExcel(file: File, projectId: string, userId: string): Promise<WorkItem[]> {
+  async importFromExcel(file: File, projectId: string, userId: string, progressCallback?: (progress: number) => void): Promise<WorkItem[]> {
     try {
       // 解析Excel文件
-      const importedItems = await this.excelConverter.importFromExcel(file);
+      const importedItems = await this.excelConverter.importFromExcel(file, progressCallback);
+      
+      // 更新进度 - 开始保存到数据库
+      progressCallback?.(80);
       
       // 保存到数据库
       await this.saveImportedItems(importedItems, projectId, userId);
       
+      // 更新进度 - 数据库保存完成
+      progressCallback?.(90);
+      
       // 清除缓存
       this.invalidateCache(projectId, userId);
+      
+      // 更新进度 - 完成
+      progressCallback?.(100);
       
       // 重新获取工作分解项
       return this.getWorkBreakdownItems(projectId, userId);

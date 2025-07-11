@@ -46,13 +46,24 @@ export class ExcelConverter {
   /**
    * 从Excel文件导入工作分解项
    * @param file Excel文件
+   * @param progressCallback 进度回调函数，参数为0-100的数字表示进度百分比
    * @returns 工作分解项数组
    */
-  async importFromExcel(file: File): Promise<WorkItem[]> {
+  async importFromExcel(file: File, progressCallback?: (progress: number) => void): Promise<WorkItem[]> {
     try {
+      // 更新进度 - 开始读取文件
+      progressCallback?.(10);
+      
       // 读取Excel文件
       const data = await file.arrayBuffer();
+      
+      // 更新进度 - 文件读取完成
+      progressCallback?.(30);
+      
       const wb = XLSX.read(data);
+      
+      // 更新进度 - Excel解析完成
+      progressCallback?.(50);
       
       // 获取第一个工作表
       const sheetName = wb.SheetNames[0];
@@ -61,8 +72,16 @@ export class ExcelConverter {
       // 转换为JSON
       const rows = XLSX.utils.sheet_to_json<any>(ws);
       
+      // 更新进度 - 数据转换完成
+      progressCallback?.(70);
+      
       // 解析为工作项树
-      return this.buildWorkItemsTree(rows);
+      const result = this.buildWorkItemsTree(rows);
+      
+      // 更新进度 - 完成
+      progressCallback?.(100);
+      
+      return result;
     } catch (error) {
       console.error("导入Excel文件失败", error);
       throw new Error("导入Excel文件失败：" + (error instanceof Error ? error.message : "未知错误"));
@@ -163,30 +182,30 @@ export class ExcelConverter {
   
   /**
    * 将工作项树扁平化为表格结构
-   * @param workItems 工作分解项数组
-   * @returns 扁平化的表格数据
+   * @param workItems 工作项数组
+   * @returns 表格数据
    */
   private flattenWorkItems(workItems: WorkItem[]): any[] {
     const rows: any[] = [];
     
-    const processItem = (item: WorkItem, parentPath: string = '') => {
-      // 添加当前项
+    const processItem = (item: WorkItem, level: number) => {
       rows.push({
-        "层级": item.level + 1, // 转换为从1开始的层级
+        "层级": level + 1,
         "工作项名称": item.name,
-        "工作描述": item.description || '',
-        "工作进展": item.status || '未开始',
-        "工作标签": item.tags || '',
-        "参与人员": item.members || ''
+        "工作描述": item.description,
+        "工作进展": item.status || "未开始",
+        "工作标签": item.tags || "",
+        "参与人员": item.members || ""
       });
       
-      // 处理子项
+      // 递归处理子项
       if (item.children && item.children.length > 0) {
-        item.children.forEach(child => processItem(child, parentPath + item.name + '/'));
+        item.children.forEach(child => processItem(child, level + 1));
       }
     };
     
-    workItems.forEach(item => processItem(item));
+    // 处理所有根级工作项
+    workItems.forEach(item => processItem(item, 0));
     
     return rows;
   }
