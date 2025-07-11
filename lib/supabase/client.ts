@@ -242,6 +242,10 @@ export type WorkBreakdownItem = {
   status: string;
   tags: string | null;
   members: string | null;
+  planned_start_time: string | null;
+  planned_end_time: string | null;
+  actual_start_time: string | null;
+  actual_end_time: string | null;
   user_id: string;
   created_at: string;
   updated_at: string;

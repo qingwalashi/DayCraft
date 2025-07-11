@@ -1,4 +1,6 @@
 import { createClient, WorkBreakdownItem } from "@/lib/supabase/client";
+import { XMindConverter } from "./xmind-converter";
+import { saveAs } from 'file-saver';
 
 // 前端工作项类型
 export interface WorkItem {
@@ -15,6 +17,10 @@ export interface WorkItem {
   status?: string;
   tags?: string;
   members?: string;
+  planned_start_time?: string;
+  planned_end_time?: string;
+  actual_start_time?: string;
+  actual_end_time?: string;
 }
 
 interface WorkBreakdownItemResponse {
@@ -34,6 +40,7 @@ export class WorkBreakdownService {
   private supabase = createClient();
   private cache: Cache = {};
   private cacheDuration = 60000; // 缓存有效期1分钟
+  private xmindConverter = new XMindConverter();
   
   // 获取项目的工作分解项
   async getWorkBreakdownItems(projectId: any, userId: any): Promise<WorkItem[]> {
@@ -168,6 +175,64 @@ export class WorkBreakdownService {
     }
   }
   
+  // 导出为XMind文件
+  async exportToXMind(workItems: WorkItem[], projectName: string): Promise<void> {
+    try {
+      const blob = await this.xmindConverter.exportToXMind(workItems, projectName);
+      // 使用file-saver保存文件
+      saveAs(blob, `${projectName || '工作分解'}.xmind`);
+      return Promise.resolve();
+    } catch (error) {
+      console.error('导出XMind文件失败', error);
+      throw new Error('导出XMind文件失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  // 从XMind文件导入
+  async importFromXMind(file: File, projectId: string, userId: string): Promise<WorkItem[]> {
+    try {
+      // 解析XMind文件
+      const importedItems = await this.xmindConverter.importFromXMind(file);
+      
+      // 保存到数据库
+      await this.saveImportedItems(importedItems, projectId, userId);
+      
+      // 清除缓存
+      this.invalidateCache(projectId, userId);
+      
+      // 重新获取工作分解项
+      return this.getWorkBreakdownItems(projectId, userId);
+    } catch (error) {
+      console.error('导入XMind文件失败', error);
+      throw new Error('导入XMind文件失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
+  
+  // 保存导入的工作项到数据库
+  private async saveImportedItems(items: WorkItem[], projectId: string, userId: string, parentId: string | null = null): Promise<void> {
+    // 遍历所有工作项
+    for (const item of items) {
+      // 添加工作项
+      const { id } = await this.addWorkItem(
+        projectId,
+        userId,
+        item.name,
+        item.description,
+        parentId,
+        item.level,
+        item.position,
+        item.status || '未开始',
+        item.tags || '',
+        item.members || ''
+      );
+      
+      // 递归处理子项
+      if (item.children && item.children.length > 0) {
+        await this.saveImportedItems(item.children, projectId, userId, id);
+      }
+    }
+  }
+  
   // 清除缓存
   private invalidateCache(projectId: string, userId: string): void {
     const cacheKey = `${projectId}_${userId}`;
@@ -195,7 +260,11 @@ export class WorkBreakdownService {
         position: item.position,
         status: item.status,
         tags: item.tags || '',
-        members: item.members || ''
+        members: item.members || '',
+        planned_start_time: item.planned_start_time,
+        planned_end_time: item.planned_end_time,
+        actual_start_time: item.actual_start_time,
+        actual_end_time: item.actual_end_time
       };
     });
     

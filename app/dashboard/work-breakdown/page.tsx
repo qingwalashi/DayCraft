@@ -5,7 +5,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon } from "lucide-react";
+import WorkBreakdownGuide from "./guide";
 
 // 视图模式
 type ViewMode = 'edit' | 'preview';
@@ -313,6 +314,11 @@ export default function WorkBreakdownPage() {
   // 添加请求控制状态
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
+  
+  // 添加导入导出相关状态
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // 添加新状态用于标签和人员输入
   const [tagInput, setTagInput] = useState('');
@@ -1075,6 +1081,78 @@ export default function WorkBreakdownPage() {
     setItemToDelete(null);
   };
 
+  // 导出为XMind
+  const handleExport = async () => {
+    if (!selectedProject || !workItems.length) {
+      toast.error('没有可导出的工作项');
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      await workBreakdownService.exportToXMind(workItems, selectedProject.name);
+      toast.success('导出成功');
+    } catch (error) {
+      console.error('导出失败', error);
+      toast.error(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 触发文件选择
+  const handleImportClick = () => {
+    if (!selectedProject) {
+      toast.error('请先选择一个项目');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+  
+  // 处理文件选择
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedProject || !user) {
+      // 重置文件输入
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    // 检查文件类型
+    if (!file.name.endsWith('.xmind')) {
+      toast.error('请选择.xmind格式的文件');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    setIsImporting(true);
+    try {
+      // 导入文件
+      const importedItems = await workBreakdownService.importFromXMind(
+        file,
+        selectedProject.id,
+        user.id
+      );
+      
+      // 更新状态
+      setWorkItems(importedItems);
+      toast.success('导入成功');
+    } catch (error) {
+      console.error('导入失败', error);
+      toast.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsImporting(false);
+      // 重置文件输入
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
   // 渲染工作项标签
   const renderTags = (tags: string | undefined) => {
     if (!tags) return null;
@@ -1450,9 +1528,12 @@ export default function WorkBreakdownPage() {
       )}
       
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4 sm:mb-0">
-          {selectedProject ? `${selectedProject.name} 工作分解` : '工作分解'}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4 sm:mb-0">
+            {selectedProject ? `${selectedProject.name} 工作分解` : '工作分解'}
+          </h1>
+          <WorkBreakdownGuide />
+        </div>
         
         <div className="flex flex-wrap items-center gap-3">
           {/* 项目选择器 - 放在左侧 */}
@@ -1473,6 +1554,56 @@ export default function WorkBreakdownPage() {
               ))}
             </select>
           </div>
+          
+          {/* 导入导出按钮 */}
+          {selectedProject && (
+            <>
+              <button
+                onClick={handleExport}
+                disabled={isExporting || !workItems.length}
+                className="text-xs px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 flex items-center border border-indigo-200 transition-colors"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-indigo-700 rounded-full"></div>
+                    导出中...
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon className="h-3.5 w-3.5 mr-1" />
+                    导出XMind
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleImportClick}
+                disabled={isImporting}
+                className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-md hover:bg-green-100 flex items-center border border-green-200 transition-colors"
+              >
+                {isImporting ? (
+                  <>
+                    <div className="animate-spin h-3 w-3 mr-1 border-2 border-t-transparent border-green-700 rounded-full"></div>
+                    导入中...
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon className="h-3.5 w-3.5 mr-1" />
+                    导入XMind
+                  </>
+                )}
+              </button>
+              
+              {/* 隐藏的文件输入 */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xmind"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </>
+          )}
           
           {/* 视图切换按钮 - 放在右侧 */}
           <div className="flex rounded-md shadow-sm" role="group">
