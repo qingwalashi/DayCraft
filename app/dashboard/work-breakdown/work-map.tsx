@@ -23,8 +23,14 @@ import { XIcon } from 'lucide-react';
 const CustomNode = ({ data }: { data: any }) => {
   const style = getNodeStyle(data.level);
   
+  // 截取描述和备注的前部分字符，避免节点过大
+  const truncateText = (text: string, maxLength: number = 30) => {
+    if (!text) return '';
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+  
   return (
-    <div className="px-4 py-2 rounded-md border-2 shadow-sm w-[180px]" 
+    <div className="px-4 py-2 rounded-md border-2 shadow-sm w-[220px]" 
          style={{ backgroundColor: style.backgroundColor, borderColor: style.borderColor }}>
       <Handle type="target" position={Position.Left} style={{ background: style.borderColor }} />
       <div className="font-medium text-sm">{data.label}</div>
@@ -41,6 +47,21 @@ const CustomNode = ({ data }: { data: any }) => {
           </span>
         </div>
       )}
+      
+      {/* 工作描述预览 */}
+      {data.description && (
+        <div className="mt-1 text-xs text-gray-600 border-t border-gray-100 pt-1">
+          {truncateText(data.description)}
+        </div>
+      )}
+      
+      {/* 工作进展备注预览 */}
+      {data.progress_notes && (
+        <div className="mt-1 text-xs text-gray-500 italic border-t border-gray-100 pt-1 whitespace-pre-wrap">
+          {truncateText(data.progress_notes)}
+        </div>
+      )}
+      
       <Handle type="source" position={Position.Right} style={{ background: style.borderColor }} />
     </div>
   );
@@ -71,8 +92,8 @@ interface WorkMapProps {
 }
 
 // 节点间的水平和垂直间距
-const X_GAP = 250; // 水平间距
-const Y_GAP = 100; // 垂直间距，增加以避免重叠
+const X_GAP = 300; // 增加水平间距，从250增加到300
+const Y_GAP = 80; // 减少垂直间距，从100减少到80，使布局更紧凑
 const NODE_HEIGHT = 60; // 估计的节点高度，用于计算间距
 
 const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
@@ -85,6 +106,7 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
     status?: string;
     tags?: string;
     members?: string;
+    progress_notes?: string; // 新增工作进展备注
   } | null>(null);
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -125,6 +147,8 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
           type: 'custom',
           data: { 
             label: item.name,
+            description: item.description,
+            progress_notes: item.progress_notes,
             status: item.status,
             level: level,
             originalItem: item
@@ -225,12 +249,18 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
             id: `edge-${parentId}-${nodeId}`,
             source: parentId,
             target: nodeId,
-            type: 'smoothstep', // 使用平滑曲线
+            type: 'bezier', // 改用贝塞尔曲线，减少弯折
             markerEnd: {
               type: MarkerType.ArrowClosed,
               color: getNodeStyle(level).borderColor,
             },
-            style: { stroke: getNodeStyle(level).borderColor }
+            style: { stroke: getNodeStyle(level).borderColor },
+            // 添加贝塞尔曲线控制参数
+            sourceHandle: 'right',
+            targetHandle: 'left',
+            animated: false,
+            // 进一步减少曲率，使线条更直
+            data: { curvature: 0.1 }
           });
         }
       });
@@ -245,18 +275,21 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
       type: 'custom',
       data: { 
         label: projectName,
+        description: '项目根节点',
+        progress_notes: '',
         level: 0,
         originalItem: {
           id: rootId,
           name: projectName,
           description: '项目根节点',
+          progress_notes: '',
         }
       },
-      position: { x: 50, y: 0 }, // Y坐标稍后设置
+      position: { x: 30, y: 0 }, // 将根节点向左移动一些，从50改为30
     };
     
     // 第一阶段：创建所有节点
-    const { nodes: nodeMap, heights: heightMap, spaces: spaceMap } = createNodes(workItems, 1, 50 + X_GAP);
+    const { nodes: nodeMap, heights: heightMap, spaces: spaceMap } = createNodes(workItems, 1, 30 + X_GAP);
     
     // 第二阶段：设置Y坐标并创建边
     if (workItems.length > 0) {
@@ -264,7 +297,7 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
         workItems,
         rootId,
         1,
-        50 + X_GAP,
+        30 + X_GAP,
         Y_GAP, // 从Y_GAP开始，给顶部留出空间
         nodeMap,
         heightMap,
@@ -323,6 +356,7 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
         id: node.id,
         name: originalItem.name,
         description: originalItem.description,
+        progress_notes: originalItem.progress_notes,
         status: originalItem.status,
         tags: originalItem.tags,
         members: originalItem.members
@@ -386,7 +420,10 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
   };
   
   return (
-    <div className="w-full h-[600px] border border-gray-200 rounded-lg relative" ref={reactFlowWrapper}>
+    <div 
+      className="w-full border border-gray-200 rounded-lg relative h-[500px] sm:h-[600px]" 
+      ref={reactFlowWrapper}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -400,7 +437,9 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'smoothstep', // 使用平滑曲线
+          type: 'bezier', // 默认边类型改为贝塞尔曲线
+          animated: false,
+          data: { curvature: 0.1 } // 进一步减少曲率
         }}
         proOptions={{ hideAttribution: true }} // 隐藏ReactFlow字样
       >
@@ -419,7 +458,7 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
       
       {/* 工作项详情面板 */}
       {selectedNode && (
-        <div className="absolute top-4 right-4 w-72 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-10">
+        <div className="absolute top-4 right-4 w-72 max-w-[calc(100%-2rem)] bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-10 max-h-[80vh] overflow-y-auto">
           <div className="flex justify-between items-start mb-2">
             <h3 className="font-medium text-lg">{selectedNode.name}</h3>
             <button 
@@ -448,6 +487,15 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
             <div className="mt-3">
               <h4 className="text-sm font-medium text-gray-700 mb-1">工作描述</h4>
               <p className="text-sm text-gray-600">{selectedNode.description}</p>
+            </div>
+          )}
+          
+          {selectedNode.progress_notes && (
+            <div className="mt-3">
+              <h4 className="text-sm font-medium text-gray-700 mb-1">工作进展备注</h4>
+              <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 whitespace-pre-wrap">
+                {selectedNode.progress_notes}
+              </p>
             </div>
           )}
           

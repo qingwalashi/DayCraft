@@ -242,6 +242,7 @@ CREATE TABLE public.work_breakdown_items (
   status TEXT DEFAULT '未开始' CHECK (status IN ('未开始', '进行中', '已暂停', '已完成')), -- 工作进展状态
   tags TEXT, -- 工作标签，用逗号分隔
   members TEXT, -- 参与人员，用逗号分隔
+  progress_notes TEXT, -- 工作进展备注
   planned_start_time TIMESTAMP WITH TIME ZONE, -- 计划启动时间
   planned_end_time TIMESTAMP WITH TIME ZONE, -- 计划结束时间
   actual_start_time TIMESTAMP WITH TIME ZONE, -- 实际启动时间

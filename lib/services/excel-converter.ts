@@ -28,10 +28,20 @@ export class ExcelConverter {
       { wch: 40 }, // 工作项名称
       { wch: 50 }, // 工作描述
       { wch: 15 }, // 工作进展
+      { wch: 50 }, // 工作进展备注
       { wch: 30 }, // 工作标签
       { wch: 30 }, // 参与人员
     ];
     ws['!cols'] = colWidths;
+    
+    // 设置单元格格式，使工作进展备注支持换行
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:G1');
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      const cellAddress = XLSX.utils.encode_cell({ r: R, c: 4 }); // 第5列是工作进展备注
+      if (ws[cellAddress]) {
+        ws[cellAddress].s = { alignment: { wrapText: true } };
+      }
+    }
     
     // 添加工作表到工作簿
     XLSX.utils.book_append_sheet(wb, ws, projectName || '工作分解');
@@ -60,7 +70,8 @@ export class ExcelConverter {
       // 更新进度 - 文件读取完成
       progressCallback?.(30);
       
-      const wb = XLSX.read(data);
+      // 设置读取选项，保留换行符
+      const wb = XLSX.read(data, { cellText: false, cellDates: true });
       
       // 更新进度 - Excel解析完成
       progressCallback?.(50);
@@ -69,8 +80,11 @@ export class ExcelConverter {
       const sheetName = wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
       
-      // 转换为JSON
-      const rows = XLSX.utils.sheet_to_json<any>(ws);
+      // 转换为JSON，保留格式
+      const rows = XLSX.utils.sheet_to_json<any>(ws, { 
+        raw: false, 
+        defval: '' 
+      });
       
       // 更新进度 - 数据转换完成
       progressCallback?.(70);
@@ -100,6 +114,7 @@ export class ExcelConverter {
         "工作项名称": "一级工作项示例", 
         "工作描述": "这是一个一级工作项的示例",
         "工作进展": "未开始",
+        "工作进展备注": "",
         "工作标签": "需求对接，产品设计",
         "参与人员": "张三，李四"
       },
@@ -108,6 +123,7 @@ export class ExcelConverter {
         "工作项名称": "二级工作项示例", 
         "工作描述": "这是一个二级工作项的示例，是上面一级工作项的子项",
         "工作进展": "进行中",
+        "工作进展备注": "已完成需求评审\n正在进行UI设计\n预计下周完成",
         "工作标签": "UI 设计",
         "参与人员": "王五"
       },
@@ -116,6 +132,7 @@ export class ExcelConverter {
         "工作项名称": "三级工作项示例", 
         "工作描述": "这是一个三级工作项的示例，是上面二级工作项的子项",
         "工作进展": "已完成",
+        "工作进展备注": "所有功能已实现并通过测试",
         "工作标签": "前端开发",
         "参与人员": "赵六"
       },
@@ -124,6 +141,7 @@ export class ExcelConverter {
         "工作项名称": "另一个一级工作项", 
         "工作描述": "这是另一个一级工作项，与第一个一级工作项平级",
         "工作进展": "已暂停",
+        "工作进展备注": "因需求变更暂停开发\n等待产品确认新需求",
         "工作标签": "后端开发，数据开发",
         "参与人员": "张三，赵六"
       },
@@ -132,6 +150,7 @@ export class ExcelConverter {
         "工作项名称": "另一个二级工作项", 
         "工作描述": "这是另一个二级工作项，是上面一级工作项的子项",
         "工作进展": "未开始",
+        "工作进展备注": "",
         "工作标签": "前后端联调",
         "参与人员": "李四，王五"
       }
@@ -149,10 +168,20 @@ export class ExcelConverter {
       { wch: 40 }, // 工作项名称
       { wch: 50 }, // 工作描述
       { wch: 15 }, // 工作进展
+      { wch: 50 }, // 工作进展备注
       { wch: 30 }, // 工作标签
       { wch: 30 }, // 参与人员
     ];
     ws['!cols'] = colWidths;
+    
+    // 设置单元格格式，使工作进展备注支持换行
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:G1');
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      const cellAddress = XLSX.utils.encode_cell({ r: R, c: 4 }); // 第5列是工作进展备注
+      if (ws[cellAddress]) {
+        ws[cellAddress].s = { alignment: { wrapText: true } };
+      }
+    }
     
     // 添加说明工作表
     const instructionData = [
@@ -161,10 +190,11 @@ export class ExcelConverter {
       { "说明": "2. 工作项名称：必填，表示工作项的名称" },
       { "说明": "3. 工作描述：选填，表示工作项的详细描述" },
       { "说明": "4. 工作进展：选填，可选值为\"未开始\"、\"进行中\"、\"已暂停\"、\"已完成\"，默认为\"未开始\"" },
-      { "说明": "5. 工作标签：选填，多个标签用中文顿号(、)或英文逗号(,)分隔" },
-      { "说明": "6. 参与人员：选填，多个人员用中文顿号(、)或英文逗号(,)分隔" },
-      { "说明": "7. 层级顺序要连贯，例如一个三级工作项的上方必须有一个二级工作项" },
-      { "说明": "8. 导入时，系统会自动按照层级关系构建工作项树" }
+      { "说明": "5. 工作进展备注：选填，可记录工作进展的详细情况、遇到的问题等，支持换行" },
+      { "说明": "6. 工作标签：选填，多个标签用中文顿号(、)或英文逗号(,)分隔" },
+      { "说明": "7. 参与人员：选填，多个人员用中文顿号(、)或英文逗号(,)分隔" },
+      { "说明": "8. 层级顺序要连贯，例如一个三级工作项的上方必须有一个二级工作项" },
+      { "说明": "9. 导入时，系统会自动按照层级关系构建工作项树" }
     ];
     const wsInstructions = XLSX.utils.json_to_sheet(instructionData, { header: ["说明"] });
     wsInstructions['!cols'] = [{ wch: 90 }];
@@ -194,6 +224,7 @@ export class ExcelConverter {
         "工作项名称": item.name,
         "工作描述": item.description,
         "工作进展": item.status || "未开始",
+        "工作进展备注": item.progress_notes || "",
         "工作标签": item.tags || "",
         "参与人员": item.members || ""
       });
@@ -256,6 +287,7 @@ export class ExcelConverter {
         name: row['工作项名称'] || `未命名工作项-${index + 1}`,
         description: row['工作描述'] || '',
         status: row['工作进展'] || '未开始',
+        progress_notes: row['工作进展备注'] || '',
         tags: normalizeList(row['工作标签'] || ''),
         members: normalizeList(row['参与人员'] || ''),
         children: [],

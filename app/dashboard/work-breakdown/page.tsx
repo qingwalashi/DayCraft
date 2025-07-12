@@ -711,8 +711,8 @@ export default function WorkBreakdownPage() {
   };
   
   // 更新工作项（保存到数据库）
-  const updateWorkItem = async (id: string, name: string, description: string, status: string = '未开始', tags: string = '', members: string = '') => {
-    console.log('开始保存工作项:', { id, name, description, status, tags, members });
+  const updateWorkItem = async (id: string, name: string, description: string, status: string = '未开始', tags: string = '', members: string = '', progress_notes: string = '') => {
+    console.log('开始保存工作项:', { id, name, description, status, tags, members, progress_notes });
     
     // 设置当前保存的工作项ID
     setSavingItemId(id);
@@ -816,14 +816,15 @@ export default function WorkBreakdownPage() {
       
       console.log('保存前的标签和人员:', {
         tags: updatedTags,
-        members: updatedMembers
+        members: updatedMembers,
+        progress_notes
       });
       
       // 强制检查是否为临时项
       const forceCheckIsTemp = foundItem.id.startsWith('temp-');
       
       // 递归更新子项的编辑状态
-      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string, newStatus: string, newTags: string, newMembers: string): WorkItem[] => {
+      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string, newStatus: string, newTags: string, newMembers: string, newProgressNotes: string): WorkItem[] => {
         return children.map(child => {
           if (isIdMatch(child.id, targetId) || isIdMatch(child.dbId, targetId)) {
             return { 
@@ -833,6 +834,7 @@ export default function WorkBreakdownPage() {
               status: newStatus,
               tags: newTags,
               members: newMembers,
+              progress_notes: newProgressNotes,
               isEditing: false 
             };
           }
@@ -840,7 +842,7 @@ export default function WorkBreakdownPage() {
           if (child.children.length > 0) {
             return {
               ...child,
-              children: updateChildrenEditState(child.children, targetId, newName, newDescription, newStatus, newTags, newMembers)
+              children: updateChildrenEditState(child.children, targetId, newName, newDescription, newStatus, newTags, newMembers, newProgressNotes)
             };
           }
           
@@ -857,7 +859,8 @@ export default function WorkBreakdownPage() {
             description, 
             status, 
             tags: updatedTags, 
-            members: updatedMembers, 
+            members: updatedMembers,
+            progress_notes,
             isEditing: false 
           };
         }
@@ -874,7 +877,8 @@ export default function WorkBreakdownPage() {
                   description, 
                   status, 
                   tags: updatedTags, 
-                  members: updatedMembers, 
+                  members: updatedMembers,
+                  progress_notes,
                   isEditing: false 
                 };
               }
@@ -883,7 +887,7 @@ export default function WorkBreakdownPage() {
               if (child.children.length > 0) {
                 return {
                   ...child,
-                  children: updateChildrenEditState(child.children, id, name, description, status, updatedTags, updatedMembers)
+                  children: updateChildrenEditState(child.children, id, name, description, status, updatedTags, updatedMembers, progress_notes)
                 };
               }
               
@@ -910,7 +914,8 @@ export default function WorkBreakdownPage() {
           position: parentInfo.position,
           status,
           tags: updatedTags,
-          members: updatedMembers
+          members: updatedMembers,
+          progress_notes
         });
         
         // 确保selectedProject和user不为null
@@ -929,7 +934,8 @@ export default function WorkBreakdownPage() {
           parentInfo.position,
           status,
           updatedTags,
-          updatedMembers
+          updatedMembers,
+          progress_notes
         );
         
         console.log('保存结果:', result);
@@ -973,13 +979,14 @@ export default function WorkBreakdownPage() {
         toast.success('添加工作项成功');
       } else if (foundItem.dbId) {
         // 如果是已有的项，直接更新
-        console.log('更新现有工作项:', { id: foundItem.dbId, name, description, status, tags: updatedTags, members: updatedMembers });
+        console.log('更新现有工作项:', { id: foundItem.dbId, name, description, status, tags: updatedTags, members: updatedMembers, progress_notes });
         await workBreakdownService.updateWorkItem(foundItem.dbId, { 
           name, 
           description,
           status,
           tags: updatedTags,
-          members: updatedMembers
+          members: updatedMembers,
+          progress_notes
         });
         toast.success('更新工作项成功');
       } else {
@@ -1333,6 +1340,19 @@ export default function WorkBreakdownPage() {
                   {renderMembers(item.members)}
                 </div>
               </div>
+              
+              {/* 工作进展备注 */}
+              {item.progress_notes && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+                    <ClockIcon className="h-3.5 w-3.5" />
+                    <span>工作进展备注:</span>
+                  </div>
+                  <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded-md border border-gray-100 whitespace-pre-wrap">
+                    {item.progress_notes}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
@@ -1401,6 +1421,21 @@ export default function WorkBreakdownPage() {
                   </select>
                 </div>
                 
+                {/* 工作进展备注 */}
+                <div className="mb-2">
+                  <label htmlFor={`progress-notes-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                    <ClockIcon className="h-4 w-4 mr-1" />
+                    工作进展备注
+                  </label>
+                  <textarea
+                    id={`progress-notes-${item.id}`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    defaultValue={item.progress_notes || ''}
+                    placeholder="记录工作进展的详细情况、遇到的问题等（可选）"
+                    rows={3}
+                  />
+                </div>
+                
                 {/* 工作标签输入 - 使用新组件 */}
                 <div className="mb-2">
                   <label htmlFor={`tags-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
@@ -1441,7 +1476,8 @@ export default function WorkBreakdownPage() {
                       (document.getElementById(`desc-${item.id}`) as HTMLTextAreaElement).value,
                       (document.getElementById(`status-${item.id}`) as HTMLSelectElement).value,
                       (document.getElementById(`tags-hidden-${item.id}`) as HTMLInputElement).value,
-                      (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value
+                      (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value,
+                      (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value
                     )}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                     disabled={isSaving}
@@ -1553,6 +1589,19 @@ export default function WorkBreakdownPage() {
                     {renderMembers(item.members)}
                   </div>
                 </div>
+                
+                {/* 工作进展备注 */}
+                {item.progress_notes && (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+                      <ClockIcon className="h-3.5 w-3.5" />
+                      <span>工作进展备注:</span>
+                    </div>
+                    <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded-md border border-gray-100 whitespace-pre-wrap">
+                      {item.progress_notes}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1671,7 +1720,7 @@ export default function WorkBreakdownPage() {
               {showImportExportMenu && (
                 <div 
                   ref={importExportMenuRef}
-                  className="absolute right-0 mt-1 py-1 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200"
+                  className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-1 py-1 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200 max-h-[90vh] overflow-y-auto"
                 >
                   <button
                     onClick={handleExportExcel}
@@ -1797,7 +1846,7 @@ export default function WorkBreakdownPage() {
                 <div className="space-y-4">
                   {/* 思维导图视图 */}
                   {viewMode === 'map' ? (
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                    <div className="bg-white p-2 sm:p-4 rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                       <WorkMap workItems={workItems} projectName={selectedProject.name} />
                     </div>
                   ) : (

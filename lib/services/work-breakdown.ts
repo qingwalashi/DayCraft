@@ -18,6 +18,7 @@ export interface WorkItem {
   status?: string;
   tags?: string;
   members?: string;
+  progress_notes?: string;
   planned_start_time?: string;
   planned_end_time?: string;
   actual_start_time?: string;
@@ -95,7 +96,8 @@ export class WorkBreakdownService {
     position: number,
     status: string = '未开始',
     tags: string = '',
-    members: string = ''
+    members: string = '',
+    progress_notes: string = ''
   ): Promise<{ id: string }> {
     const { data, error } = await this.supabase
       .from('work_breakdown_items')
@@ -110,6 +112,7 @@ export class WorkBreakdownService {
         status,
         tags,
         members,
+        progress_notes,
         user_id: userId
       })
       .select('id')
@@ -278,7 +281,8 @@ export class WorkBreakdownService {
         item.position,
         item.status || '未开始',
         item.tags || '',
-        item.members || ''
+        item.members || '',
+        item.progress_notes || ''
       );
       
       // 递归处理子项
@@ -316,6 +320,7 @@ export class WorkBreakdownService {
         status: item.status,
         tags: item.tags || '',
         members: item.members || '',
+        progress_notes: item.progress_notes || '',
         planned_start_time: item.planned_start_time || undefined,
         planned_end_time: item.planned_end_time || undefined,
         actual_start_time: item.actual_start_time || undefined,
