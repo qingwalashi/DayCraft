@@ -320,12 +320,9 @@ export default function WorkBreakdownPage() {
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   
   // 添加导入导出相关状态
-  const [isExporting, setIsExporting] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
   
   // 添加Excel导入进度状态
@@ -1115,25 +1112,6 @@ export default function WorkBreakdownPage() {
     setItemToDelete(null);
   };
 
-  // 导出为XMind
-  const handleExport = async () => {
-    if (!selectedProject || !workItems.length) {
-      toast.error('没有可导出的工作项');
-      return;
-    }
-    
-    setIsExporting(true);
-    try {
-      await workBreakdownService.exportToXMind(workItems, selectedProject.name);
-      toast.success('导出XMind成功');
-    } catch (error) {
-      console.error('导出失败', error);
-      toast.error(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-  
   // 导出为Excel
   const handleExportExcel = () => {
     if (!selectedProject || !workItems.length) {
@@ -1168,16 +1146,6 @@ export default function WorkBreakdownPage() {
     }
   };
   
-  // 触发XMind文件选择
-  const handleImportClick = () => {
-    if (!selectedProject) {
-      toast.error('请先选择一个项目');
-      return;
-    }
-    fileInputRef.current?.click();
-    setShowImportExportMenu(false);
-  };
-  
   // 触发Excel文件选择
   const handleImportExcelClick = () => {
     if (!selectedProject) {
@@ -1186,50 +1154,6 @@ export default function WorkBreakdownPage() {
     }
     excelFileInputRef.current?.click();
     setShowImportExportMenu(false);
-  };
-  
-  // 处理XMind文件选择
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedProject || !user) {
-      // 重置文件输入
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      return;
-    }
-    
-    // 检查文件类型
-    if (!file.name.endsWith('.xmind')) {
-      toast.error('请选择.xmind格式的文件');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      return;
-    }
-    
-    setIsImporting(true);
-    try {
-      // 导入文件
-      const importedItems = await workBreakdownService.importFromXMind(
-        file,
-        selectedProject.id,
-        user.id
-      );
-      
-      // 更新状态
-      setWorkItems(importedItems);
-      toast.success('导入XMind成功');
-    } catch (error) {
-      console.error('导入失败', error);
-      toast.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    } finally {
-      setIsImporting(false);
-      // 重置文件输入
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
   };
   
   // 处理Excel文件选择
@@ -1750,44 +1674,6 @@ export default function WorkBreakdownPage() {
                   className="absolute right-0 mt-1 py-1 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200"
                 >
                   <button
-                    onClick={handleExport}
-                    disabled={isExporting || !workItems.length}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                  >
-                    {isExporting ? (
-                      <>
-                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
-                        导出XMind中...
-                      </>
-                    ) : (
-                      <>
-                        <DownloadIcon className="h-4 w-4 mr-2" />
-                        导出XMind
-                      </>
-                    )}
-                  </button>
-                  
-                  <button
-                    onClick={handleImportClick}
-                    disabled={isImporting}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                  >
-                    {isImporting ? (
-                      <>
-                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
-                        导入XMind中...
-                      </>
-                    ) : (
-                      <>
-                        <UploadIcon className="h-4 w-4 mr-2" />
-                        导入XMind
-                      </>
-                    )}
-                  </button>
-                  
-                  <div className="border-t border-gray-200 my-1"></div>
-                  
-                  <button
                     onClick={handleExportExcel}
                     disabled={isExportingExcel || !workItems.length}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
@@ -1844,15 +1730,6 @@ export default function WorkBreakdownPage() {
                   </button>
                 </div>
               )}
-              
-              {/* 隐藏的文件输入 */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xmind"
-                onChange={handleFileChange}
-                className="hidden"
-              />
               
               {/* 隐藏的Excel文件输入 */}
               <input
