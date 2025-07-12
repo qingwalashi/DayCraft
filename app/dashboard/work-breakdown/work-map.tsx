@@ -14,11 +14,10 @@ import ReactFlow, {
   NodeMouseHandler,
   ReactFlowInstance,
   useReactFlow,
-  ControlButton,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { WorkItem } from '@/lib/services/work-breakdown';
-import { XIcon, Lock, Unlock } from 'lucide-react';
+import { XIcon } from 'lucide-react';
 
 // 自定义节点组件
 const CustomNode = ({ data }: { data: any }) => {
@@ -72,8 +71,9 @@ interface WorkMapProps {
 }
 
 // 节点间的水平和垂直间距
-const X_GAP = 250; // 增加水平间距，确保连线不转弯
-const Y_GAP = 80;  // 减小垂直间距，使节点排列更密集
+const X_GAP = 250; // 水平间距
+const Y_GAP = 100; // 垂直间距，增加以避免重叠
+const NODE_HEIGHT = 60; // 估计的节点高度，用于计算间距
 
 const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -88,9 +88,8 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
   } | null>(null);
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [isLocked, setIsLocked] = useState(false); // 添加锁定状态
   
-  // 将工作项转换为节点和边
+  // 将工作项转换为节点和边 - 改进的两阶段布局
   const convertWorkItemsToGraph = useCallback((items: WorkItem[], projectName: string) => {
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
@@ -107,9 +106,141 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
     };
     mapItems(items);
     
-    // 添加项目节点（根节点）
+    // 第一阶段：创建所有节点并计算每个节点的子树高度和所需空间
+    const createNodes = (
+      items: WorkItem[],
+      level: number,
+      startX: number
+    ): { nodes: Map<string, Node>, heights: Map<string, number>, spaces: Map<string, number> } => {
+      const nodeMap = new Map<string, Node>();
+      const heightMap = new Map<string, number>();
+      const spaceMap = new Map<string, number>(); // 存储每个节点所需的垂直空间
+      
+      items.forEach(item => {
+        const nodeId = `node-${item.id}`;
+        
+        // 创建节点（暂不设置Y坐标）
+        const node: Node = {
+          id: nodeId,
+          type: 'custom',
+          data: { 
+            label: item.name,
+            status: item.status,
+            level: level,
+            originalItem: item
+          },
+          position: { x: startX, y: 0 }, // Y坐标稍后设置
+        };
+        
+        nodeMap.set(nodeId, node);
+        
+        // 递归处理子节点
+        if (item.children && item.children.length > 0) {
+          const { nodes: childNodes, heights: childHeights, spaces: childSpaces } = createNodes(
+            item.children,
+            level + 1,
+            startX + X_GAP
+          );
+          
+          // 合并节点映射
+          childNodes.forEach((node, id) => {
+            nodeMap.set(id, node);
+          });
+          
+          // 计算子树总高度和所需空间
+          let totalSpace = 0;
+          
+          item.children.forEach(child => {
+            const childId = `node-${child.id}`;
+            const childSpace = childSpaces.get(childId) || NODE_HEIGHT + Y_GAP;
+            totalSpace += childSpace;
+          });
+          
+          // 存储此节点子树的高度和所需空间
+          heightMap.set(nodeId, totalSpace - Y_GAP); // 减去最后一个子节点后的额外间距
+          spaceMap.set(nodeId, Math.max(totalSpace, NODE_HEIGHT + Y_GAP));
+        } else {
+          // 叶子节点高度和所需空间
+          heightMap.set(nodeId, NODE_HEIGHT);
+          spaceMap.set(nodeId, NODE_HEIGHT + Y_GAP);
+        }
+      });
+      
+      return { nodes: nodeMap, heights: heightMap, spaces: spaceMap };
+    };
+    
+    // 第二阶段：设置节点Y坐标并创建边
+    const positionNodesAndCreateEdges = (
+      items: WorkItem[],
+      parentId: string | null,
+      level: number,
+      startX: number,
+      startY: number,
+      nodeMap: Map<string, Node>,
+      heightMap: Map<string, number>,
+      spaceMap: Map<string, number>
+    ): number => {
+      let currentY = startY;
+      
+      items.forEach((item, index) => {
+        const nodeId = `node-${item.id}`;
+        const node = nodeMap.get(nodeId);
+        
+        if (!node) return;
+        
+        // 如果有子节点，先处理子节点
+        if (item.children && item.children.length > 0) {
+          // 记录当前Y位置
+          const beforeY = currentY;
+          
+          // 处理所有子节点，并获取处理后的Y位置
+          const afterY = positionNodesAndCreateEdges(
+            item.children,
+            nodeId,
+            level + 1,
+            startX + X_GAP,
+            currentY,
+            nodeMap,
+            heightMap,
+            spaceMap
+          );
+          
+          // 将当前节点放在子节点的中间位置
+          const middleY = (beforeY + afterY - NODE_HEIGHT) / 2;
+          node.position.y = middleY;
+          
+          // 更新当前Y为子节点处理后的Y，并添加额外间距以避免与下一个节点的子节点重叠
+          currentY = afterY + (index < items.length - 1 ? Y_GAP / 2 : 0);
+        } else {
+          // 叶子节点直接放在当前Y位置
+          node.position.y = currentY;
+          
+          // 更新Y位置，为下一个节点留出空间
+          currentY += NODE_HEIGHT + Y_GAP;
+        }
+        
+        // 如果有父节点，创建连接边
+        if (parentId) {
+          newEdges.push({
+            id: `edge-${parentId}-${nodeId}`,
+            source: parentId,
+            target: nodeId,
+            type: 'smoothstep', // 使用平滑曲线
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: getNodeStyle(level).borderColor,
+            },
+            style: { stroke: getNodeStyle(level).borderColor }
+          });
+        }
+      });
+      
+      return currentY;
+    };
+    
+    // 创建项目根节点
     const rootId = 'project-root';
-    newNodes.push({
+    const rootNode: Node = {
       id: rootId,
       type: 'custom',
       data: { 
@@ -121,99 +252,36 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
           description: '项目根节点',
         }
       },
-      position: { x: 50, y: 0 },
-    });
-    
-    // 递归处理工作项 - 从左到右布局
-    const processItems = (
-      items: WorkItem[], 
-      parentId: string, 
-      level: number, 
-      startX: number, 
-      startY: number
-    ): { nodes: Node[], edges: Edge[], height: number } => {
-      if (!items.length) return { nodes: [], edges: [], height: 0 };
-      
-      const currentX = startX + X_GAP;
-      let currentY = startY;
-      const allNodes: Node[] = [];
-      const allEdges: Edge[] = [];
-      
-      // 处理每个工作项
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const nodeId = `node-${item.id}`;
-        
-        // 创建节点
-        const node: Node = {
-          id: nodeId,
-          type: 'custom',
-          data: { 
-            label: item.name,
-            status: item.status,
-            level: level,
-            originalItem: item
-          },
-          position: { x: currentX, y: currentY },
-        };
-        
-        allNodes.push(node);
-        
-        // 创建与父节点的边
-        allEdges.push({
-          id: `edge-${parentId}-${nodeId}`,
-          source: parentId,
-          target: nodeId,
-          type: 'straight', // 使用直线连接，避免转弯
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: getNodeStyle(level).borderColor,
-          },
-          style: { stroke: getNodeStyle(level).borderColor }
-        });
-        
-        // 处理子项
-        if (item.children && item.children.length > 0) {
-          // 先计算子项的总高度
-          let childrenTotalHeight = item.children.length * Y_GAP / 2;
-          
-          // 处理子项 - 从左到右递归
-          const { nodes: childNodes, edges: childEdges, height: childHeight } = processItems(
-            item.children,
-            nodeId,
-            level + 1,
-            currentX,
-            currentY - childrenTotalHeight / 2 // 使用预估的高度居中
-          );
-          
-          allNodes.push(...childNodes);
-          allEdges.push(...childEdges);
-          
-          // 更新Y坐标，使用实际计算出的子树高度
-          currentY += Math.max(childHeight, Y_GAP);
-        } else {
-          currentY += Y_GAP;
-        }
-      }
-      
-      return { 
-        nodes: allNodes, 
-        edges: allEdges, 
-        height: Math.max(currentY - startY, items.length * Y_GAP) 
-      };
+      position: { x: 50, y: 0 }, // Y坐标稍后设置
     };
     
-    // 处理所有一级工作项
-    const { nodes: itemNodes, edges: itemEdges } = processItems(
-      workItems, 
-      rootId, 
-      1, 
-      50,
-      -((workItems.length - 1) * Y_GAP) / 4
-    );
+    // 第一阶段：创建所有节点
+    const { nodes: nodeMap, heights: heightMap, spaces: spaceMap } = createNodes(workItems, 1, 50 + X_GAP);
     
-    newNodes.push(...itemNodes);
-    newEdges.push(...itemEdges);
+    // 第二阶段：设置Y坐标并创建边
+    if (workItems.length > 0) {
+      const totalHeight = positionNodesAndCreateEdges(
+        workItems,
+        rootId,
+        1,
+        50 + X_GAP,
+        Y_GAP, // 从Y_GAP开始，给顶部留出空间
+        nodeMap,
+        heightMap,
+        spaceMap
+      );
+      
+      // 将根节点放在所有子节点的中间
+      rootNode.position.y = totalHeight / 2;
+    }
+    
+    // 添加根节点
+    newNodes.push(rootNode);
+    
+    // 添加所有其他节点
+    nodeMap.forEach(node => {
+      newNodes.push(node);
+    });
     
     return { nodes: newNodes, edges: newEdges };
   }, []);
@@ -281,11 +349,6 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
     setSelectedNode(null);
   };
   
-  // 处理锁定/解锁功能
-  const toggleLock = () => {
-    setIsLocked(!isLocked);
-  };
-  
   // 渲染标签
   const renderTags = (tags?: string) => {
     if (!tags) return null;
@@ -327,8 +390,8 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={isLocked ? undefined : onNodesChange} // 锁定时禁用节点变化
-        onEdgesChange={isLocked ? undefined : onEdgesChange} // 锁定时禁用边变化
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
         fitView
@@ -337,18 +400,11 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'straight', // 默认使用直线连接
+          type: 'smoothstep', // 使用平滑曲线
         }}
-        nodesDraggable={!isLocked} // 锁定时禁用节点拖动
-        nodesConnectable={!isLocked} // 锁定时禁用节点连接
-        elementsSelectable={!isLocked} // 锁定时禁用元素选择
+        proOptions={{ hideAttribution: true }} // 隐藏ReactFlow字样
       >
-        <Controls>
-          {/* 添加自定义锁定/解锁按钮到Controls中 */}
-          <ControlButton onClick={toggleLock} title={isLocked ? "解锁视图" : "锁定视图"}>
-            {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
-          </ControlButton>
-        </Controls>
+        <Controls />
         <MiniMap 
           nodeStrokeWidth={3}
           zoomable

@@ -311,7 +311,7 @@ export default function WorkBreakdownPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>('edit'); // 默认编辑模式
+  const [viewMode, setViewMode] = useState<ViewMode>('preview'); // 默认预览模式
   const [isSaving, setIsSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null); // 正在保存的工作项ID
   const [itemToDelete, setItemToDelete] = useState<string | null>(null); // 待删除的工作项ID
