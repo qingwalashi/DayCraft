@@ -5,12 +5,15 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, GitBranch } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon } from "lucide-react";
 import WorkBreakdownGuide from "./guide";
-import MindMapView from "./mindmap-view";
+import dynamic from "next/dynamic";
+
+// 动态导入WorkMap组件，避免服务端渲染问题
+const WorkMap = dynamic(() => import('./work-map'), { ssr: false });
 
 // 视图模式
-type ViewMode = 'edit' | 'preview' | 'mindmap';
+type ViewMode = 'edit' | 'preview' | 'map';
 
 // 工作进展状态选项
 const STATUS_OPTIONS = [
@@ -1862,7 +1865,7 @@ export default function WorkBreakdownPage() {
             </div>
           )}
           
-          {/* 视图切换按钮组 - 放在右侧 */}
+          {/* 视图切换按钮 - 放在右侧 */}
           <div className="flex gap-2">
             <button
               type="button"
@@ -1890,15 +1893,15 @@ export default function WorkBreakdownPage() {
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('mindmap')}
+              onClick={() => setViewMode('map')}
               className={`px-4 py-2 text-sm font-medium flex items-center ${
-                viewMode === 'mindmap' 
+                viewMode === 'map' 
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-50'
               } border border-gray-300 rounded-md transition-colors`}
             >
-              <GitBranch className="h-4 w-4 mr-1" />
-              思维导图
+              <NetworkIcon className="h-4 w-4 mr-1" />
+              工作导图
             </button>
           </div>
         </div>
@@ -1915,8 +1918,11 @@ export default function WorkBreakdownPage() {
             <div>
               {workItems.length > 0 ? (
                 <div className="space-y-4">
-                  {viewMode === 'mindmap' ? (
-                    <MindMapView workItems={workItems} projectName={selectedProject?.name} />
+                  {/* 思维导图视图 */}
+                  {viewMode === 'map' ? (
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                      <WorkMap workItems={workItems} projectName={selectedProject.name} />
+                    </div>
                   ) : (
                     <>
                       {workItems.map(item => renderWorkItem(item, 0))}
