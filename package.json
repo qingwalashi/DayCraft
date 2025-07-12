@@ -26,6 +26,7 @@
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/supabase-js": "^2.50.0",
     "@tanstack/react-table": "^8.11.8",
+    "@xyflow/react": "^12.8.2",
     "apexcharts": "^4.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

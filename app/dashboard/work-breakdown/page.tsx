@@ -5,11 +5,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, GitBranch } from "lucide-react";
 import WorkBreakdownGuide from "./guide";
+import MindMapView from "./mindmap-view";
 
 // 视图模式
-type ViewMode = 'edit' | 'preview';
+type ViewMode = 'edit' | 'preview' | 'mindmap';
 
 // 工作进展状态选项
 const STATUS_OPTIONS = [
@@ -1861,7 +1862,7 @@ export default function WorkBreakdownPage() {
             </div>
           )}
           
-          {/* 视图切换按钮 - 放在右侧 */}
+          {/* 视图切换按钮组 - 放在右侧 */}
           <div className="flex gap-2">
             <button
               type="button"
@@ -1887,6 +1888,18 @@ export default function WorkBreakdownPage() {
               <EyeIcon className="h-4 w-4 mr-1" />
               预览
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('mindmap')}
+              className={`px-4 py-2 text-sm font-medium flex items-center ${
+                viewMode === 'mindmap' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              } border border-gray-300 rounded-md transition-colors`}
+            >
+              <GitBranch className="h-4 w-4 mr-1" />
+              思维导图
+            </button>
           </div>
         </div>
       </div>
@@ -1902,29 +1915,35 @@ export default function WorkBreakdownPage() {
             <div>
               {workItems.length > 0 ? (
                 <div className="space-y-4">
-                  {workItems.map(item => renderWorkItem(item, 0))}
-                  
-                  {/* 底部添加一级工作项按钮 */}
-                  {viewMode === 'edit' && (
-                    <div className="mt-8 flex justify-center">
-                      <button
-                        onClick={addRootWorkItem}
-                        className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                        disabled={isSaving}
-                      >
-                        {isSaving ? (
-                          <>
-                            <div className="animate-spin h-4 w-4 mr-2 border-2 border-t-transparent border-white rounded-full"></div>
-                            处理中...
-                          </>
-                        ) : (
-                          <>
-                            <PlusIcon className="h-5 w-5 mr-2" />
-                            添加1级工作项
-                          </>
-                        )}
-                      </button>
-                    </div>
+                  {viewMode === 'mindmap' ? (
+                    <MindMapView workItems={workItems} projectName={selectedProject?.name} />
+                  ) : (
+                    <>
+                      {workItems.map(item => renderWorkItem(item, 0))}
+                      
+                      {/* 底部添加一级工作项按钮 */}
+                      {viewMode === 'edit' && (
+                        <div className="mt-8 flex justify-center">
+                          <button
+                            onClick={addRootWorkItem}
+                            className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            disabled={isSaving}
+                          >
+                            {isSaving ? (
+                              <>
+                                <div className="animate-spin h-4 w-4 mr-2 border-2 border-t-transparent border-white rounded-full"></div>
+                                处理中...
+                              </>
+                            ) : (
+                              <>
+                                <PlusIcon className="h-5 w-5 mr-2" />
+                                添加1级工作项
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ) : (
