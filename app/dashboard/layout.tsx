@@ -53,7 +53,8 @@ const getNavigation = (role: string[] = []) => {
         icon: FolderIcon,
         subItems: [
           { name: "项目管理", href: "/dashboard/projects" },
-          { name: "工作分解", href: "/dashboard/work-breakdown" }
+          { name: "工作分解", href: "/dashboard/work-breakdown" },
+          { name: "进度管理", href: "/dashboard/projects/progress" }
         ]
       },
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
@@ -79,7 +80,8 @@ const getNavigation = (role: string[] = []) => {
         icon: FolderIcon,
         subItems: [
           { name: "项目管理", href: "/dashboard/projects" },
-          { name: "工作分解", href: "/dashboard/work-breakdown" }
+          { name: "工作分解", href: "/dashboard/work-breakdown" },
+          { name: "进度管理", href: "/dashboard/projects/progress" }
         ]
       },
       { name: "待办管理", href: "/dashboard/todos", icon: CalendarIcon },
