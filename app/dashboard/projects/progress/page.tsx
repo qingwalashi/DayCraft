@@ -76,6 +76,45 @@ export default function ProjectProgressPage() {
     }
   }, [supabase, user]);
 
+  // 更新工作项
+  const handleUpdateWorkItem = async (item: any) => {
+    if (!user?.id) return false;
+    
+    try {
+      // 将甘特图组件中的数据格式转换为数据库格式
+      const updateData = {
+        planned_start_time: item.startDate,
+        planned_end_time: item.endDate,
+        actual_start_time: item.actualStartDate,
+        actual_end_time: item.actualEndDate,
+        status: item.status
+      };
+      
+      const { error } = await supabase
+        .from('work_breakdown_items')
+        .update(updateData)
+        .eq('id', item.id)
+        .eq('user_id', user.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      toast.success('工作项更新成功');
+      
+      // 重新加载工作项数据
+      if (selectedProject) {
+        fetchWorkItems(selectedProject.id);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('更新工作项失败:', error);
+      toast.error('更新工作项失败');
+      return false;
+    }
+  };
+
   // 初始加载
   useEffect(() => {
     if (user) {
@@ -100,7 +139,8 @@ export default function ProjectProgressPage() {
     endDate: item.planned_end_time || new Date().toISOString(),
     actualStartDate: item.actual_start_time,
     actualEndDate: item.actual_end_time,
-    progress: item.actual_start_time ? (item.actual_end_time ? 100 : 50) : 0
+    progress: item.actual_start_time ? (item.actual_end_time ? 100 : 50) : 0,
+    status: item.status
   }));
 
   return (
@@ -147,6 +187,7 @@ export default function ProjectProgressPage() {
             <GanttChart 
               data={ganttData}
               projectName={selectedProject.name}
+              onUpdateItem={handleUpdateWorkItem}
             />
           ) : (
             <div className="flex justify-center items-center h-full">
