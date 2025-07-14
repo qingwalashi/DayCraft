@@ -75,27 +75,43 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     let minDate = new Date();
     let maxDate = new Date();
     
+    // 记录是否有任何有效日期
+    let hasValidDates = false;
+    
     data.forEach(item => {
-      const start = item.startDate ? parseISO(item.startDate) : new Date();
-      const end = item.endDate ? parseISO(item.endDate) : addDays(new Date(), 1);
+      if (item.startDate) {
+        const start = parseISO(item.startDate);
+        if (!hasValidDates || start < minDate) minDate = start;
+        hasValidDates = true;
+      }
       
-      if (start < minDate) minDate = start;
-      if (end > maxDate) maxDate = end;
+      if (item.endDate) {
+        const end = parseISO(item.endDate);
+        if (!hasValidDates || end > maxDate) maxDate = end;
+        hasValidDates = true;
+      }
       
       // 考虑实际日期
       if (item.actualStartDate) {
         const actualStart = parseISO(item.actualStartDate);
-        if (actualStart < minDate) minDate = actualStart;
+        if (!hasValidDates || actualStart < minDate) minDate = actualStart;
+        hasValidDates = true;
       }
       
       if (item.actualEndDate) {
         const actualEnd = parseISO(item.actualEndDate);
-        if (actualEnd > maxDate) maxDate = actualEnd;
+        if (!hasValidDates || actualEnd > maxDate) maxDate = actualEnd;
+        hasValidDates = true;
       }
     });
     
+    // 如果没有有效日期，使用当前日期作为默认范围
+    if (!hasValidDates) {
+      minDate = new Date();
+      maxDate = addDays(new Date(), 30);
+    }
     // 确保至少有30天的范围
-    if (differenceInDays(maxDate, minDate) < 30) {
+    else if (differenceInDays(maxDate, minDate) < 30) {
       maxDate = addDays(minDate, 30);
     }
     
@@ -196,6 +212,9 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
 
   // 计算任务条的位置和宽度 - 修改以适应不同的视图模式
   const getBarPosition = (item: GanttItem) => {
+    // 如果没有开始或结束日期，返回null
+    if (!item.startDate || !item.endDate) return null;
+    
     const start = parseISO(item.startDate);
     const end = parseISO(item.endDate);
     
@@ -297,17 +316,17 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     setSelectedItem(item);
     
     // 初始化表单数据
-    const plannedStart = item.startDate ? new Date(item.startDate) : new Date();
-    const plannedEnd = item.endDate ? new Date(item.endDate) : new Date();
+    const plannedStart = item.startDate ? new Date(item.startDate) : null;
+    const plannedEnd = item.endDate ? new Date(item.endDate) : null;
     const actualStart = item.actualStartDate ? new Date(item.actualStartDate) : null;
     const actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : null;
     
     setEditForm({
-      plannedStartDate: format(plannedStart, 'yyyy-MM-dd'),
-      plannedEndDate: format(plannedEnd, 'yyyy-MM-dd'),
-      actualStartDate: actualStart ? format(actualStart, 'yyyy-MM-dd') : '',
-      actualEndDate: actualEnd ? format(actualEnd, 'yyyy-MM-dd') : '',
-      status: item.status || '' // 直接使用数据库中的状态
+      plannedStartDate: plannedStart ? format(plannedStart, 'yyyy-MM-dd') : "",
+      plannedEndDate: plannedEnd ? format(plannedEnd, 'yyyy-MM-dd') : "",
+      actualStartDate: actualStart ? format(actualStart, 'yyyy-MM-dd') : "",
+      actualEndDate: actualEnd ? format(actualEnd, 'yyyy-MM-dd') : "",
+      status: item.status || "" // 直接使用数据库中的状态
     });
     
     // 记录当前编辑时的视图模式
@@ -327,8 +346,10 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       // 构建更新后的工作项 - 状态与实际起止时间完全独立
       const updatedItem: GanttItem = {
         ...selectedItem,
-        startDate: `${editForm.plannedStartDate}T00:00:00`,
-        endDate: `${editForm.plannedEndDate}T23:59:59`,
+        startDate: editForm.plannedStartDate ? 
+          `${editForm.plannedStartDate}T00:00:00` : selectedItem.startDate,
+        endDate: editForm.plannedEndDate ? 
+          `${editForm.plannedEndDate}T23:59:59` : selectedItem.endDate,
         actualStartDate: editForm.actualStartDate ? 
           `${editForm.actualStartDate}T00:00:00` : null,
         actualEndDate: editForm.actualEndDate ? 
@@ -510,152 +531,155 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         </div>
       </div>
       
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧任务列表 */}
-        <div className="w-64 flex-shrink-0 border-r border-gray-200 overflow-y-auto">
-          {/* 工作项标题行 - 调整高度与右侧甘特图标题行一致 */}
-          <div className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200 flex items-center" style={{ height: '64px' }}>
-            <div className="p-3 font-medium text-sm text-gray-600">
-              工作项
+      {/* 使用单一滚动容器包裹整个内容区域 */}
+      <div 
+        className="flex-1 overflow-y-auto" 
+        onWheel={handleWheel}
+      >
+        <div className="flex">
+          {/* 左侧任务列表 - 固定宽度，不滚动 */}
+          <div className="w-64 flex-shrink-0 border-r border-gray-200 sticky left-0 z-20 bg-white">
+            {/* 工作项标题行 */}
+            <div className="sticky top-0 z-30 bg-gray-100 border-b border-gray-200 flex items-center" style={{ height: '64px' }}>
+              <div className="p-3 font-medium text-sm text-gray-600">
+                工作项
+              </div>
+            </div>
+            <div>
+              {visibleItems.map((item) => (
+                <div 
+                  key={item.id} 
+                  className="flex items-center border-b border-gray-100 hover:bg-gray-50 cursor-pointer bg-white"
+                  style={{ paddingLeft: `${item.level * 16 + 8}px`, height: '40px' }}
+                  onClick={() => handleItemClick(item)}
+                >
+                  {/* 展开/折叠图标 */}
+                  <div 
+                    className="w-6 h-6 flex items-center justify-center cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpand(item.id);
+                    }}
+                  >
+                    {data.some(i => i.parentId === item.id) && (
+                      expandedItems[item.id] ? 
+                        <ChevronDown className="h-4 w-4 text-gray-500" /> : 
+                        <ChevronRight className="h-4 w-4 text-gray-500" />
+                    )}
+                  </div>
+                  <div className="flex flex-1 items-center overflow-hidden">
+                    <span className="text-sm truncate">{item.name}</span>
+                    {getStatusBadge(item)}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <div>
-            {visibleItems.map((item) => (
-              <div 
-                key={item.id} 
-                className="flex items-center border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                style={{ paddingLeft: `${item.level * 16 + 8}px`, height: '40px' }}
-                onClick={() => handleItemClick(item)}
-              >
-                {/* 展开/折叠图标 */}
-                <div 
-                  className="w-6 h-6 flex items-center justify-center cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleExpand(item.id);
-                  }}
-                >
-                  {data.some(i => i.parentId === item.id) && (
-                    expandedItems[item.id] ? 
-                      <ChevronDown className="h-4 w-4 text-gray-500" /> : 
-                      <ChevronRight className="h-4 w-4 text-gray-500" />
-                  )}
-                </div>
-                <div className="flex flex-1 items-center overflow-hidden">
-                  <span className="text-sm truncate">{item.name}</span>
-                  {getStatusBadge(item)}
+          
+          {/* 右侧甘特图 - 允许水平滚动 */}
+          <div className="flex-1 overflow-x-auto" ref={containerRef}>
+            <div className="relative">
+              {/* 时间刻度 */}
+              <div className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200" style={{ height: '64px' }}>
+                <div className="flex h-full">
+                  {timeScale.map((date, index) => (
+                    <div 
+                      key={index} 
+                      className={`flex-shrink-0 p-2 text-xs font-medium text-center border-r border-gray-200 flex flex-col justify-center
+                        ${isToday(date) ? 'bg-blue-50 text-blue-600' : ''}`}
+                      style={{ width: `${columnWidth}px` }}
+                    >
+                      {formatDateHeader(date)}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* 右侧甘特图 */}
-        <div 
-          className="flex-1 overflow-auto"
-          onWheel={handleWheel}
-        >
-          <div ref={containerRef} className="relative">
-            {/* 时间刻度 - 调整高度与左侧工作项标题行一致 */}
-            <div className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200" style={{ height: '64px' }}>
-              <div className="flex h-full">
-                {timeScale.map((date, index) => (
+              
+              {/* 甘特图内容 */}
+              <div className="relative">
+                {/* 今天的垂直线 */}
+                {timeScale.findIndex(date => {
+                  switch (dateViewMode) {
+                    case 'day': return isToday(date);
+                    case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                    case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                    case 'year': return getYear(new Date()) === getYear(date);
+                  }
+                }) >= 0 && (
                   <div 
-                    key={index} 
-                    className={`flex-shrink-0 p-2 text-xs font-medium text-center border-r border-gray-200 flex flex-col justify-center
-                      ${isToday(date) ? 'bg-blue-50 text-blue-600' : ''}`}
-                    style={{ width: `${columnWidth}px` }}
+                    className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
+                    style={{ 
+                      left: `${timeScale.findIndex(date => {
+                        switch (dateViewMode) {
+                          case 'day': return isToday(date);
+                          case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                          case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                          case 'year': return getYear(new Date()) === getYear(date);
+                        }
+                      }) * columnWidth + columnWidth / 2}px`,
+                      height: `${visibleItems.length * 40}px`
+                    }}
+                  ></div>
+                )}
+                
+                {/* 行和任务条 - 确保每行高度固定为40px */}
+                {visibleItems.map((item, index) => (
+                  <div 
+                    key={item.id} 
+                    className="flex border-b border-gray-100 relative"
+                    style={{ height: '40px' }}
+                    onClick={() => handleItemClick(item)}
                   >
-                    {formatDateHeader(date)}
+                    {/* 背景网格 */}
+                    {timeScale.map((date, dateIndex) => (
+                      <div 
+                        key={dateIndex}
+                        className={`flex-shrink-0 h-full border-r border-gray-100
+                          ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
+                        style={{ width: `${columnWidth}px` }}
+                      ></div>
+                    ))}
+                    
+                    {/* 计划任务条 - 仅在计划视图或两者都显示时显示 */}
+                    {viewMode === 'planned' && getBarPosition(item) && (
+                      <div 
+                        className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
+                        style={{
+                          ...getBarPosition(item),
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleItemClick(item);
+                        }}
+                      >
+                        <span className="text-xs font-medium text-blue-800 truncate">
+                          计划
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* 实际任务条 - 仅在实际视图时显示，只依赖于实际起止时间 */}
+                    {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
+                      <div 
+                        className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
+                          ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
+                        style={{
+                          ...getActualBarPosition(item),
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleItemClick(item);
+                        }}
+                      >
+                        <span className={`text-xs font-medium truncate
+                          ${item.actualEndDate ? 'text-green-800' : 'text-yellow-800'}`}>
+                          {item.actualEndDate ? '实际完成' : '实际进行中'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-            
-            {/* 甘特图内容 */}
-            <div className="relative">
-              {/* 今天的垂直线 */}
-              {timeScale.findIndex(date => {
-                switch (dateViewMode) {
-                  case 'day': return isToday(date);
-                  case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                  case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                  case 'year': return getYear(new Date()) === getYear(date);
-                }
-              }) >= 0 && (
-                <div 
-                  className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
-                  style={{ 
-                    left: `${timeScale.findIndex(date => {
-                      switch (dateViewMode) {
-                        case 'day': return isToday(date);
-                        case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                        case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                        case 'year': return getYear(new Date()) === getYear(date);
-                      }
-                    }) * columnWidth + columnWidth / 2}px`,
-                    height: `${visibleItems.length * 40}px`
-                  }}
-                ></div>
-              )}
-              
-              {/* 行和任务条 - 确保每行高度固定为40px */}
-              {visibleItems.map((item, index) => (
-                <div 
-                  key={item.id} 
-                  className="flex border-b border-gray-100 relative"
-                  style={{ height: '40px' }}
-                  onClick={() => handleItemClick(item)}
-                >
-                  {/* 背景网格 */}
-                  {timeScale.map((date, dateIndex) => (
-                    <div 
-                      key={dateIndex}
-                      className={`flex-shrink-0 h-full border-r border-gray-100
-                        ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
-                      style={{ width: `${columnWidth}px` }}
-                    ></div>
-                  ))}
-                  
-                  {/* 计划任务条 - 仅在计划视图或两者都显示时显示 */}
-                  {viewMode === 'planned' && (
-                    <div 
-                      className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
-                      style={{
-                        ...getBarPosition(item),
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleItemClick(item);
-                      }}
-                    >
-                      <span className="text-xs font-medium text-blue-800 truncate">
-                        计划
-                      </span>
-                    </div>
-                  )}
-                  
-                  {/* 实际任务条 - 仅在实际视图时显示，只依赖于实际起止时间 */}
-                  {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
-                    <div 
-                      className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
-                        ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
-                      style={{
-                        ...getActualBarPosition(item),
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleItemClick(item);
-                      }}
-                    >
-                      <span className={`text-xs font-medium truncate
-                        ${item.actualEndDate ? 'text-green-800' : 'text-yellow-800'}`}>
-                        {item.actualEndDate ? '实际完成' : '实际进行中'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
         </div>
