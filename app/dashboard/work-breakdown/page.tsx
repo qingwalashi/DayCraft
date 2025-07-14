@@ -319,6 +319,15 @@ export default function WorkBreakdownPage() {
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   
+  // 添加层级展开控制
+  const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开所有层级
+  
+  // 添加工作状态筛选相关状态
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [filteredWorkItems, setFilteredWorkItems] = useState<WorkItem[]>([]);
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
+  const statusFilterRef = useRef<HTMLDivElement>(null);
+  
   // 添加导入导出相关状态
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
@@ -350,7 +359,7 @@ export default function WorkBreakdownPage() {
   const dataLoadedRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
   
-  // 添加点击外部关闭导入导出菜单
+  // 添加点击外部关闭导入导出菜单和状态筛选菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -358,6 +367,13 @@ export default function WorkBreakdownPage() {
         !importExportMenuRef.current.contains(event.target as Node)
       ) {
         setShowImportExportMenu(false);
+      }
+      
+      if (
+        statusFilterRef.current && 
+        !statusFilterRef.current.contains(event.target as Node)
+      ) {
+        setShowStatusFilter(false);
       }
     };
 
@@ -440,7 +456,20 @@ export default function WorkBreakdownPage() {
       const formattedItems = ensureCorrectIdFormat(workItemsTree);
       console.log('处理后的工作项数据:', formattedItems);
       
-      setWorkItems(formattedItems);
+      // 根据当前展开层级设置初始展开状态
+      const setInitialExpandState = (items: WorkItem[], currentLevel: number = 0): WorkItem[] => {
+        return items.map(item => {
+          const shouldExpand = currentLevel < expandLevel;
+          return {
+            ...item,
+            isExpanded: item.isExpanded !== undefined ? item.isExpanded : shouldExpand,
+            children: item.children.length > 0 ? setInitialExpandState(item.children, currentLevel + 1) : []
+          };
+        });
+      };
+      
+      const itemsWithExpandState = setInitialExpandState(formattedItems);
+      setWorkItems(itemsWithExpandState);
       setLastProjectId(projectId);
       
       // 更新数据加载状态和时间戳
@@ -453,7 +482,7 @@ export default function WorkBreakdownPage() {
       setIsLoading(false);
       setIsLoadingItems(false);
     }
-  }, [user, workBreakdownService]);
+  }, [user, workBreakdownService, expandLevel]);
 
   // 添加页面可见性监听
   useEffect(() => {
@@ -1284,17 +1313,20 @@ export default function WorkBreakdownPage() {
   };
   
   // 渲染工作项人员
-  const renderMembers = (members: string | undefined) => {
+  const renderMembers = (members: string | undefined, compact: boolean = false) => {
     if (!members) return null;
     
     const memberList = members.split('，').filter(Boolean);
     if (memberList.length === 0) return null;
     
     return (
-      <div className="flex flex-wrap gap-2 items-center">
-        <UsersIcon className="h-3.5 w-3.5 text-gray-500" />
+      <div className={`flex flex-wrap ${compact ? 'gap-1' : 'gap-2'} items-center`}>
+        <UsersIcon className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} text-gray-500`} />
         {memberList.map((member, idx) => (
-          <span key={`member-${idx}`} className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition-colors">
+          <span 
+            key={`member-${idx}`} 
+            className={`inline-flex items-center text-xs ${compact ? 'px-1.5 py-0.5' : 'px-2.5 py-1'} rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition-colors`}
+          >
             {member}
           </span>
         ))}
@@ -1322,7 +1354,7 @@ export default function WorkBreakdownPage() {
               {/* 优化布局：PC端更紧凑，移动端自适应 */}
               <div className="flex flex-col sm:flex-row sm:items-center">
                 {/* 第一行/左侧：标题和状态 */}
-                <div className="flex items-center flex-grow">
+                <div className="flex items-center flex-grow flex-wrap">
                   {item.children.length > 0 && (
                     <button
                       onClick={() => toggleExpand(item.id)}
@@ -1349,25 +1381,36 @@ export default function WorkBreakdownPage() {
                       {item.status}
                     </span>
                   )}
+                  
+                  {/* 显示参与人员 - 移到第一行 */}
+                  {item.members && (
+                    <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                      {renderMembers(item.members, true)}
+                    </div>
+                  )}
+                  
+                  {/* 显示工作标签 - 移到第一行 */}
+                  {item.tags && (
+                    <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                      <TagIcon className="h-3 w-3 text-gray-500 mr-1" />
+                      {item.tags.split('，').filter(Boolean).map((tag, idx) => (
+                        <span key={`tag-${idx}`} className="inline-flex items-center text-xs px-1.5 py-0.5 ml-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 transition-colors">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               
-              {/* 描述和标签区域 */}
-              <div className="mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+              {/* 描述区域 */}
+              <div className="mt-2">
                 {/* 描述 */}
                 {item.description && (
-                  <div className="text-sm text-gray-600 leading-relaxed sm:flex-1 sm:min-w-[200px]">
+                  <div className="text-sm text-gray-600 leading-relaxed">
                     {item.description}
                   </div>
                 )}
-                
-                <div className="flex flex-wrap gap-x-4 mt-2 sm:mt-0">
-                  {/* 显示工作标签 */}
-                  {renderTags(item.tags)}
-                  
-                  {/* 显示参与人员 */}
-                  {renderMembers(item.members)}
-                </div>
               </div>
               
               {/* 工作进展备注 */}
@@ -1532,7 +1575,7 @@ export default function WorkBreakdownPage() {
                 {/* 优化布局：PC端更紧凑，移动端自适应 */}
                 <div className="flex flex-col sm:flex-row sm:items-center">
                   {/* 第一行/左侧：标题和状态 */}
-                  <div className="flex items-center flex-grow">
+                  <div className="flex items-center flex-grow flex-wrap">
                     {item.children.length > 0 && (
                       <button
                         onClick={() => toggleExpand(item.id)}
@@ -1558,6 +1601,25 @@ export default function WorkBreakdownPage() {
                       }`}>
                         {item.status}
                       </span>
+                    )}
+                    
+                    {/* 显示参与人员 - 移到第一行 */}
+                    {item.members && (
+                      <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                        {renderMembers(item.members, true)}
+                      </div>
+                    )}
+                    
+                    {/* 显示工作标签 - 移到第一行 */}
+                    {item.tags && (
+                      <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                        <TagIcon className="h-3 w-3 text-gray-500 mr-1" />
+                        {item.tags.split('，').filter(Boolean).map((tag, idx) => (
+                          <span key={`tag-${idx}`} className="inline-flex items-center text-xs px-1.5 py-0.5 ml-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 transition-colors">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                   
@@ -1601,22 +1663,14 @@ export default function WorkBreakdownPage() {
                   </div>
                 </div>
                 
-                {/* 描述和标签区域 */}
-                <div className="mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+                {/* 描述区域 */}
+                <div className="mt-2">
                   {/* 描述 */}
                   {item.description && (
-                    <div className="text-sm text-gray-600 leading-relaxed sm:flex-1 sm:min-w-[200px]">
+                    <div className="text-sm text-gray-600 leading-relaxed">
                       {item.description}
                     </div>
                   )}
-                  
-                  <div className="flex flex-wrap gap-x-4 mt-2 sm:mt-0">
-                    {/* 显示工作标签 */}
-                    {renderTags(item.tags)}
-                    
-                    {/* 显示参与人员 */}
-                    {renderMembers(item.members)}
-                  </div>
                 </div>
                 
                 {/* 工作进展备注 */}
@@ -1643,6 +1697,78 @@ export default function WorkBreakdownPage() {
         )}
       </div>
     );
+  };
+
+  // 根据选中的状态筛选工作项
+  useEffect(() => {
+    if (selectedStatuses.length === 0) {
+      // 如果没有选择任何状态，显示所有工作项
+      setFilteredWorkItems(workItems);
+    } else {
+      // 只保留符合筛选条件的工作项，不保留父级
+      const filterItemsByStatus = (items: WorkItem[]): WorkItem[] => {
+        const result: WorkItem[] = [];
+        
+        // 遍历每个工作项
+        for (const item of items) {
+          // 递归筛选子项
+          const filteredChildren = filterItemsByStatus(item.children);
+          
+          // 如果当前项状态符合筛选条件
+          if (selectedStatuses.includes(item.status || '未开始')) {
+            // 添加当前项（带有筛选后的子项）
+            result.push({
+              ...item,
+              children: filteredChildren
+            });
+          } else if (filteredChildren.length > 0) {
+            // 如果当前项不符合条件但有符合条件的子项
+            // 将符合条件的子项直接添加到结果中
+            result.push(...filteredChildren);
+          }
+        }
+        
+        return result;
+      };
+      
+      const filtered = filterItemsByStatus(workItems);
+      setFilteredWorkItems(filtered);
+    }
+  }, [workItems, selectedStatuses]);
+
+  // 处理状态筛选切换
+  const handleStatusFilterToggle = (status: string) => {
+    setSelectedStatuses(prev => {
+      if (prev.includes(status)) {
+        return prev.filter(s => s !== status);
+      } else {
+        return [...prev, status];
+      }
+    });
+  };
+
+  // 清除所有筛选条件
+  const clearStatusFilters = () => {
+    setSelectedStatuses([]);
+  };
+  
+  // 设置工作项展开层级
+  const handleExpandLevelChange = (level: number) => {
+    setExpandLevel(level);
+    
+    // 更新所有工作项的展开状态
+    const updateExpandState = (items: WorkItem[], currentLevel: number = 0): WorkItem[] => {
+      return items.map(item => {
+        const shouldExpand = currentLevel < level;
+        return {
+          ...item,
+          isExpanded: shouldExpand,
+          children: item.children.length > 0 ? updateExpandState(item.children, currentLevel + 1) : []
+        };
+      });
+    };
+    
+    setWorkItems(updateExpandState(workItems));
   };
 
   return (
@@ -1731,6 +1857,81 @@ export default function WorkBreakdownPage() {
               ))}
             </select>
           </div>
+          
+          {/* 层级展开控制 */}
+          {selectedProject && workItems.length > 0 && (
+            <div className="relative">
+              <select
+                value={expandLevel}
+                onChange={(e) => handleExpandLevelChange(parseInt(e.target.value))}
+                className="px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md transition-colors"
+              >
+                <option value="0">仅展开1级</option>
+                <option value="1">展开到2级</option>
+                <option value="2">展开到3级</option>
+                <option value="3">展开到4级</option>
+                <option value="4">展开全部</option>
+              </select>
+            </div>
+          )}
+          
+          {/* 工作状态筛选下拉菜单 */}
+          {selectedProject && (
+            <div className="relative">
+              <button
+                onClick={() => setShowStatusFilter(!showStatusFilter)}
+                className="px-4 py-2 text-sm font-medium flex items-center bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md transition-colors"
+              >
+                <ClockIcon className="h-4 w-4 mr-1" />
+                工作状态筛选
+                {selectedStatuses.length > 0 && (
+                  <span className="ml-1 bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                    {selectedStatuses.length}
+                  </span>
+                )}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </button>
+              
+              {showStatusFilter && (
+                <div 
+                  ref={statusFilterRef}
+                  className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-1 py-1 w-52 bg-white rounded-md shadow-lg z-10 border border-gray-200"
+                >
+                  <div className="px-3 py-2 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-500">选择工作状态</p>
+                  </div>
+                  
+                  {STATUS_OPTIONS.map(option => (
+                    <div key={option.value} className="px-3 py-2 flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`status-filter-${option.value}`}
+                        checked={selectedStatuses.includes(option.value)}
+                        onChange={() => handleStatusFilterToggle(option.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-colors"
+                      />
+                      <label 
+                        htmlFor={`status-filter-${option.value}`}
+                        className="ml-2 flex items-center cursor-pointer"
+                      >
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${option.color.split(' ')[0]}`}></span>
+                        <span className="text-sm text-gray-700">{option.value}</span>
+                      </label>
+                    </div>
+                  ))}
+                  
+                  <div className="border-t border-gray-100 mt-1 pt-1 px-3 py-2">
+                    <button
+                      onClick={clearStatusFilters}
+                      className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                    >
+                      清除筛选条件
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           
           {/* 导入导出下拉菜单 */}
           {selectedProject && (
@@ -1862,6 +2063,36 @@ export default function WorkBreakdownPage() {
         </div>
       </div>
       
+      {/* 显示已选筛选条件 */}
+      {selectedStatuses.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 bg-blue-50 p-2 rounded-md border border-blue-100">
+          <span className="text-xs text-blue-700">已筛选:</span>
+          {selectedStatuses.map(status => (
+            <span 
+              key={status} 
+              className="inline-flex items-center gap-1 px-2 py-1 bg-white text-blue-700 rounded-md border border-blue-200 text-xs"
+            >
+              {status}
+              <button
+                onClick={() => handleStatusFilterToggle(status)}
+                className="rounded-full p-0.5 hover:bg-blue-100 text-blue-500"
+              >
+                <XIcon className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={clearStatusFilters}
+            className="text-xs text-blue-600 hover:text-blue-800 ml-2"
+          >
+            清除全部
+          </button>
+          <span className="text-xs text-blue-700 ml-auto">
+            注意：仅显示符合筛选条件的工作项
+          </span>
+        </div>
+      )}
+      
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
@@ -1876,11 +2107,11 @@ export default function WorkBreakdownPage() {
                   {/* 思维导图视图 */}
                   {viewMode === 'map' ? (
                     <div className="bg-white p-2 sm:p-4 rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                      <WorkMap workItems={workItems} projectName={selectedProject.name} />
+                      <WorkMap workItems={selectedStatuses.length > 0 ? filteredWorkItems : workItems} projectName={selectedProject.name} />
                     </div>
                   ) : (
                     <>
-                      {workItems.map(item => renderWorkItem(item, 0))}
+                      {(selectedStatuses.length > 0 ? filteredWorkItems : workItems).map(item => renderWorkItem(item, 0))}
                       
                       {/* 底部添加一级工作项按钮 */}
                       {viewMode === 'edit' && (

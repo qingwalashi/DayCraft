@@ -242,12 +242,12 @@ export default function TodosPage() {
   // 刷新全部项目视图 - 使用useCallback包装
   const refreshAllProjectsView = useCallback(async () => {
     if (!user) return;
-    
-    setIsLoading(true);
-    try {
+          
+                setIsLoading(true);
+                try {
       // 获取所有未完成的待办
       const { data: allTodosData, error: allTodosError } = await supabase
-        .from("project_todos")
+                    .from("project_todos")
         .select(`
           id, 
           content, 
@@ -257,13 +257,13 @@ export default function TodosPage() {
           completed_at,
           project:project_id (name, code)
         `)
-        .eq("user_id", user.id)
-        .order("due_date", { ascending: true });
-      
+                    .eq("user_id", user.id)
+                    .order("due_date", { ascending: true });
+                    
       if (allTodosError) {
         throw allTodosError;
-      }
-      
+                  }
+                  
       // 转换数据格式
       const formattedTodos = (allTodosData || []).map((todo: any) => ({
         id: todo.id,
@@ -278,36 +278,36 @@ export default function TodosPage() {
       // 更新状态
       setAllTodos(formattedTodos);
       setAllTodosEdited(formattedTodos);
-      
+                  
       // 更新数据加载状态
-      dataLoadedRef.current = true;
-      lastLoadTimeRef.current = Date.now();
+                  dataLoadedRef.current = true;
+                  lastLoadTimeRef.current = Date.now();
     } catch (error) {
       console.error("刷新全部待办视图失败:", error);
-      setError("加载待办失败");
-    } finally {
-      setIsLoading(false);
-    }
+          setError("加载待办失败");
+                } finally {
+                  setIsLoading(false);
+                }
   }, [user, supabase]);
 
   // 刷新单个项目视图 - 使用useCallback包装
   const refreshSingleProjectView = useCallback(async (projectId: string) => {
     if (!user || !projectId) return;
     
-    setIsLoading(true);
-    try {
+                setIsLoading(true);
+                try {
       // 获取项目的待办
       const { data: todosData, error: todosError } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at")
-        .eq("user_id", user.id)
+                  .from("project_todos")
+                  .select("id, content, priority, due_date, status, completed_at")
+                  .eq("user_id", user.id)
         .eq("project_id", projectId)
-        .order("due_date", { ascending: true });
-      
-      if (todosError) {
+                  .order("due_date", { ascending: true });
+                    
+          if (todosError) {
         throw todosError;
-      }
-      
+                }
+                  
       // 转换数据格式
       const formattedTodos = (todosData || []).map((todo: any) => ({
         id: todo.id,
@@ -317,22 +317,22 @@ export default function TodosPage() {
         status: todo.status || 'not_started',
         completed_at: todo.completed_at
       }));
-      
+                  
       // 更新状态
       setTodos(formattedTodos);
       setNewTodos([]);
       
       // 更新数据加载状态
-      dataLoadedRef.current = true;
-      lastLoadTimeRef.current = Date.now();
+                  dataLoadedRef.current = true;
+                  lastLoadTimeRef.current = Date.now();
     } catch (error) {
       console.error(`刷新项目 ${projectId} 待办视图失败:`, error);
-      setError("加载待办失败");
-    } finally {
-      setIsLoading(false);
-    }
+                  setError("加载待办失败");
+                } finally {
+                  setIsLoading(false);
+                }
   }, [user, supabase]);
-
+                  
   // 处理页面可见性变化，用于刷新数据
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -744,7 +744,7 @@ export default function TodosPage() {
       setIsLoading(false);
     }
   };
-  
+
   // 保存所有待办
   const handleSave = async () => {
     if (!selectedProjectId || !user) return;
@@ -1433,9 +1433,9 @@ export default function TodosPage() {
                             <input
                               type="date"
                               className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
-                          value={todo.due_date}
-                          onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
-                        />
+                              value={todo.due_date}
+                              onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
+                            />
                           </div>
                         </div>
                         

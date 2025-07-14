@@ -30,7 +30,7 @@ export default function WorkBreakdownGuide() {
             <div className="space-y-6 text-gray-700">
               <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
                 <p className="text-sm text-blue-700">
-                  <strong>Excel 特点：</strong> 以表格形式展示和编辑工作项，支持五个字段：工作项名称、工作描述、工作进展、工作标签和参与人员，适合批量编辑和数据管理。
+                  <strong>Excel 特点：</strong> 以表格形式展示和编辑工作项，支持九个字段：工作项名称、工作描述、工作进展、工作标签、参与人员、计划开始/结束时间、实际开始/结束时间，适合批量编辑和数据管理。
                 </p>
               </div>
               
@@ -83,6 +83,10 @@ export default function WorkBreakdownGuide() {
                   <li>工作进展备注 - 记录工作进展的详细情况、遇到的问题等，支持换行（选填）</li>
                   <li>工作标签 - 标签列表，用逗号或顿号分隔（选填）</li>
                   <li>参与人员 - 人员列表，用逗号或顿号分隔（选填）</li>
+                  <li>计划开始时间 - 工作项计划开始的日期，格式为YYYY-MM-DD（选填）</li>
+                  <li>计划结束时间 - 工作项计划结束的日期，格式为YYYY-MM-DD（选填）</li>
+                  <li>实际开始时间 - 工作项实际开始的日期，格式为YYYY-MM-DD（选填）</li>
+                  <li>实际结束时间 - 工作项实际结束的日期，格式为YYYY-MM-DD（选填）</li>
                 </ul>
               </section>
             </div>

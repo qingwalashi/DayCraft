@@ -451,11 +451,11 @@ export default function DailyReportsPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible' && user) {
+      if (document.visibilityState === 'visible' && user) {
           console.log('日报页面恢复可见');
           
           // 检查今日日报状态 - 这个功能保留，因为它很重要
-          checkTodayReport();
+        checkTodayReport();
           
           // 不再自动刷新数据
           console.log('保持现有数据，不自动刷新');

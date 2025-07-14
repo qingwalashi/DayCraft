@@ -156,7 +156,7 @@ export default function ProjectProgressPage() {
     if (selectedProject?.id && user?.id) {
       // 只有在数据未加载时才重新加载数据
       if (!dataLoadedRef.current) {
-        fetchWorkItems(selectedProject.id);
+      fetchWorkItems(selectedProject.id);
       }
     }
   }, [selectedProject, user, fetchWorkItems]);

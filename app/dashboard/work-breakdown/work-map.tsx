@@ -458,7 +458,13 @@ const WorkMap = ({ workItems, projectName }: WorkMapProps) => {
       
       {/* 工作项详情面板 */}
       {selectedNode && (
-        <div className="absolute top-4 right-4 w-72 max-w-[calc(100%-2rem)] bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-10 max-h-[80vh] overflow-y-auto">
+        <div className="absolute w-72 max-w-[calc(100%-2rem)] bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-10 overflow-y-auto details-panel"
+             style={{ 
+               top: '1rem', 
+               right: '1rem', 
+               maxHeight: 'calc(100% - 2rem)',
+               height: 'auto'
+             }}>
           <div className="flex justify-between items-start mb-2">
             <h3 className="font-medium text-lg">{selectedNode.name}</h3>
             <button 

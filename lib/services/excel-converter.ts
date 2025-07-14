@@ -31,11 +31,15 @@ export class ExcelConverter {
       { wch: 50 }, // 工作进展备注
       { wch: 30 }, // 工作标签
       { wch: 30 }, // 参与人员
+      { wch: 15 }, // 计划开始时间
+      { wch: 15 }, // 计划结束时间
+      { wch: 15 }, // 实际开始时间
+      { wch: 15 }, // 实际结束时间
     ];
     ws['!cols'] = colWidths;
     
     // 设置单元格格式，使工作进展备注支持换行
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:G1');
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:K1');
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
       const cellAddress = XLSX.utils.encode_cell({ r: R, c: 4 }); // 第5列是工作进展备注
       if (ws[cellAddress]) {
@@ -116,7 +120,11 @@ export class ExcelConverter {
         "工作进展": "未开始",
         "工作进展备注": "",
         "工作标签": "需求对接，产品设计",
-        "参与人员": "张三，李四"
+        "参与人员": "张三，李四",
+        "计划开始时间": "2023-12-01",
+        "计划结束时间": "2023-12-15",
+        "实际开始时间": "",
+        "实际结束时间": ""
       },
       { 
         "层级": 2, 
@@ -125,7 +133,11 @@ export class ExcelConverter {
         "工作进展": "进行中",
         "工作进展备注": "已完成需求评审\n正在进行UI设计\n预计下周完成",
         "工作标签": "UI 设计",
-        "参与人员": "王五"
+        "参与人员": "王五",
+        "计划开始时间": "2023-12-05",
+        "计划结束时间": "2023-12-10",
+        "实际开始时间": "2023-12-06",
+        "实际结束时间": ""
       },
       { 
         "层级": 3, 
@@ -134,7 +146,11 @@ export class ExcelConverter {
         "工作进展": "已完成",
         "工作进展备注": "所有功能已实现并通过测试",
         "工作标签": "前端开发",
-        "参与人员": "赵六"
+        "参与人员": "赵六",
+        "计划开始时间": "2023-12-07",
+        "计划结束时间": "2023-12-09",
+        "实际开始时间": "2023-12-07",
+        "实际结束时间": "2023-12-08"
       },
       { 
         "层级": 1, 
@@ -143,7 +159,11 @@ export class ExcelConverter {
         "工作进展": "已暂停",
         "工作进展备注": "因需求变更暂停开发\n等待产品确认新需求",
         "工作标签": "后端开发，数据开发",
-        "参与人员": "张三，赵六"
+        "参与人员": "张三，赵六",
+        "计划开始时间": "2023-12-10",
+        "计划结束时间": "2023-12-25",
+        "实际开始时间": "2023-12-10",
+        "实际结束时间": ""
       },
       { 
         "层级": 2, 
@@ -152,7 +172,11 @@ export class ExcelConverter {
         "工作进展": "未开始",
         "工作进展备注": "",
         "工作标签": "前后端联调",
-        "参与人员": "李四，王五"
+        "参与人员": "李四，王五",
+        "计划开始时间": "2023-12-15",
+        "计划结束时间": "2023-12-20",
+        "实际开始时间": "",
+        "实际结束时间": ""
       }
     ];
     
@@ -171,11 +195,15 @@ export class ExcelConverter {
       { wch: 50 }, // 工作进展备注
       { wch: 30 }, // 工作标签
       { wch: 30 }, // 参与人员
+      { wch: 15 }, // 计划开始时间
+      { wch: 15 }, // 计划结束时间
+      { wch: 15 }, // 实际开始时间
+      { wch: 15 }, // 实际结束时间
     ];
     ws['!cols'] = colWidths;
     
     // 设置单元格格式，使工作进展备注支持换行
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:G1');
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:K1');
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
       const cellAddress = XLSX.utils.encode_cell({ r: R, c: 4 }); // 第5列是工作进展备注
       if (ws[cellAddress]) {
@@ -193,8 +221,12 @@ export class ExcelConverter {
       { "说明": "5. 工作进展备注：选填，可记录工作进展的详细情况、遇到的问题等，支持换行" },
       { "说明": "6. 工作标签：选填，多个标签用中文顿号(、)或英文逗号(,)分隔" },
       { "说明": "7. 参与人员：选填，多个人员用中文顿号(、)或英文逗号(,)分隔" },
-      { "说明": "8. 层级顺序要连贯，例如一个三级工作项的上方必须有一个二级工作项" },
-      { "说明": "9. 导入时，系统会自动按照层级关系构建工作项树" }
+      { "说明": "8. 计划开始时间：选填，格式为YYYY-MM-DD，如2023-12-01" },
+      { "说明": "9. 计划结束时间：选填，格式为YYYY-MM-DD，如2023-12-15" },
+      { "说明": "10. 实际开始时间：选填，格式为YYYY-MM-DD，如2023-12-02" },
+      { "说明": "11. 实际结束时间：选填，格式为YYYY-MM-DD，如2023-12-14" },
+      { "说明": "12. 层级顺序要连贯，例如一个三级工作项的上方必须有一个二级工作项" },
+      { "说明": "13. 导入时，系统会自动按照层级关系构建工作项树" }
     ];
     const wsInstructions = XLSX.utils.json_to_sheet(instructionData, { header: ["说明"] });
     wsInstructions['!cols'] = [{ wch: 90 }];
@@ -226,7 +258,11 @@ export class ExcelConverter {
         "工作进展": item.status || "未开始",
         "工作进展备注": item.progress_notes || "",
         "工作标签": item.tags || "",
-        "参与人员": item.members || ""
+        "参与人员": item.members || "",
+        "计划开始时间": item.planned_start_time || "",
+        "计划结束时间": item.planned_end_time || "",
+        "实际开始时间": item.actual_start_time || "",
+        "实际结束时间": item.actual_end_time || ""
       });
       
       // 递归处理子项
@@ -290,6 +326,10 @@ export class ExcelConverter {
         progress_notes: row['工作进展备注'] || '',
         tags: normalizeList(row['工作标签'] || ''),
         members: normalizeList(row['参与人员'] || ''),
+        planned_start_time: row['计划开始时间'] || '',
+        planned_end_time: row['计划结束时间'] || '',
+        actual_start_time: row['实际开始时间'] || '',
+        actual_end_time: row['实际结束时间'] || '',
         children: [],
         level,
         position: itemStack[level]?.length || 0,
