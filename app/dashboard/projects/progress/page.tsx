@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, WorkBreakdownItem } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -15,6 +15,11 @@ export default function ProjectProgressPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [workItems, setWorkItems] = useState<any[]>([]);
   const supabase = createClient();
+  
+  // 添加数据加载状态跟踪和刷新间隔
+  const dataLoadedRef = useRef<boolean>(false);
+  const lastLoadTimeRef = useRef<number>(0);
+  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000; // 5分钟刷新间隔
 
   // 加载项目数据
   const fetchProjects = useCallback(async () => {
@@ -38,6 +43,9 @@ export default function ProjectProgressPage() {
       if (data && data.length > 0) {
         setSelectedProject(data[0] as Project);
       }
+      
+      // 更新数据加载时间戳
+      lastLoadTimeRef.current = Date.now();
     } catch (error) {
       console.error('获取项目失败', error);
       toast.error('获取项目失败');
@@ -68,6 +76,10 @@ export default function ProjectProgressPage() {
       }
       
       setWorkItems(data || []);
+      
+      // 更新数据加载状态和时间戳
+      dataLoadedRef.current = true;
+      lastLoadTimeRef.current = Date.now();
     } catch (error) {
       console.error('获取工作分解数据失败', error);
       toast.error('获取工作分解数据失败');
@@ -115,9 +127,46 @@ export default function ProjectProgressPage() {
     }
   };
 
+  // 添加页面可见性监听
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('进度管理页面恢复可见，检查数据状态');
+          
+          // 检查是否需要重新加载数据
+          const now = Date.now();
+          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          
+          // 如果超过刷新间隔，重新加载数据
+          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+            console.log('数据超过刷新间隔，重新加载');
+            // 重置数据加载状态
+            dataLoadedRef.current = false;
+            
+            // 重新加载项目数据
+            fetchProjects();
+            
+            // 如果有选中的项目，重新加载该项目的工作项数据
+            if (selectedProject?.id) {
+              fetchWorkItems(selectedProject.id);
+            }
+          } else {
+            console.log('数据在刷新间隔内，保持现有数据');
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [fetchProjects, fetchWorkItems, selectedProject]);
+
   // 初始加载
   useEffect(() => {
-    if (user) {
+    if (user && !dataLoadedRef.current) {
       fetchProjects();
     }
   }, [user, fetchProjects]);
@@ -125,7 +174,10 @@ export default function ProjectProgressPage() {
   // 当选择的项目变化时，加载该项目的工作分解数据
   useEffect(() => {
     if (selectedProject?.id && user?.id) {
-      fetchWorkItems(selectedProject.id);
+      // 只有在数据未加载时才重新加载数据
+      if (!dataLoadedRef.current) {
+        fetchWorkItems(selectedProject.id);
+      }
     }
   }, [selectedProject, user, fetchWorkItems]);
 
@@ -160,6 +212,11 @@ export default function ProjectProgressPage() {
             onValueChange={(value: string) => {
               const project = projects.find(p => p.id === value);
               setSelectedProject(project || null);
+              
+              // 切换项目时重置数据加载状态
+              if (project && project.id !== selectedProject?.id) {
+                dataLoadedRef.current = false;
+              }
             }}
             disabled={isLoading}
           >

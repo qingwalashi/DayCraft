@@ -343,7 +343,7 @@ export default function NewDailyReportPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, []); // 移除所有依赖，避免循环
+  }, [user, loadActiveProjects, checkUrlParams, DATA_REFRESH_INTERVAL]); // 添加必要的依赖项
 
   // 处理工作项内容变更
   const handleWorkItemContentChange = (index: number, content: string) => {

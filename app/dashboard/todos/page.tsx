@@ -240,159 +240,125 @@ export default function TodosPage() {
     }
   }, [user, supabase]);
 
-  // 加载选中项目的待办
-  useEffect(() => {
-    if (!user || !selectedProjectId) return;
-          
-    // 如果是全部项目，加载所有项目的待办
-            if (selectedProjectId === ALL_PROJECTS) {
-              (async () => {
-                setIsLoading(true);
-                try {
-          // 获取所有活跃项目（如果还没有加载）
-          let projectMap: Record<string, string> = {};
-          if (projects.length === 0) {
-                  const { data: projectsData, error: projectsError } = await supabase
-                    .from("projects")
-              .select("id, name")
-                    .eq("user_id", user.id)
-                    .eq("is_active", true);
-              
-                  if (projectsError) {
-                    setError("加载项目失败");
-                    setIsLoading(false);
-                    return;
-                  }
-            
-            projectMap = (projectsData || []).reduce((acc: Record<string, string>, p: any) => {
-                    acc[p.id] = p.name;
-                    return acc;
-                  }, {});
-          } else {
-            projectMap = projects.reduce((acc: Record<string, string>, p: Project) => {
-              acc[p.id] = p.name;
-              return acc;
-            }, {});
-          }
-                  
-          // 合并查询：一次性获取所有待办（活跃和已完成）
-          const { data: allTodosData, error: todosError } = await supabase
-                    .from("project_todos")
-                    .select("id, content, priority, due_date, status, completed_at, project_id")
-                    .eq("user_id", user.id)
-            .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
-                    .order("due_date", { ascending: true });
-                    
-          if (todosError) {
-                    setError("加载待办失败");
-                    setIsLoading(false);
-                    return;
-                  }
-                  
-          // 处理待办数据
-          const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
-          const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
-          
-          // 按最近完成时间排序并限制数量
-          completedTodos.sort((a, b) => {
-            const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
-            const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
-            return dateB - dateA;
-          });
-          const recentCompletedTodos = completedTodos.slice(0, 10);
-                  
-                  // 合并所有待办并添加项目名称
-                  const allTodosWithProject = [
-            ...activeTodos,
-            ...recentCompletedTodos
-                  ].map((t: any) => ({
-                    ...t,
-                    projectName: projectMap[t.project_id] || "",
-                  }));
-                  
-                  setAllTodos(allTodosWithProject);
-                  
-          // 统计优先级数量（重用之前计算的数据）
-                  dataLoadedRef.current = true;
-                  lastLoadTimeRef.current = Date.now();
-                } catch (err) {
-          console.error("加载全部待办失败:", err);
-          setError("加载待办失败");
-                } finally {
-                  setIsLoading(false);
-                }
-              })();
-    } else {
-      // 加载特定项目的待办
-              (async () => {
-                setIsLoading(true);
-                try {
-          // 合并查询：一次性获取所有待办（活跃和已完成）
-          const { data: allTodosData, error: todosError } = await supabase
-                  .from("project_todos")
-                  .select("id, content, priority, due_date, status, completed_at")
-                  .eq("user_id", user.id)
-                  .eq("project_id", selectedProjectId)
-            .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
-                  .order("due_date", { ascending: true });
-                    
-          if (todosError) {
-                  setError("加载待办失败");
-                    setIsLoading(false);
-                  return;
-                }
-                  
-          // 处理待办数据
-          const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
-          const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
-          
-          // 按最近完成时间排序并限制数量
-          completedTodos.sort((a, b) => {
-            const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
-            const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
-            return dateB - dateA;
-          });
-          const recentCompletedTodos = completedTodos.slice(0, 10);
-                  
-                  // 合并所有待办
-                  const allTodos = [
-            ...activeTodos,
-            ...recentCompletedTodos
-          ] as Todo[];
-                  
-          setTodos(allTodos);
-      setNewTodos([]);
-                  dataLoadedRef.current = true;
-                  lastLoadTimeRef.current = Date.now();
-                } catch (err) {
-          console.error("加载项目待办失败:", err);
-                  setError("加载待办失败");
-                } finally {
-                  setIsLoading(false);
-                }
-    })();
+  // 刷新全部项目视图 - 使用useCallback包装
+  const refreshAllProjectsView = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      // 获取所有未完成的待办
+      const { data: allTodosData, error: allTodosError } = await supabase
+        .from("project_todos")
+        .select(`
+          id, 
+          content, 
+          priority, 
+          due_date, 
+          status, 
+          completed_at,
+          project:project_id (name, code)
+        `)
+        .eq("user_id", user.id)
+        .order("due_date", { ascending: true });
+      
+      if (allTodosError) {
+        throw allTodosError;
+      }
+      
+      // 转换数据格式
+      const formattedTodos = (allTodosData || []).map((todo: any) => ({
+        id: todo.id,
+        content: todo.content,
+        priority: todo.priority,
+        due_date: todo.due_date,
+        status: todo.status || 'not_started',
+        completed_at: todo.completed_at,
+        projectName: todo.project ? `${todo.project.name} (${todo.project.code})` : '未知项目'
+      }));
+      
+      // 更新状态
+      setAllTodos(formattedTodos);
+      setAllTodosEdited(formattedTodos);
+      
+      // 更新数据加载状态
+      dataLoadedRef.current = true;
+      lastLoadTimeRef.current = Date.now();
+    } catch (error) {
+      console.error("刷新全部待办视图失败:", error);
+      setError("加载待办失败");
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, selectedProjectId, supabase, projects]);
-                  
+  }, [user, supabase]);
+
+  // 刷新单个项目视图 - 使用useCallback包装
+  const refreshSingleProjectView = useCallback(async (projectId: string) => {
+    if (!user || !projectId) return;
+    
+    setIsLoading(true);
+    try {
+      // 获取项目的待办
+      const { data: todosData, error: todosError } = await supabase
+        .from("project_todos")
+        .select("id, content, priority, due_date, status, completed_at")
+        .eq("user_id", user.id)
+        .eq("project_id", projectId)
+        .order("due_date", { ascending: true });
+      
+      if (todosError) {
+        throw todosError;
+      }
+      
+      // 转换数据格式
+      const formattedTodos = (todosData || []).map((todo: any) => ({
+        id: todo.id,
+        content: todo.content,
+        priority: todo.priority,
+        due_date: todo.due_date,
+        status: todo.status || 'not_started',
+        completed_at: todo.completed_at
+      }));
+      
+      // 更新状态
+      setTodos(formattedTodos);
+      setNewTodos([]);
+      
+      // 更新数据加载状态
+      dataLoadedRef.current = true;
+      lastLoadTimeRef.current = Date.now();
+    } catch (error) {
+      console.error(`刷新项目 ${projectId} 待办视图失败:`, error);
+      setError("加载待办失败");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, supabase]);
+
   // 处理页面可见性变化，用于刷新数据
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
+          console.log('待办管理页面恢复可见，检查数据状态');
+          
+          // 检查是否需要重新加载数据
           const now = Date.now();
-          // 如果距离上次加载超过5分钟，刷新数据
-          if (now - lastLoadTimeRef.current > DATA_REFRESH_INTERVAL) {
-            console.log('页面恢复可见，重新加载数据');
+          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          
+          // 如果超过刷新间隔，重新加载数据
+          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+            console.log('数据超过刷新间隔，重新加载');
+            // 重置数据加载状态
             dataLoadedRef.current = false;
             
             // 根据当前选择的项目决定刷新哪些数据
             if (selectedProjectId === ALL_PROJECTS) {
-              // 重置加载标志，触发重新加载
-              dataLoadedRef.current = false;
+              refreshAllProjectsView();
             } else if (selectedProjectId) {
-              // 重置加载标志，触发重新加载
-              dataLoadedRef.current = false;
-                }
+              refreshSingleProjectView(selectedProjectId);
+            }
+          } else {
+            console.log('数据在刷新间隔内，保持现有数据');
           }
         }
       };
@@ -402,7 +368,21 @@ export default function TodosPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, refreshAllProjectsView, refreshSingleProjectView]);
+
+  // 加载选中项目的待办
+  useEffect(() => {
+    if (!user || !selectedProjectId) return;
+    
+    if (!dataLoadedRef.current) {
+      // 根据当前选择的项目决定加载哪些数据
+      if (selectedProjectId === ALL_PROJECTS) {
+        refreshAllProjectsView();
+      } else {
+        refreshSingleProjectView(selectedProjectId);
+      }
+    }
+  }, [user, selectedProjectId, refreshAllProjectsView, refreshSingleProjectView, dataLoadedRef]);
 
   // 添加新待办
   const handleAddTodo = () => {
@@ -785,103 +765,6 @@ export default function TodosPage() {
     }
   };
   
-  // 新增：刷新全部项目视图的待办
-  const refreshAllProjectsView = async () => {
-    if (!user) return;
-    
-    try {
-      // 获取项目名称映射
-      const projectMap = projects.reduce((acc: Record<string, string>, p: Project) => {
-        acc[p.id] = p.name;
-        return acc;
-      }, {});
-      
-      // 一次性获取所有待办（活跃和已完成）
-      const { data: allTodosData, error: todosError } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at, project_id")
-        .eq("user_id", user.id)
-        .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
-        .order("due_date", { ascending: true });
-        
-      if (todosError) {
-        setError("加载待办失败");
-        return;
-      }
-      
-      // 处理待办数据
-      const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
-      const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
-      
-      // 按最近完成时间排序并限制数量
-      completedTodos.sort((a, b) => {
-        const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
-        const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
-        return dateB - dateA;
-      });
-      const recentCompletedTodos = completedTodos.slice(0, 10);
-      
-      // 合并所有待办并添加项目名称
-      const allTodosWithProject = [
-        ...activeTodos,
-        ...recentCompletedTodos
-      ].map((t: any) => ({
-        ...t,
-        projectName: projectMap[t.project_id] || "",
-      }));
-      
-      setAllTodos(allTodosWithProject);
-    } catch (err) {
-      console.error("刷新全部待办视图失败:", err);
-      setError("刷新数据失败");
-    }
-  };
-  
-  // 新增：刷新单项目视图的待办
-  const refreshSingleProjectView = async (projectId: string) => {
-    if (!user) return;
-    
-    try {
-      // 一次性获取所有待办（活跃和已完成）
-      const { data: allTodosData, error: todosError } = await supabase
-        .from("project_todos")
-        .select("id, content, priority, due_date, status, completed_at")
-        .eq("user_id", user.id)
-        .eq("project_id", projectId)
-        .or("status.eq.not_started,status.eq.in_progress,status.eq.completed")
-        .order("due_date", { ascending: true });
-        
-      if (todosError) {
-        setError("加载待办失败");
-        return;
-      }
-      
-      // 处理待办数据
-      const activeTodos = allTodosData?.filter(t => t.status !== 'completed') || [];
-      const completedTodos = allTodosData?.filter(t => t.status === 'completed') || [];
-      
-      // 按最近完成时间排序并限制数量
-      completedTodos.sort((a, b) => {
-        const dateA = a.completed_at ? new Date(a.completed_at as string).getTime() : 0;
-        const dateB = b.completed_at ? new Date(b.completed_at as string).getTime() : 0;
-        return dateB - dateA;
-      });
-      const recentCompletedTodos = completedTodos.slice(0, 10);
-      
-      // 合并所有待办
-      const allTodos = [
-        ...activeTodos,
-        ...recentCompletedTodos
-      ] as Todo[];
-      
-      setTodos(allTodos);
-      setNewTodos([]);
-    } catch (err) {
-      console.error("刷新项目待办视图失败:", err);
-      setError("刷新数据失败");
-    }
-  };
-
   // 保存所有待办
   const handleSave = async () => {
     if (!selectedProjectId || !user) return;
@@ -1570,9 +1453,9 @@ export default function TodosPage() {
                             <input
                               type="date"
                               className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all hover:border-gray-300 ${isPastOrToday(todo.due_date, todo.status) ? 'border-red-400 text-red-600 font-bold bg-red-50' : 'border-gray-200'}`}
-                              value={todo.due_date}
-                              onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
-                            />
+                          value={todo.due_date}
+                          onChange={e => handleAllTodosChange(allTodosEdited.findIndex(t => t.id === todo.id), "due_date", e.target.value)}
+                        />
                           </div>
                         </div>
                         

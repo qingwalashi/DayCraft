@@ -448,25 +448,37 @@ export default function DailyReportsPage() {
     }
   }, [user, currentWeekIndex, weekData.length]);
 
-  // 在页面可见性变化时移除待办刷新
+  // 在页面可见性变化时的处理逻辑
   useEffect(() => {
+    if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && user) {
-        // 检查今日日报状态
-        checkTodayReport();
+        if (document.visibilityState === 'visible' && user) {
+          console.log('日报页面恢复可见，检查数据状态');
           
-        // 如果当前周数据已加载，刷新当前周数据
-        if (currentWeekData && weekDataLoadedRef.current[`${currentWeekData.year}-${currentWeekData.weekNumber}`]) {
-          fetchWeekReports(currentWeekData, true);
+          // 检查是否需要重新加载数据
+          const now = Date.now();
+          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          
+          // 检查今日日报状态 - 这个功能保留，因为它很重要
+          checkTodayReport();
+          
+          // 如果超过刷新间隔，重新加载数据
+          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
+            console.log('数据超过刷新间隔，重新加载');
+            if (currentWeekData) {
+              fetchWeekReports(currentWeekData, true);
+            }
+          } else {
+            console.log('数据在刷新间隔内，保持现有数据');
           }
         }
       };
       
       document.addEventListener('visibilitychange', handleVisibilityChange);
-    
       return () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
+    }
   }, [user, currentWeekData, checkTodayReport, fetchWeekReports]);
 
   // 处理周切换
