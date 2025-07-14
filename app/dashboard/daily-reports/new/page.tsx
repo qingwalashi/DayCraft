@@ -67,10 +67,12 @@ export default function NewDailyReportPage() {
   const [isPlan, setIsPlan] = usePersistentState<boolean>('new-daily-report-is-plan', false); // 添加是否为工作计划的状态
   const [selectedProjectId, setSelectedProjectId] = usePersistentState<string>('new-daily-report-selected-project', '');
 
-  // 添加数据加载状态引用
-  const dataLoadedRef = useRef(false);
+  // 添加数据加载状态引用和URL参数检查状态
+  const dataLoadedRef = useRef<boolean>(false);
+  const urlParamsCheckedRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
-  const urlParamsCheckedRef = useRef(false);
+  // 移除数据刷新间隔
+
   // 添加toast通知控制标志
   const reportContentLoadedNotificationRef = useRef(false);
   // 数据刷新间隔（毫秒），设置为10分钟
@@ -306,26 +308,10 @@ export default function NewDailyReportPage() {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('日报编辑页面恢复可见，检查数据状态');
+          console.log('日报编辑页面恢复可见');
           
-          // 检查是否需要重新加载数据
-          const now = Date.now();
-          const timeSinceLastLoad = now - lastLoadTimeRef.current;
-          
-          // 如果超过刷新间隔，重新加载数据
-          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-            console.log('数据超过刷新间隔，重新加载');
-            // 重置数据加载状态
-            dataLoadedRef.current = false;
-            // 使用setTimeout避免在事件处理中直接调用
-            setTimeout(() => {
-              loadActiveProjects().then(() => {
-                console.log('项目数据已刷新');
-              });
-            }, 100);
-          } else {
-            console.log('数据在刷新间隔内，保持现有数据');
-          }
+          // 不再自动刷新数据
+          console.log('保持现有数据，不自动刷新');
           
           // 仅在必要时检查URL参数（避免频繁重新加载日报内容）
           if (!urlParamsCheckedRef.current) {
@@ -343,7 +329,7 @@ export default function NewDailyReportPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [user, loadActiveProjects, checkUrlParams, DATA_REFRESH_INTERVAL]); // 添加必要的依赖项
+  }, [checkUrlParams]); // 移除不必要的依赖项
 
   // 处理工作项内容变更
   const handleWorkItemContentChange = (index: number, content: string) => {

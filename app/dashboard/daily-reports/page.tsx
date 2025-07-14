@@ -148,8 +148,7 @@ export default function DailyReportsPage() {
   const weekDataLoadedRef = useRef<Record<string, boolean>>({});
   // 添加最后数据加载时间戳
   const lastLoadTimeRef = useRef<number>(0);
-  // 数据刷新间隔（毫秒），设置为5分钟
-  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000;
+  // 移除数据刷新间隔
   // 添加请求状态跟踪，避免重复请求
   const isRequestingRef = useRef<Record<string, boolean>>({});
   // 防抖延迟
@@ -319,8 +318,8 @@ export default function DailyReportsPage() {
     // 检查是否超过刷新间隔，如果强制更新则忽略此检查
     const now = Date.now();
     const timeSinceLastLoad = now - lastLoadTimeRef.current;
-    if (!forceUpdate && lastLoadTimeRef.current > 0 && timeSinceLastLoad < DATA_REFRESH_INTERVAL) {
-      console.log(`数据加载间隔小于${DATA_REFRESH_INTERVAL/1000}秒，跳过重新获取`);
+    if (!forceUpdate && lastLoadTimeRef.current > 0 && timeSinceLastLoad < 0) { // 移除数据刷新间隔
+      console.log(`数据加载间隔小于0秒，跳过重新获取`);
       setIsLoading(false);
       return;
     }
@@ -453,24 +452,13 @@ export default function DailyReportsPage() {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible' && user) {
-          console.log('日报页面恢复可见，检查数据状态');
-          
-          // 检查是否需要重新加载数据
-          const now = Date.now();
-          const timeSinceLastLoad = now - lastLoadTimeRef.current;
+          console.log('日报页面恢复可见');
           
           // 检查今日日报状态 - 这个功能保留，因为它很重要
           checkTodayReport();
           
-          // 如果超过刷新间隔，重新加载数据
-          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-            console.log('数据超过刷新间隔，重新加载');
-            if (currentWeekData) {
-              fetchWeekReports(currentWeekData, true);
-            }
-          } else {
-            console.log('数据在刷新间隔内，保持现有数据');
-          }
+          // 不再自动刷新数据
+          console.log('保持现有数据，不自动刷新');
         }
       };
       
@@ -479,7 +467,7 @@ export default function DailyReportsPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [user, currentWeekData, checkTodayReport, fetchWeekReports]);
+  }, [user, checkTodayReport]);
 
   // 处理周切换
   const handleWeekChange = (weekIndex: number) => {

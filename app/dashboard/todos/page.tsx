@@ -107,7 +107,6 @@ export default function TodosPage() {
   // 新增：数据加载状态跟踪
   const dataLoadedRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
-  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000; // 5分钟刷新间隔
 
   // 检测是否为移动设备
   useEffect(() => {
@@ -339,27 +338,8 @@ export default function TodosPage() {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('待办管理页面恢复可见，检查数据状态');
-          
-          // 检查是否需要重新加载数据
-          const now = Date.now();
-          const timeSinceLastLoad = now - lastLoadTimeRef.current;
-          
-          // 如果超过刷新间隔，重新加载数据
-          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-            console.log('数据超过刷新间隔，重新加载');
-            // 重置数据加载状态
-            dataLoadedRef.current = false;
-            
-            // 根据当前选择的项目决定刷新哪些数据
-            if (selectedProjectId === ALL_PROJECTS) {
-              refreshAllProjectsView();
-            } else if (selectedProjectId) {
-              refreshSingleProjectView(selectedProjectId);
-            }
-          } else {
-            console.log('数据在刷新间隔内，保持现有数据');
-          }
+          console.log('待办管理页面恢复可见，保持现有数据');
+          // 不再自动刷新数据
         }
       };
       
@@ -368,7 +348,7 @@ export default function TodosPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [selectedProjectId, refreshAllProjectsView, refreshSingleProjectView]);
+  }, []);
 
   // 加载选中项目的待办
   useEffect(() => {

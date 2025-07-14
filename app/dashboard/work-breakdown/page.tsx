@@ -349,7 +349,6 @@ export default function WorkBreakdownPage() {
   // 添加数据加载状态跟踪和刷新间隔
   const dataLoadedRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
-  const DATA_REFRESH_INTERVAL = 5 * 60 * 1000; // 5分钟刷新间隔
   
   // 添加点击外部关闭导入导出菜单
   useEffect(() => {
@@ -461,28 +460,8 @@ export default function WorkBreakdownPage() {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('工作分解页面恢复可见，检查数据状态');
-          
-          // 检查是否需要重新加载数据
-          const now = Date.now();
-          const timeSinceLastLoad = now - lastLoadTimeRef.current;
-          
-          // 如果超过刷新间隔，重新加载数据
-          if (timeSinceLastLoad > DATA_REFRESH_INTERVAL) {
-            console.log('数据超过刷新间隔，重新加载');
-            // 重置数据加载状态
-            dataLoadedRef.current = false;
-            
-            // 重新加载项目数据
-            fetchProjects();
-            
-            // 如果有选中的项目，重新加载该项目的工作分解数据
-            if (selectedProject?.id) {
-              fetchWorkBreakdownItems(selectedProject.id);
-            }
-          } else {
-            console.log('数据在刷新间隔内，保持现有数据');
-          }
+          console.log('工作分解页面恢复可见，保持现有数据');
+          // 不再自动刷新数据
         }
       };
       
@@ -491,7 +470,7 @@ export default function WorkBreakdownPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [fetchProjects, fetchWorkBreakdownItems, selectedProject]);
+  }, []);
 
   // 初始加载
   useEffect(() => {
