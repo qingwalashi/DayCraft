@@ -317,6 +317,27 @@ export class ExcelConverter {
         return value.replace(/,|，|、/g, '，');
       };
       
+      // 格式化日期字段为ISO格式
+      const formatDate = (dateStr: string): string => {
+        if (!dateStr) return '';
+        
+        try {
+          // 尝试解析日期，支持多种格式
+          const date = new Date(dateStr);
+          
+          // 检查日期是否有效
+          if (isNaN(date.getTime())) {
+            return '';
+          }
+          
+          // 返回ISO格式的日期字符串，带时间部分
+          return date.toISOString();
+        } catch (error) {
+          console.warn(`日期格式转换失败: ${dateStr}`, error);
+          return '';
+        }
+      };
+      
       // 创建工作项
       const workItem: WorkItem = {
         id: `import-excel-${index}`,
@@ -326,10 +347,10 @@ export class ExcelConverter {
         progress_notes: row['工作进展备注'] || '',
         tags: normalizeList(row['工作标签'] || ''),
         members: normalizeList(row['参与人员'] || ''),
-        planned_start_time: row['计划开始时间'] || '',
-        planned_end_time: row['计划结束时间'] || '',
-        actual_start_time: row['实际开始时间'] || '',
-        actual_end_time: row['实际结束时间'] || '',
+        planned_start_time: formatDate(row['计划开始时间'] || ''),
+        planned_end_time: formatDate(row['计划结束时间'] || ''),
+        actual_start_time: formatDate(row['实际开始时间'] || ''),
+        actual_end_time: formatDate(row['实际结束时间'] || ''),
         children: [],
         level,
         position: itemStack[level]?.length || 0,

@@ -97,7 +97,11 @@ export class WorkBreakdownService {
     status: string = '未开始',
     tags: string = '',
     members: string = '',
-    progress_notes: string = ''
+    progress_notes: string = '',
+    planned_start_time: string = '',
+    planned_end_time: string = '',
+    actual_start_time: string = '',
+    actual_end_time: string = ''
   ): Promise<{ id: string }> {
     const { data, error } = await this.supabase
       .from('work_breakdown_items')
@@ -113,6 +117,10 @@ export class WorkBreakdownService {
         tags,
         members,
         progress_notes,
+        planned_start_time: planned_start_time || null,
+        planned_end_time: planned_end_time || null,
+        actual_start_time: actual_start_time || null,
+        actual_end_time: actual_end_time || null,
         user_id: userId
       })
       .select('id')
@@ -266,28 +274,34 @@ export class WorkBreakdownService {
     }
   }
   
-  // 保存导入的工作项到数据库
+  // 保存导入的工作项
   private async saveImportedItems(items: WorkItem[], projectId: string, userId: string, parentId: string | null = null): Promise<void> {
-    // 遍历所有工作项
-    for (const item of items) {
+    // 按顺序保存工作项
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
       // 添加工作项
-      const { id } = await this.addWorkItem(
+      const result = await this.addWorkItem(
         projectId,
         userId,
         item.name,
         item.description,
         parentId,
         item.level,
-        item.position,
+        i,
         item.status || '未开始',
         item.tags || '',
         item.members || '',
-        item.progress_notes || ''
+        item.progress_notes || '',
+        item.planned_start_time || '',
+        item.planned_end_time || '',
+        item.actual_start_time || '',
+        item.actual_end_time || ''
       );
       
-      // 递归处理子项
+      // 递归保存子项
       if (item.children && item.children.length > 0) {
-        await this.saveImportedItems(item.children, projectId, userId, id);
+        await this.saveImportedItems(item.children, projectId, userId, result.id);
       }
     }
   }
