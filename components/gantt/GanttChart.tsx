@@ -298,16 +298,16 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     if (item.status) {
       switch (item.status) {
         case '已完成':
-          return <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">已完成</span>;
+          return <span className="ml-1 px-1.5 py-0.5 bg-green-100 text-green-800 text-xs rounded-full whitespace-nowrap">已完成</span>;
         case '进行中':
-          return <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">进行中</span>;
+          return <span className="ml-1 px-1.5 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full whitespace-nowrap">进行中</span>;
         case '已暂停':
-          return <span className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full">已暂停</span>;
+          return <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full whitespace-nowrap">已暂停</span>;
         default:
-          return <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full">{item.status}</span>;
+          return <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full whitespace-nowrap">{item.status}</span>;
       }
     } else {
-      return <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full">未开始</span>;
+      return <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full whitespace-nowrap">未开始</span>;
     }
   };
 
@@ -397,35 +397,6 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     }
   };
 
-  // 处理鼠标滚轮事件
-  const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    
-    // 按住Ctrl键时缩放
-    if (e.ctrlKey || e.metaKey) {
-      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoomLevel = Math.max(0.5, Math.min(3, zoomLevel + zoomDelta));
-      
-      setZoomLevel(newZoomLevel);
-      setColumnWidth(40 * newZoomLevel);
-      
-      // 根据缩放级别自动切换日期视图模式
-      if (newZoomLevel < 0.7 && dateViewMode !== 'year') {
-        setDateViewMode('year');
-      } else if (newZoomLevel < 1 && newZoomLevel >= 0.7 && dateViewMode !== 'month') {
-        setDateViewMode('month');
-      } else if (newZoomLevel < 1.5 && newZoomLevel >= 1 && dateViewMode !== 'week') {
-        setDateViewMode('week');
-      } else if (newZoomLevel >= 1.5 && dateViewMode !== 'day') {
-        setDateViewMode('day');
-      }
-    }
-    // 水平滚动
-    else if (containerRef.current) {
-      containerRef.current.scrollLeft += e.deltaY;
-    }
-  };
-
   // 切换日期视图模式
   const changeDateViewMode = (mode: DateViewMode) => {
     setDateViewMode(mode);
@@ -453,8 +424,6 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 移除标题部分 */}
-      
       {/* 视图切换标签 */}
       <div className="flex border-b border-gray-200">
         <button
@@ -512,6 +481,17 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 const newZoomLevel = Math.max(0.5, zoomLevel - 0.2);
                 setZoomLevel(newZoomLevel);
                 setColumnWidth(40 * newZoomLevel);
+                
+                // 根据缩放级别自动切换日期视图模式
+                if (newZoomLevel < 0.7 && dateViewMode !== 'year') {
+                  setDateViewMode('year');
+                } else if (newZoomLevel < 1 && newZoomLevel >= 0.7 && dateViewMode !== 'month') {
+                  setDateViewMode('month');
+                } else if (newZoomLevel < 1.5 && newZoomLevel >= 1 && dateViewMode !== 'week') {
+                  setDateViewMode('week');
+                } else if (newZoomLevel >= 1.5 && dateViewMode !== 'day') {
+                  setDateViewMode('day');
+                }
               }}
             >
               <ZoomOut className="h-4 w-4" />
@@ -523,6 +503,17 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 const newZoomLevel = Math.min(3, zoomLevel + 0.2);
                 setZoomLevel(newZoomLevel);
                 setColumnWidth(40 * newZoomLevel);
+                
+                // 根据缩放级别自动切换日期视图模式
+                if (newZoomLevel < 0.7 && dateViewMode !== 'year') {
+                  setDateViewMode('year');
+                } else if (newZoomLevel < 1 && newZoomLevel >= 0.7 && dateViewMode !== 'month') {
+                  setDateViewMode('month');
+                } else if (newZoomLevel < 1.5 && newZoomLevel >= 1 && dateViewMode !== 'week') {
+                  setDateViewMode('week');
+                } else if (newZoomLevel >= 1.5 && dateViewMode !== 'day') {
+                  setDateViewMode('day');
+                }
               }}
             >
               <ZoomIn className="h-4 w-4" />
@@ -531,21 +522,20 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         </div>
       </div>
       
-      {/* 使用单一滚动容器包裹整个内容区域 */}
-      <div 
-        className="flex-1 overflow-y-auto" 
-        onWheel={handleWheel}
-      >
-        <div className="flex">
-          {/* 左侧任务列表 - 固定宽度，不滚动 */}
-          <div className="w-64 flex-shrink-0 border-r border-gray-200 sticky left-0 z-20 bg-white">
-            {/* 工作项标题行 */}
-            <div className="sticky top-0 z-30 bg-gray-100 border-b border-gray-200 flex items-center" style={{ height: '64px' }}>
-              <div className="p-3 font-medium text-sm text-gray-600">
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-hidden">
+        <div className="flex h-full">
+          {/* 左侧固定区域 */}
+          <div className="w-64 flex-shrink-0 flex flex-col border-r border-gray-200">
+            {/* 左侧工作项表头 */}
+            <div className="bg-gray-100 border-b border-gray-200">
+              <div className="p-3 font-medium text-sm text-gray-600 flex items-center" style={{ height: '64px' }}>
                 工作项
               </div>
             </div>
-            <div>
+            
+            {/* 左侧工作项列表 */}
+            <div className="flex-1 overflow-y-auto bg-white">
               {visibleItems.map((item) => (
                 <div 
                   key={item.id} 
@@ -567,8 +557,8 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                         <ChevronRight className="h-4 w-4 text-gray-500" />
                     )}
                   </div>
-                  <div className="flex flex-1 items-center overflow-hidden">
-                    <span className="text-sm truncate">{item.name}</span>
+                  <div className="flex flex-1 items-center overflow-hidden pr-2">
+                    <span className="text-sm truncate mr-1">{item.name}</span>
                     {getStatusBadge(item)}
                   </div>
                 </div>
@@ -576,11 +566,11 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             </div>
           </div>
           
-          {/* 右侧甘特图 - 允许水平滚动 */}
+          {/* 右侧甘特图区域 - 整体水平滚动 */}
           <div className="flex-1 overflow-x-auto" ref={containerRef}>
-            <div className="relative">
-              {/* 时间刻度 */}
-              <div className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200" style={{ height: '64px' }}>
+            <div>
+              {/* 右侧时间表头 - 固定在顶部 */}
+              <div className="sticky top-0 z-30 bg-gray-100 border-b border-gray-200" style={{ height: '64px' }}>
                 <div className="flex h-full">
                   {timeScale.map((date, index) => (
                     <div 
@@ -595,90 +585,89 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 </div>
               </div>
               
-              {/* 甘特图内容 */}
-              <div className="relative">
-                {/* 今天的垂直线 */}
-                {timeScale.findIndex(date => {
-                  switch (dateViewMode) {
-                    case 'day': return isToday(date);
-                    case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                    case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                    case 'year': return getYear(new Date()) === getYear(date);
-                  }
-                }) >= 0 && (
-                  <div 
-                    className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
-                    style={{ 
-                      left: `${timeScale.findIndex(date => {
-                        switch (dateViewMode) {
-                          case 'day': return isToday(date);
-                          case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                          case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                          case 'year': return getYear(new Date()) === getYear(date);
-                        }
-                      }) * columnWidth + columnWidth / 2}px`,
-                      height: `${visibleItems.length * 40}px`
-                    }}
-                  ></div>
-                )}
-                
-                {/* 行和任务条 - 确保每行高度固定为40px */}
-                {visibleItems.map((item, index) => (
-                  <div 
-                    key={item.id} 
-                    className="flex border-b border-gray-100 relative"
-                    style={{ height: '40px' }}
-                    onClick={() => handleItemClick(item)}
-                  >
-                    {/* 背景网格 */}
-                    {timeScale.map((date, dateIndex) => (
-                      <div 
-                        key={dateIndex}
-                        className={`flex-shrink-0 h-full border-r border-gray-100
-                          ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
-                        style={{ width: `${columnWidth}px` }}
-                      ></div>
-                    ))}
-                    
-                    {/* 计划任务条 - 仅在计划视图或两者都显示时显示 */}
-                    {viewMode === 'planned' && getBarPosition(item) && (
-                      <div 
-                        className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
-                        style={{
-                          ...getBarPosition(item),
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleItemClick(item);
-                        }}
-                      >
-                        <span className="text-xs font-medium text-blue-800 truncate">
-                          计划
-                        </span>
-                      </div>
-                    )}
-                    
-                    {/* 实际任务条 - 仅在实际视图时显示，只依赖于实际起止时间 */}
-                    {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
-                      <div 
-                        className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
-                          ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
-                        style={{
-                          ...getActualBarPosition(item),
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleItemClick(item);
-                        }}
-                      >
-                        <span className={`text-xs font-medium truncate
-                          ${item.actualEndDate ? 'text-green-800' : 'text-yellow-800'}`}>
-                          {item.actualEndDate ? '实际完成' : '实际进行中'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
+              {/* 右侧甘特图内容 - 可垂直滚动 */}
+              <div className="overflow-y-auto" style={{ height: 'calc(100% - 64px)' }}>
+                <div className="relative">
+                  {/* 今天的垂直线 */}
+                  {timeScale.findIndex(date => {
+                    switch (dateViewMode) {
+                      case 'day': return isToday(date);
+                      case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                      case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                      case 'year': return getYear(new Date()) === getYear(date);
+                      default: return false;
+                    }
+                  }) >= 0 && (
+                    <div 
+                      className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
+                      style={{ 
+                        left: `${timeScale.findIndex(date => {
+                          switch (dateViewMode) {
+                            case 'day': return isToday(date);
+                            case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                            case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                            case 'year': return getYear(new Date()) === getYear(date);
+                            default: return false;
+                          }
+                        }) * columnWidth + columnWidth / 2}px`,
+                        height: `${visibleItems.length * 40}px`
+                      }}
+                    ></div>
+                  )}
+                  
+                  {/* 行和任务条 */}
+                  {visibleItems.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className="flex border-b border-gray-100 relative"
+                      style={{ height: '40px' }}
+                      onClick={() => handleItemClick(item)}
+                    >
+                      {/* 背景网格 */}
+                      {timeScale.map((date, dateIndex) => (
+                        <div 
+                          key={dateIndex}
+                          className={`flex-shrink-0 h-full border-r border-gray-100
+                            ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
+                          style={{ width: `${columnWidth}px` }}
+                        ></div>
+                      ))}
+                      
+                      {/* 计划任务条 */}
+                      {viewMode === 'planned' && getBarPosition(item) && (
+                        <div 
+                          className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
+                          style={{
+                            ...getBarPosition(item),
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleItemClick(item);
+                          }}
+                        >
+                          {/* 移除计划文字 */}
+                        </div>
+                      )}
+                      
+                      {/* 实际任务条 */}
+                      {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
+                        <div 
+                          className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
+                            ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
+                          style={{
+                            ...getActualBarPosition(item),
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleItemClick(item);
+                          }}
+                        >
+                          {/* 移除实际完成/实际进行中文字 */}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
