@@ -436,7 +436,17 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     if (containerRef.current) {
       containerRef.current.scrollLeft = scrollLeft;
     }
+    
+    // 同步其他甘特图内容区域的滚动位置
+    const contentElements = document.querySelectorAll('.gantt-content-scroll');
+    contentElements.forEach(el => {
+      if (el instanceof HTMLElement && el !== e.currentTarget) {
+        el.scrollLeft = scrollLeft;
+      }
+    });
   };
+
+  // 移除底部滚动条处理函数，因为已经不需要了
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -610,7 +620,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             </div>
             
             {/* 右侧甘特图内容 - 可水平滚动 */}
-            <div className="flex-1 overflow-x-auto" onScroll={handleHorizontalScroll}>
+            <div className="flex-1 overflow-x-auto gantt-content-scroll" onScroll={handleHorizontalScroll}>
               <div style={{ width: `${timeScale.length * columnWidth}px` }}>
                 <div className="relative">
                   {/* 今天的垂直线 */}
@@ -698,7 +708,13 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
           </div>
         </div>
         
-        {/* 底部水平滚动条 - 移除，使用甘特图内容的水平滚动条 */}
+        {/* 底部水平滚动条 - 固定显示 */}
+        <div className="h-6 flex border-t border-gray-200">
+          <div className="w-64 flex-shrink-0"></div>
+          <div className="flex-1 overflow-x-auto" onScroll={handleHorizontalScroll}>
+            <div style={{ width: `${timeScale.length * columnWidth}px`, height: '1px' }}></div>
+          </div>
+        </div>
       </div>
 
       {/* 编辑对话框 */}
