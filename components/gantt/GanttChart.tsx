@@ -69,6 +69,42 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [startX, setStartX] = useState<number>(0);
   const [startWidth, setStartWidth] = useState<number>(0);
   
+  // 从localStorage读取视图模式
+  useEffect(() => {
+    // 读取视图模式（计划/实际）
+    const savedViewMode = localStorage.getItem('gantt_view_mode');
+    if (savedViewMode === 'actual' || savedViewMode === 'planned') {
+      setViewMode(savedViewMode);
+    }
+    
+    // 读取日期视图模式
+    const savedDateViewMode = localStorage.getItem('gantt_date_view_mode');
+    if (savedDateViewMode === 'day' || savedDateViewMode === 'week' || 
+        savedDateViewMode === 'month' || savedDateViewMode === 'year') {
+      setDateViewMode(savedDateViewMode as DateViewMode);
+      
+      // 设置相应的缩放级别
+      switch (savedDateViewMode) {
+        case 'day':
+          setZoomLevel(1.5);
+          setColumnWidth(60);
+          break;
+        case 'week':
+          setZoomLevel(1);
+          setColumnWidth(40);
+          break;
+        case 'month':
+          setZoomLevel(0.8);
+          setColumnWidth(32);
+          break;
+        case 'year':
+          setZoomLevel(0.6);
+          setColumnWidth(24);
+          break;
+      }
+    }
+  }, []);
+  
   // 处理数据，构建树形结构
   useEffect(() => {
     if (!data || data.length === 0) return;
@@ -415,10 +451,19 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       const success = await onUpdateItem(updatedItem);
       
       if (success) {
-        // 关闭对话框并保持当前视图模式
+        // 关闭对话框
         setIsDialogOpen(false);
-        // 保持在当前标签页
-        setViewMode(currentEditingViewMode);
+        
+        // 根据当前编辑视图设置视图模式，确保在刷新后保留在同一个标签
+        if (currentEditingViewMode === 'actual') {
+          // 如果是在"实际情况"标签编辑，则保持在此标签
+          localStorage.setItem('gantt_view_mode', 'actual');
+          setViewMode('actual');
+        } else {
+          // 如果是在"计划"标签编辑，则保持在此标签
+          localStorage.setItem('gantt_view_mode', 'planned');
+          setViewMode('planned');
+        }
       }
     } catch (error) {
       console.error('更新工作项失败:', error);
@@ -454,6 +499,9 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   // 切换日期视图模式
   const changeDateViewMode = (mode: DateViewMode) => {
     setDateViewMode(mode);
+    
+    // 保存视图模式到localStorage
+    localStorage.setItem('gantt_date_view_mode', mode);
     
     // 根据视图模式调整缩放级别
     switch (mode) {
@@ -589,7 +637,10 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
-          onClick={() => setViewMode('planned')}
+          onClick={() => {
+            setViewMode('planned');
+            localStorage.setItem('gantt_view_mode', 'planned');
+          }}
         >
           进度计划
         </button>
@@ -599,7 +650,10 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
-          onClick={() => setViewMode('actual')}
+          onClick={() => {
+            setViewMode('actual');
+            localStorage.setItem('gantt_view_mode', 'actual');
+          }}
         >
           实际进度
         </button>
@@ -851,7 +905,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                     <div 
                       key={`day-${index}`} 
                       className={`${isToday(date) ? 'bg-blue-100 text-blue-600' : index % 2 === 0 ? 'bg-gray-50/30' : ''} flex-shrink-0 border-r border-gray-200 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden`}
-                      style={{ width: `${columnWidth}px`, height: '24px' }}
+                      style={{ width: `${Math.max(50, columnWidth)}px`, height: '24px' }}
                     >
                       {format(date, 'd日', { locale: zhCN })}{isToday(date) ? ' (今)' : ''}
                     </div>
