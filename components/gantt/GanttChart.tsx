@@ -325,9 +325,25 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     };
   };
 
-  // 判断是否为今天
+  // 判断日期是否为今天
   const isToday = (date: Date) => {
     return isSameDay(date, new Date());
+  };
+
+  // 获取日期单元格的样式类
+  const getDateCellClass = (date: Date, index: number) => {
+    const classes = ['flex-shrink-0', 'border-r', 'border-gray-200'];
+    
+    // 添加今天的高亮样式
+    if (isToday(date)) {
+      classes.push('bg-blue-50', 'text-blue-600');
+    } 
+    // 添加交替背景色
+    else if (index % 2 === 0) {
+      classes.push('bg-gray-50/30');
+    }
+    
+    return classes.join(' ');
   };
 
   // 获取工作项状态标签
@@ -483,7 +499,21 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     });
   };
 
-  // 移除底部滚动条处理函数，因为已经不需要了
+  // 获取时间表头高度
+  const getTimeHeaderHeight = () => {
+    switch (dateViewMode) {
+      case 'day':
+        return 96; // 4层: 年月周日 (24px * 4)
+      case 'week':
+        return 72; // 3层: 年月周 (24px * 3)
+      case 'month':
+        return 48; // 2层: 年月 (24px * 2)
+      case 'year':
+        return 24; // 1层: 年 (24px * 1)
+      default:
+        return 96;
+    }
+  };
 
   // 处理展开层级变化
   const handleExpandLevelChange = (level: number) => {
@@ -671,7 +701,8 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             className="flex-shrink-0 bg-gray-100 border-b border-r border-gray-200 relative"
             style={{ width: `${itemColumnWidth}px` }}
           >
-            <div className="p-3 font-medium text-sm text-gray-600 flex items-center" style={{ height: '64px' }}>
+            <div className="font-medium text-sm text-gray-600 flex items-center justify-center" 
+                style={{ height: `${getTimeHeaderHeight()}px` }}>
               工作项
             </div>
             
@@ -689,17 +720,144 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
               ref={containerRef}
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              <div className="flex" style={{ width: `${timeScale.length * columnWidth}px` }}>
-                {timeScale.map((date, index) => (
-                  <div 
-                    key={index} 
-                    className={`flex-shrink-0 p-2 text-xs font-medium text-center border-r border-gray-200 flex flex-col justify-center
-                      ${isToday(date) ? 'bg-blue-50 text-blue-600' : ''}`}
-                    style={{ width: `${columnWidth}px`, height: '64px' }}
-                  >
-                    {formatDateHeader(date)}
-                  </div>
-                ))}
+              <div style={{ width: `${timeScale.length * columnWidth}px` }}>
+                {/* 年份行 - 所有视图模式下都显示 */}
+                <div className="flex border-b border-gray-200 bg-blue-50/30">
+                  {timeScale.map((date, index) => {
+                    const prevDate = index > 0 ? timeScale[index - 1] : null;
+                    const isSameYear = prevDate && getYear(date) === getYear(prevDate);
+                    
+                    // 只在年份变化或第一个项目时显示年份
+                    if (!isSameYear) {
+                      // 计算同年的单元格数量
+                      let sameYearCount = 1;
+                      for (let i = index + 1; i < timeScale.length; i++) {
+                        if (getYear(timeScale[i]) === getYear(date)) {
+                          sameYearCount++;
+                        } else {
+                          break;
+                        }
+                      }
+                      
+                      // 确保年份有足够宽度显示完整文字
+                      const minYearWidth = dateViewMode === 'year' ? 80 : 60;
+                      const yearWidth = Math.max(minYearWidth, columnWidth * sameYearCount);
+                      
+                      return (
+                        <div
+                          key={`year-${index}`}
+                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
+                          style={{ 
+                            width: `${yearWidth}px`,
+                            height: '24px'
+                          }}
+                        >
+                          {format(date, 'yyyy年', { locale: zhCN })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+                
+                {/* 月份行 - 天/周/月视图模式下显示 */}
+                {dateViewMode !== 'year' && (
+                <div className="flex border-b border-gray-200 bg-green-50/30">
+                  {timeScale.map((date, index) => {
+                    const prevDate = index > 0 ? timeScale[index - 1] : null;
+                    const isSameMonth = prevDate && 
+                                       getYear(date) === getYear(prevDate) && 
+                                       getMonth(date) === getMonth(prevDate);
+                    
+                    // 只在月份变化或第一个项目时显示月份
+                    if (!isSameMonth) {
+                      // 计算同月的单元格数量
+                      let sameMonthCount = 1;
+                      for (let i = index + 1; i < timeScale.length; i++) {
+                        if (getYear(timeScale[i]) === getYear(date) && 
+                            getMonth(timeScale[i]) === getMonth(date)) {
+                          sameMonthCount++;
+                        } else {
+                          break;
+                        }
+                      }
+                      
+                      // 确保月份有足够宽度显示完整文字
+                      const minMonthWidth = 60;
+                      const monthWidth = Math.max(minMonthWidth, columnWidth * sameMonthCount);
+                      
+                      return (
+                        <div
+                          key={`month-${index}`}
+                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
+                          style={{ 
+                            width: `${monthWidth}px`,
+                            height: '24px'
+                          }}
+                        >
+                          {format(date, 'MM月', { locale: zhCN })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+                )}
+                
+                {/* 周行 - 天/周视图模式下显示 */}
+                {(dateViewMode === 'day' || dateViewMode === 'week') && (
+                <div className="flex border-b border-gray-200 bg-yellow-50/30">
+                  {timeScale.map((date, index) => {
+                    const prevDate = index > 0 ? timeScale[index - 1] : null;
+                    const isSameWeek = prevDate && 
+                                      getWeek(date, { weekStartsOn: 1 }) === getWeek(prevDate, { weekStartsOn: 1 }) &&
+                                      getYear(date) === getYear(prevDate);
+                    
+                    // 只在周变化或第一个项目时显示周
+                    if (!isSameWeek) {
+                      // 计算同周的单元格数量
+                      let sameWeekCount = 1;
+                      for (let i = index + 1; i < timeScale.length; i++) {
+                        if (getWeek(timeScale[i], { weekStartsOn: 1 }) === getWeek(date, { weekStartsOn: 1 }) &&
+                            getYear(timeScale[i]) === getYear(date)) {
+                          sameWeekCount++;
+                        } else {
+                          break;
+                        }
+                      }
+                      
+                      return (
+                        <div
+                          key={`week-${index}`}
+                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
+                          style={{ 
+                            width: `${columnWidth * sameWeekCount}px`,
+                            height: '24px'
+                          }}
+                        >
+                          {`第${getWeek(date, { weekStartsOn: 1 })}周`}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+                )}
+                
+                {/* 日期行 - 仅在天视图模式下显示 */}
+                {dateViewMode === 'day' && (
+                <div className="flex bg-orange-50/30">
+                  {timeScale.map((date, index) => (
+                    <div 
+                      key={`day-${index}`} 
+                      className={`${isToday(date) ? 'bg-blue-100 text-blue-600' : index % 2 === 0 ? 'bg-gray-50/30' : ''} flex-shrink-0 border-r border-gray-200 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden`}
+                      style={{ width: `${columnWidth}px`, height: '24px' }}
+                    >
+                      {format(date, 'd日', { locale: zhCN })}{isToday(date) ? ' (今)' : ''}
+                    </div>
+                  ))}
+                </div>
+                )}
               </div>
             </div>
           </div>
@@ -796,7 +954,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                     <div 
                       key={dateIndex}
                       className={`flex-shrink-0 h-full border-r border-gray-100
-                        ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
+                        ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/30' : ''}`}
                       style={{ width: `${columnWidth}px` }}
                     ></div>
                   ))}
