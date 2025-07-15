@@ -13,13 +13,14 @@ import {
   DialogDescription
 } from "@/components/ui/dialog";
 
+// 修复GanttItem接口定义
 interface GanttItem {
   id: string;
   name: string;
   level: number;
   parentId: string | null;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
   actualStartDate?: string | null;
   actualEndDate?: string | null;
   progress: number;
@@ -60,59 +61,91 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [dateViewMode, setDateViewMode] = useState<DateViewMode>('day');
   const [columnWidth, setColumnWidth] = useState<number>(40);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开所有层级
+  
+  // 添加工作项列宽度状态
+  const [itemColumnWidth, setItemColumnWidth] = useState<number>(256); // 默认宽度16rem = 256px
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const [startX, setStartX] = useState<number>(0);
+  const [startWidth, setStartWidth] = useState<number>(0);
   
   // 处理数据，构建树形结构
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    // 初始化所有项为展开状态
+    // 初始化所有项为展开状态，根据当前展开级别设置
     const initialExpandedState: Record<string, boolean> = {};
+    
+    // 创建ID到项目的映射
+    const itemMap: Record<string, GanttItem & { children: string[] }> = {};
     data.forEach(item => {
-      initialExpandedState[item.id] = true;
+      itemMap[item.id] = { ...item, children: [] };
     });
+
+    // 构建父子关系
+    data.forEach(item => {
+      if (item.parentId && itemMap[item.parentId]) {
+        itemMap[item.parentId].children.push(item.id);
+      }
+    });
+
+    // 根据层级设置展开状态
+    const setExpandStateByLevel = (items: GanttItem[], currentLevel: number = 0) => {
+      items.forEach(item => {
+        // 如果当前层级小于展开级别，则展开
+        initialExpandedState[item.id] = currentLevel < expandLevel;
+        
+        // 处理子项
+        if (itemMap[item.id]?.children.length > 0) {
+          const children = itemMap[item.id].children.map(childId => itemMap[childId]);
+          setExpandStateByLevel(children, currentLevel + 1);
+        }
+      });
+    };
+
+    // 获取顶级项目
+    const rootItems = data.filter(item => !item.parentId);
+    setExpandStateByLevel(rootItems);
+    
     setExpandedItems(initialExpandedState);
 
     // 找出所有日期范围
-    let minDate = new Date();
-    let maxDate = new Date();
-    
-    // 记录是否有任何有效日期
-    let hasValidDates = false;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
     
     data.forEach(item => {
       if (item.startDate) {
         const start = parseISO(item.startDate);
-        if (!hasValidDates || start < minDate) minDate = start;
-        hasValidDates = true;
+        if (!minDate || start < minDate) minDate = start;
       }
       
       if (item.endDate) {
         const end = parseISO(item.endDate);
-        if (!hasValidDates || end > maxDate) maxDate = end;
-        hasValidDates = true;
+        if (!maxDate || end > maxDate) maxDate = end;
       }
       
       // 考虑实际日期
       if (item.actualStartDate) {
         const actualStart = parseISO(item.actualStartDate);
-        if (!hasValidDates || actualStart < minDate) minDate = actualStart;
-        hasValidDates = true;
+        if (!minDate || actualStart < minDate) minDate = actualStart;
       }
       
       if (item.actualEndDate) {
         const actualEnd = parseISO(item.actualEndDate);
-        if (!hasValidDates || actualEnd > maxDate) maxDate = actualEnd;
-        hasValidDates = true;
+        if (!maxDate || actualEnd > maxDate) maxDate = actualEnd;
       }
     });
     
-    // 如果没有有效日期，使用当前日期作为默认范围
-    if (!hasValidDates) {
-      minDate = new Date();
-      maxDate = addDays(new Date(), 30);
+    // 如果没有任何有效日期，设置一个默认的日期范围用于显示空的甘特图
+    if (!minDate || !maxDate) {
+      const today = new Date();
+      setStartDate(startOfDay(today));
+      setEndDate(startOfDay(addDays(today, 30)));
+      return;
     }
+    
     // 确保至少有30天的范围
-    else if (differenceInDays(maxDate, minDate) < 30) {
+    if (differenceInDays(maxDate, minDate) < 30) {
       maxDate = addDays(minDate, 30);
     }
     
@@ -120,7 +153,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     setStartDate(startOfDay(minDate));
     setEndDate(startOfDay(addDays(maxDate, 1)));
     
-  }, [data]);
+  }, [data, expandLevel]);
 
   // 生成时间刻度 - 修改为支持不同视图模式
   useEffect(() => {
@@ -255,7 +288,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     if (!item.actualStartDate) return null;
     
     const start = parseISO(item.actualStartDate);
-    const end = item.actualEndDate ? parseISO(item.actualEndDate) : new Date();
+    const end = item.actualEndDate ? parseISO(item.actualEndDate) : start;
     
     let startPos = 0;
     let duration = 0;
@@ -263,22 +296,26 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     switch (dateViewMode) {
       case 'day':
         startPos = differenceInDays(start, startDate);
-        duration = differenceInDays(end, start) + 1; // 包含开始和结束日
+        duration = item.actualEndDate ? differenceInDays(end, start) + 1 : 1; // 如果没有结束日期，显示1天宽度
         break;
       case 'week':
         const startWeekStart = startOfWeek(startDate, { weekStartsOn: 1 });
         const itemWeekStart = startOfWeek(start, { weekStartsOn: 1 });
         startPos = Math.floor(differenceInDays(itemWeekStart, startWeekStart) / 7);
-        duration = Math.ceil((differenceInDays(end, start) + 1) / 7);
+        duration = item.actualEndDate ? Math.ceil((differenceInDays(end, start) + 1) / 7) : 1; // 如果没有结束日期，显示1周宽度
         break;
       case 'month':
         startPos = (getYear(start) - getYear(startDate)) * 12 + getMonth(start) - getMonth(startDate);
+        if (item.actualEndDate) {
         const endMonth = (getYear(end) - getYear(startDate)) * 12 + getMonth(end) - getMonth(startDate);
         duration = endMonth - startPos + 1;
+        } else {
+          duration = 1; // 如果没有结束日期，显示1个月宽度
+        }
         break;
       case 'year':
         startPos = getYear(start) - getYear(startDate);
-        duration = getYear(end) - getYear(start) + 1;
+        duration = item.actualEndDate ? getYear(end) - getYear(start) + 1 : 1; // 如果没有结束日期，显示1年宽度
         break;
     }
     
@@ -348,9 +385,9 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       const updatedItem: GanttItem = {
         ...selectedItem,
         startDate: editForm.plannedStartDate ? 
-          `${editForm.plannedStartDate}T00:00:00` : selectedItem.startDate,
+          `${editForm.plannedStartDate}T00:00:00` : null,
         endDate: editForm.plannedEndDate ? 
-          `${editForm.plannedEndDate}T23:59:59` : selectedItem.endDate,
+          `${editForm.plannedEndDate}T23:59:59` : null,
         actualStartDate: editForm.actualStartDate ? 
           `${editForm.actualStartDate}T00:00:00` : null,
         actualEndDate: editForm.actualEndDate ? 
@@ -448,6 +485,70 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
 
   // 移除底部滚动条处理函数，因为已经不需要了
 
+  // 处理展开层级变化
+  const handleExpandLevelChange = (level: number) => {
+    setExpandLevel(level);
+    
+    // 更新所有工作项的展开状态
+    const updateExpandState = (items: GanttItem[], currentLevel: number = 0): void => {
+      items.forEach(item => {
+        // 如果当前层级小于展开级别，则展开
+        setExpandedItems(prev => ({
+          ...prev,
+          [item.id]: currentLevel < level
+        }));
+        
+        // 处理子项
+        const children = data.filter(child => child.parentId === item.id);
+        if (children.length > 0) {
+          updateExpandState(children, currentLevel + 1);
+        }
+      });
+    };
+    
+    // 获取顶级项目
+    const rootItems = data.filter(item => !item.parentId);
+    updateExpandState(rootItems);
+  };
+
+  // 处理拖动开始事件
+  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setStartX(e.clientX);
+    setStartWidth(itemColumnWidth);
+    document.body.classList.add('resizing');
+  };
+  
+  // 处理拖动移动事件
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!isResizing) return;
+    const newWidth = Math.max(160, Math.min(500, startWidth + (e.clientX - startX)));
+    setItemColumnWidth(newWidth);
+  };
+  
+  // 处理拖动结束事件
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+    document.body.classList.remove('resizing');
+  };
+  
+  // 使用useEffect处理拖动事件
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+      document.body.classList.remove('resizing');
+    };
+  }, [isResizing, startX, startWidth]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* 视图切换标签 */}
@@ -475,6 +576,19 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         
         {/* 日期视图模式切换 */}
         <div className="ml-auto flex items-center mr-4 space-x-2">
+          {/* 展开层级控制 */}
+          <select
+            value={expandLevel}
+            onChange={(e) => handleExpandLevelChange(parseInt(e.target.value))}
+            className="mr-4 px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700"
+          >
+            <option value="0">仅展开1级</option>
+            <option value="1">展开到2级</option>
+            <option value="2">展开到3级</option>
+            <option value="3">展开到4级</option>
+            <option value="4">展开全部</option>
+          </select>
+
           <button
             className={`px-2 py-1 text-xs rounded ${dateViewMode === 'day' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
             onClick={() => changeDateViewMode('day')}
@@ -549,14 +663,23 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       </div>
       
       {/* 内容区域 */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden flex flex-col relative">
         {/* 表头区域 */}
         <div className="flex">
           {/* 左侧工作项表头 */}
-          <div className="w-64 flex-shrink-0 bg-gray-100 border-b border-r border-gray-200">
+          <div 
+            className="flex-shrink-0 bg-gray-100 border-b border-r border-gray-200 relative"
+            style={{ width: `${itemColumnWidth}px` }}
+          >
             <div className="p-3 font-medium text-sm text-gray-600 flex items-center" style={{ height: '64px' }}>
               工作项
             </div>
+            
+            {/* 添加拖动调整宽度的分隔线 */}
+            <div 
+              className="absolute top-0 right-0 w-1 h-full bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
+              onMouseDown={handleResizeStart}
+            ></div>
           </div>
           
           {/* 右侧时间表头 - 固定在顶部，与甘特图内容同步水平滚动 */}
@@ -564,6 +687,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             <div 
               className="bg-gray-100 border-b border-gray-200 overflow-hidden"
               ref={containerRef}
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               <div className="flex" style={{ width: `${timeScale.length * columnWidth}px` }}>
                 {timeScale.map((date, index) => (
@@ -589,7 +713,10 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         >
           <div className="flex">
             {/* 左侧工作项列表 - 固定不动 */}
-            <div className="w-64 flex-shrink-0 bg-white sticky left-0">
+            <div 
+              className="flex-shrink-0 bg-white sticky left-0 relative"
+              style={{ width: `${itemColumnWidth}px` }}
+            >
               {visibleItems.map((item) => (
                 <div 
                   key={item.id} 
@@ -617,105 +744,145 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                   </div>
                 </div>
               ))}
+              
+              {/* 添加内容区域的分隔线 */}
+              <div 
+                className="absolute top-0 right-0 w-1 h-full bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
+                onMouseDown={handleResizeStart}
+              ></div>
             </div>
             
             {/* 右侧甘特图内容 - 可水平滚动 */}
-            <div className="flex-1 overflow-x-auto gantt-content-scroll" onScroll={handleHorizontalScroll}>
+            <div className="flex-1 overflow-x-auto gantt-content-scroll" onScroll={handleHorizontalScroll} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <div style={{ width: `${timeScale.length * columnWidth}px` }}>
-                <div className="relative">
-                  {/* 今天的垂直线 */}
-                  {timeScale.findIndex(date => {
-                    switch (dateViewMode) {
-                      case 'day': return isToday(date);
-                      case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                      case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                      case 'year': return getYear(new Date()) === getYear(date);
+            <div className="relative">
+              {/* 今天的垂直线 */}
+              {timeScale.findIndex(date => {
+                switch (dateViewMode) {
+                  case 'day': return isToday(date);
+                  case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                  case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                  case 'year': return getYear(new Date()) === getYear(date);
                       default: return false;
-                    }
-                  }) >= 0 && (
-                    <div 
-                      className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
-                      style={{ 
-                        left: `${timeScale.findIndex(date => {
-                          switch (dateViewMode) {
-                            case 'day': return isToday(date);
-                            case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                            case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                            case 'year': return getYear(new Date()) === getYear(date);
+                }
+              }) >= 0 && (
+                <div 
+                  className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
+                  style={{ 
+                    left: `${timeScale.findIndex(date => {
+                      switch (dateViewMode) {
+                        case 'day': return isToday(date);
+                        case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
+                        case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
+                        case 'year': return getYear(new Date()) === getYear(date);
                             default: return false;
-                          }
-                        }) * columnWidth + columnWidth / 2}px`,
-                        height: `${visibleItems.length * 40}px`
-                      }}
-                    ></div>
-                  )}
-                  
+                      }
+                    }) * columnWidth + columnWidth / 2}px`,
+                    height: `${visibleItems.length * 40}px`
+                  }}
+                ></div>
+              )}
+              
                   {/* 行和任务条 */}
                   {visibleItems.map((item) => (
+                <div 
+                  key={item.id} 
+                  className="flex border-b border-gray-100 relative"
+                  style={{ height: '40px' }}
+                  onClick={() => handleItemClick(item)}
+                >
+                  {/* 背景网格 */}
+                  {timeScale.map((date, dateIndex) => (
                     <div 
-                      key={item.id} 
-                      className="flex border-b border-gray-100 relative"
-                      style={{ height: '40px' }}
-                      onClick={() => handleItemClick(item)}
-                    >
-                      {/* 背景网格 */}
-                      {timeScale.map((date, dateIndex) => (
-                        <div 
-                          key={dateIndex}
-                          className={`flex-shrink-0 h-full border-r border-gray-100
-                            ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
-                          style={{ width: `${columnWidth}px` }}
-                        ></div>
-                      ))}
-                      
+                      key={dateIndex}
+                      className={`flex-shrink-0 h-full border-r border-gray-100
+                        ${isToday(date) && dateViewMode === 'day' ? 'bg-blue-50/20' : dateIndex % 2 === 0 ? 'bg-gray-50/50' : ''}`}
+                      style={{ width: `${columnWidth}px` }}
+                    ></div>
+                  ))}
+                  
                       {/* 计划任务条 */}
                       {viewMode === 'planned' && getBarPosition(item) && (
-                        <div 
-                          className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
-                          style={{
-                            ...getBarPosition(item),
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(item);
-                          }}
-                        >
+                    <div 
+                      className="absolute top-2 h-6 rounded-sm bg-blue-100 border border-blue-300 z-20 flex items-center px-2 cursor-pointer hover:bg-blue-200"
+                      style={{
+                        ...getBarPosition(item),
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleItemClick(item);
+                      }}
+                    >
                           {/* 移除计划文字 */}
-                        </div>
-                      )}
-                      
-                      {/* 实际任务条 */}
-                      {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
-                        <div 
-                          className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
-                            ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
-                          style={{
-                            ...getActualBarPosition(item),
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(item);
-                          }}
-                        >
-                          {/* 移除实际完成/实际进行中文字 */}
-                        </div>
-                      )}
                     </div>
-                  ))}
+                  )}
+                  
+                      {/* 实际任务条 */}
+                  {viewMode === 'actual' && item.actualStartDate && getActualBarPosition(item) && (
+                    <div 
+                      className={`absolute top-2 h-6 rounded-sm z-30 flex items-center px-2 cursor-pointer
+                        ${item.actualEndDate ? 'bg-green-100 border border-green-300 hover:bg-green-200' : 'bg-yellow-100 border border-yellow-300 hover:bg-yellow-200'}`}
+                      style={{
+                        ...getActualBarPosition(item),
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleItemClick(item);
+                      }}
+                    >
+                          {/* 移除实际完成/实际进行中文字 */}
+                    </div>
+                  )}
                 </div>
-              </div>
+              ))}
             </div>
           </div>
+        </div>
+      </div>
         </div>
         
         {/* 底部水平滚动条 - 固定显示 */}
         <div className="h-6 flex border-t border-gray-200">
-          <div className="w-64 flex-shrink-0"></div>
-          <div className="flex-1 overflow-x-auto" onScroll={handleHorizontalScroll}>
+          <div 
+            className="flex-shrink-0" 
+            style={{ width: `${itemColumnWidth}px` }}
+          ></div>
+          <div className="flex-1 overflow-x-auto gantt-content-scroll gantt-bottom-scroll" onScroll={handleHorizontalScroll}>
             <div style={{ width: `${timeScale.length * columnWidth}px`, height: '1px' }}></div>
           </div>
         </div>
       </div>
+
+      {/* 添加全局样式 */}
+      <style jsx global>{`
+        .gantt-content-scroll:not(.gantt-bottom-scroll)::-webkit-scrollbar {
+          display: none;
+        }
+        
+        .gantt-bottom-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+        
+        .gantt-bottom-scroll::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 3px;
+        }
+        
+        .gantt-bottom-scroll::-webkit-scrollbar-thumb {
+          background: #888;
+          border-radius: 3px;
+        }
+        
+        .gantt-bottom-scroll::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+        
+        /* 添加拖动相关样式 */
+        body.resizing {
+          cursor: col-resize;
+          user-select: none;
+        }
+      `}</style>
 
       {/* 编辑对话框 */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -742,7 +909,6 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     value={editForm.plannedStartDate}
                     onChange={(e) => setEditForm({...editForm, plannedStartDate: e.target.value})}
-                    required
                   />
                 </div>
                 <div>
@@ -752,7 +918,6 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     value={editForm.plannedEndDate}
                     onChange={(e) => setEditForm({...editForm, plannedEndDate: e.target.value})}
-                    required
                   />
                 </div>
               </div>
