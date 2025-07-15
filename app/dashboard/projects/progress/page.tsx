@@ -222,11 +222,11 @@ export default function ProjectProgressPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-200px)]">
           {selectedProject ? (
             workItems.length > 0 ? (
-              <GanttChart 
-                data={ganttData}
-                projectName={selectedProject.name}
-                onUpdateItem={handleUpdateWorkItem}
-              />
+            <GanttChart 
+              data={ganttData}
+              projectName={selectedProject.name}
+              onUpdateItem={handleUpdateWorkItem}
+            />
             ) : (
               <div className="flex justify-center items-center h-full">
                 <p className="text-gray-500">该项目暂无工作项，请先在工作分解页面添加工作项</p>

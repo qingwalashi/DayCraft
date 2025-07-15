@@ -54,6 +54,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [viewMode, setViewMode] = useState<'planned' | 'actual'>('planned');
   const [currentEditingViewMode, setCurrentEditingViewMode] = useState<'planned' | 'actual'>('planned');
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // 新增状态
   const [dateViewMode, setDateViewMode] = useState<DateViewMode>('day');
@@ -422,6 +423,21 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     }
   };
 
+  // 处理滚动事件，控制只能垂直滚动，水平滚动需要拖动
+  const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop += e.deltaY;
+    }
+  };
+
+  // 处理水平滚动事件
+  const handleHorizontalScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = e.currentTarget.scrollLeft;
+    if (containerRef.current) {
+      containerRef.current.scrollLeft = scrollLeft;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* 视图切换标签 */}
@@ -523,19 +539,47 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       </div>
       
       {/* 内容区域 */}
-      <div className="flex-1 overflow-hidden">
-        <div className="flex h-full">
-          {/* 左侧固定区域 */}
-          <div className="w-64 flex-shrink-0 flex flex-col border-r border-gray-200">
-            {/* 左侧工作项表头 */}
-            <div className="bg-gray-100 border-b border-gray-200">
-              <div className="p-3 font-medium text-sm text-gray-600 flex items-center" style={{ height: '64px' }}>
-                工作项
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* 表头区域 */}
+        <div className="flex">
+          {/* 左侧工作项表头 */}
+          <div className="w-64 flex-shrink-0 bg-gray-100 border-b border-r border-gray-200">
+            <div className="p-3 font-medium text-sm text-gray-600 flex items-center" style={{ height: '64px' }}>
+              工作项
+            </div>
+          </div>
+          
+          {/* 右侧时间表头 - 固定在顶部，与甘特图内容同步水平滚动 */}
+          <div className="flex-1 overflow-hidden">
+            <div 
+              className="bg-gray-100 border-b border-gray-200 overflow-hidden"
+              ref={containerRef}
+            >
+              <div className="flex" style={{ width: `${timeScale.length * columnWidth}px` }}>
+                {timeScale.map((date, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex-shrink-0 p-2 text-xs font-medium text-center border-r border-gray-200 flex flex-col justify-center
+                      ${isToday(date) ? 'bg-blue-50 text-blue-600' : ''}`}
+                    style={{ width: `${columnWidth}px`, height: '64px' }}
+                  >
+                    {formatDateHeader(date)}
+                  </div>
+                ))}
               </div>
             </div>
-            
-            {/* 左侧工作项列表 */}
-            <div className="flex-1 overflow-y-auto bg-white">
+          </div>
+        </div>
+        
+        {/* 主体内容区域 - 垂直滚动 */}
+        <div 
+          className="flex-1 overflow-y-auto" 
+          ref={scrollContainerRef}
+          onWheel={handleWheel}
+        >
+          <div className="flex">
+            {/* 左侧工作项列表 - 固定不动 */}
+            <div className="w-64 flex-shrink-0 bg-white sticky left-0">
               {visibleItems.map((item) => (
                 <div 
                   key={item.id} 
@@ -564,29 +608,10 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 </div>
               ))}
             </div>
-          </div>
-          
-          {/* 右侧甘特图区域 - 整体水平滚动 */}
-          <div className="flex-1 overflow-x-auto" ref={containerRef}>
-            <div>
-              {/* 右侧时间表头 - 固定在顶部 */}
-              <div className="sticky top-0 z-30 bg-gray-100 border-b border-gray-200" style={{ height: '64px' }}>
-                <div className="flex h-full">
-                  {timeScale.map((date, index) => (
-                    <div 
-                      key={index} 
-                      className={`flex-shrink-0 p-2 text-xs font-medium text-center border-r border-gray-200 flex flex-col justify-center
-                        ${isToday(date) ? 'bg-blue-50 text-blue-600' : ''}`}
-                      style={{ width: `${columnWidth}px` }}
-                    >
-                      {formatDateHeader(date)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* 右侧甘特图内容 - 可垂直滚动 */}
-              <div className="overflow-y-auto" style={{ height: 'calc(100% - 64px)' }}>
+            
+            {/* 右侧甘特图内容 - 可水平滚动 */}
+            <div className="flex-1 overflow-x-auto" onScroll={handleHorizontalScroll}>
+              <div style={{ width: `${timeScale.length * columnWidth}px` }}>
                 <div className="relative">
                   {/* 今天的垂直线 */}
                   {timeScale.findIndex(date => {
@@ -672,6 +697,8 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             </div>
           </div>
         </div>
+        
+        {/* 底部水平滚动条 - 移除，使用甘特图内容的水平滚动条 */}
       </div>
 
       {/* 编辑对话框 */}
