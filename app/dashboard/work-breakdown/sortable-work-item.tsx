@@ -25,7 +25,7 @@ interface SortableWorkItemProps {
   onToggleEdit: (id: string, cancel?: boolean) => void;
   onAddChild: (parentId: string, level: number) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, name: string, description: string, status: string, tags: string, members: string, progress_notes: string) => void;
+  onUpdate: (id: string, name: string, description: string, status: string, tags: string, members: string, progress_notes: string, is_milestone: boolean) => void;
   renderEditForm: (item: WorkItem, level: number) => React.ReactNode;
   renderViewMode: (item: WorkItem, level: number) => React.ReactNode;
   isSaving: boolean;

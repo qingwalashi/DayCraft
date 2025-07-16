@@ -247,7 +247,8 @@ export type WorkBreakdownItem = {
   planned_end_time: string | null;
   actual_start_time: string | null;
   actual_end_time: string | null;
+  is_milestone: boolean;
   user_id: string;
   created_at: string;
   updated_at: string;
-}; 
+};

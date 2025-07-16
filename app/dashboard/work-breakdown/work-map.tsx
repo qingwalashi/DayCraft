@@ -34,8 +34,15 @@ const CustomNode = ({ data }: { data: any }) => {
          style={{ backgroundColor: style.backgroundColor, borderColor: style.borderColor }}>
       <Handle type="target" position={Position.Left} style={{ background: style.borderColor }} />
       <div className="font-medium text-sm">{data.label}</div>
-      {data.status && (
-        <div className="mt-1">
+
+      {/* 显示里程碑标识和状态 */}
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {data.originalItem?.is_milestone && (
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300 font-medium">
+            🏁 里程碑
+          </span>
+        )}
+        {data.status && (
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             data.status === '未开始' ? 'bg-gray-200 text-gray-800' :
             data.status === '进行中' ? 'bg-blue-100 text-blue-800' :
@@ -45,8 +52,8 @@ const CustomNode = ({ data }: { data: any }) => {
           }`}>
             {data.status}
           </span>
-        </div>
-      )}
+        )}
+      </div>
       
       {/* 工作描述预览 */}
       {data.description && (

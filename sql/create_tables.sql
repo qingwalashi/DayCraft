@@ -247,6 +247,7 @@ CREATE TABLE public.work_breakdown_items (
   planned_end_time TIMESTAMP WITH TIME ZONE, -- 计划结束时间
   actual_start_time TIMESTAMP WITH TIME ZONE, -- 实际启动时间
   actual_end_time TIMESTAMP WITH TIME ZONE, -- 实际结束时间
+  is_milestone BOOLEAN DEFAULT FALSE, -- 是否为里程碑：true表示是里程碑，false表示普通工作项
   user_id UUID REFERENCES auth.users(id) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

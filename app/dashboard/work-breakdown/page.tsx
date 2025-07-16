@@ -27,8 +27,8 @@ import dynamic from "next/dynamic";
 // 动态导入WorkMap组件，避免服务端渲染问题
 const WorkMap = dynamic(() => import('./work-map'), { ssr: false });
 
-// 动态导入SortableWorkItem组件，避免服务端渲染问题
-const SortableWorkItem = dynamic(() => import('./sortable-work-item').then(mod => ({ default: mod.SortableWorkItem })), { ssr: false });
+// 导入SortableWorkItem组件
+import { SortableWorkItem } from './sortable-work-item';
 
 // 视图模式
 type ViewMode = 'edit' | 'preview' | 'map';
@@ -588,7 +588,8 @@ export default function WorkBreakdownPage() {
       position: newPosition,  // 确保position正确设置
       status: '未开始',
       tags: '',
-      members: ''
+      members: '',
+      is_milestone: false
     };
     
     console.log('添加一级工作项:', newItem);
@@ -671,7 +672,8 @@ export default function WorkBreakdownPage() {
       position: newPosition,
       status: '未开始',
       tags: '',
-      members: ''
+      members: '',
+      is_milestone: false
     };
     
     console.log('添加子工作项:', { 
@@ -795,8 +797,8 @@ export default function WorkBreakdownPage() {
   };
   
   // 更新工作项（保存到数据库）
-  const updateWorkItem = async (id: string, name: string, description: string, status: string = '未开始', tags: string = '', members: string = '', progress_notes: string = '') => {
-    console.log('开始保存工作项:', { id, name, description, status, tags, members, progress_notes });
+  const updateWorkItem = async (id: string, name: string, description: string, status: string = '未开始', tags: string = '', members: string = '', progress_notes: string = '', is_milestone: boolean = false) => {
+    console.log('开始保存工作项:', { id, name, description, status, tags, members, progress_notes, is_milestone });
     
     // 设置当前保存的工作项ID
     setSavingItemId(id);
@@ -908,25 +910,26 @@ export default function WorkBreakdownPage() {
       const forceCheckIsTemp = foundItem.id.startsWith('temp-');
       
       // 递归更新子项的编辑状态
-      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string, newStatus: string, newTags: string, newMembers: string, newProgressNotes: string): WorkItem[] => {
+      const updateChildrenEditState = (children: WorkItem[], targetId: string, newName: string, newDescription: string, newStatus: string, newTags: string, newMembers: string, newProgressNotes: string, newIsMilestone: boolean): WorkItem[] => {
         return children.map(child => {
           if (isIdMatch(child.id, targetId) || isIdMatch(child.dbId, targetId)) {
-            return { 
-              ...child, 
-              name: newName, 
+            return {
+              ...child,
+              name: newName,
               description: newDescription,
               status: newStatus,
               tags: newTags,
               members: newMembers,
               progress_notes: newProgressNotes,
-              isEditing: false 
+              is_milestone: newIsMilestone,
+              isEditing: false
             };
           }
           
           if (child.children.length > 0) {
             return {
               ...child,
-              children: updateChildrenEditState(child.children, targetId, newName, newDescription, newStatus, newTags, newMembers, newProgressNotes)
+              children: updateChildrenEditState(child.children, targetId, newName, newDescription, newStatus, newTags, newMembers, newProgressNotes, newIsMilestone)
             };
           }
           
@@ -937,15 +940,16 @@ export default function WorkBreakdownPage() {
       // 立即更新前端状态，确保编辑状态关闭
       const updatedItems = workItems.map(item => {
         if (isIdMatch(item.id, id) || isIdMatch(item.dbId, id)) {
-          return { 
-            ...item, 
-            name, 
-            description, 
-            status, 
-            tags: updatedTags, 
+          return {
+            ...item,
+            name,
+            description,
+            status,
+            tags: updatedTags,
             members: updatedMembers,
             progress_notes,
-            isEditing: false 
+            is_milestone,
+            isEditing: false
           };
         }
         
@@ -956,14 +960,15 @@ export default function WorkBreakdownPage() {
             children: item.children.map(child => {
               if (isIdMatch(child.id, id) || isIdMatch(child.dbId, id)) {
                 return { 
-                  ...child, 
-                  name, 
-                  description, 
-                  status, 
-                  tags: updatedTags, 
+                  ...child,
+                  name,
+                  description,
+                  status,
+                  tags: updatedTags,
                   members: updatedMembers,
                   progress_notes,
-                  isEditing: false 
+                  is_milestone,
+                  isEditing: false
                 };
               }
               
@@ -971,7 +976,7 @@ export default function WorkBreakdownPage() {
               if (child.children.length > 0) {
                 return {
                   ...child,
-                  children: updateChildrenEditState(child.children, id, name, description, status, updatedTags, updatedMembers, progress_notes)
+                  children: updateChildrenEditState(child.children, id, name, description, status, updatedTags, updatedMembers, progress_notes, is_milestone)
                 };
               }
               
@@ -1019,7 +1024,12 @@ export default function WorkBreakdownPage() {
           status,
           updatedTags,
           updatedMembers,
-          progress_notes
+          progress_notes,
+          '',
+          '',
+          '',
+          '',
+          is_milestone
         );
         
         console.log('保存结果:', result);
@@ -1063,14 +1073,15 @@ export default function WorkBreakdownPage() {
         toast.success('添加工作项成功');
       } else if (foundItem.dbId) {
         // 如果是已有的项，直接更新
-        console.log('更新现有工作项:', { id: foundItem.dbId, name, description, status, tags: updatedTags, members: updatedMembers, progress_notes });
-        await workBreakdownService.updateWorkItem(foundItem.dbId, { 
-          name, 
+        console.log('更新现有工作项:', { id: foundItem.dbId, name, description, status, tags: updatedTags, members: updatedMembers, progress_notes, is_milestone });
+        await workBreakdownService.updateWorkItem(foundItem.dbId, {
+          name,
           description,
           status,
           tags: updatedTags,
           members: updatedMembers,
-          progress_notes
+          progress_notes,
+          is_milestone
         });
         toast.success('更新工作项成功');
       } else {
@@ -1473,6 +1484,13 @@ export default function WorkBreakdownPage() {
             )}
             <h3 className="font-medium text-lg">{item.name}</h3>
 
+            {/* 显示里程碑标识 */}
+            {item.is_milestone && (
+              <span className="ml-2 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300 font-medium">
+                🏁 里程碑
+              </span>
+            )}
+
             {/* 显示工作状态徽章 */}
             {item.status && (
               <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
@@ -1541,13 +1559,26 @@ export default function WorkBreakdownPage() {
           <label htmlFor={`name-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
             工作项名称
           </label>
-          <input
-            type="text"
-            className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            defaultValue={item.name}
-            placeholder="工作项名称"
-            id={`name-${item.id}`}
-          />
+          <div className="flex items-center space-x-3">
+            <input
+              type="text"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              defaultValue={item.name}
+              placeholder="工作项名称"
+              id={`name-${item.id}`}
+            />
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id={`milestone-${item.id}`}
+                defaultChecked={item.is_milestone || false}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor={`milestone-${item.id}`} className="ml-2 text-sm text-gray-700 whitespace-nowrap">
+                里程碑
+              </label>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -1636,7 +1667,8 @@ export default function WorkBreakdownPage() {
               (document.getElementById(`status-${item.id}`) as HTMLSelectElement).value,
               (document.getElementById(`tags-hidden-${item.id}`) as HTMLInputElement).value,
               (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value,
-              (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value
+              (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value,
+              (document.getElementById(`milestone-${item.id}`) as HTMLInputElement).checked
             )}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
             disabled={isSaving}
@@ -1694,7 +1726,14 @@ export default function WorkBreakdownPage() {
                     </button>
                   )}
                   <h3 className="font-medium text-lg">{item.name}</h3>
-                  
+
+                  {/* 显示里程碑标识 */}
+                  {item.is_milestone && (
+                    <span className="ml-2 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300 font-medium">
+                      🏁 里程碑
+                    </span>
+                  )}
+
                   {/* 显示工作状态徽章 */}
                   {item.status && (
                     <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
@@ -1780,13 +1819,26 @@ export default function WorkBreakdownPage() {
                   <label htmlFor={`name-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
                     工作项名称
                   </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    defaultValue={item.name}
-                    placeholder="工作项名称"
-                    id={`name-${item.id}`}
-                  />
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="text"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      defaultValue={item.name}
+                      placeholder="工作项名称"
+                      id={`name-${item.id}`}
+                    />
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`milestone-${item.id}`}
+                        defaultChecked={item.is_milestone || false}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor={`milestone-${item.id}`} className="ml-2 text-sm text-gray-700 whitespace-nowrap">
+                        里程碑
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 
                 <div>
@@ -1875,7 +1927,8 @@ export default function WorkBreakdownPage() {
                       (document.getElementById(`status-${item.id}`) as HTMLSelectElement).value,
                       (document.getElementById(`tags-hidden-${item.id}`) as HTMLInputElement).value,
                       (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value,
-                      (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value
+                      (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value,
+                      (document.getElementById(`milestone-${item.id}`) as HTMLInputElement).checked
                     )}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                     disabled={isSaving}
@@ -1915,7 +1968,14 @@ export default function WorkBreakdownPage() {
                       </button>
                     )}
                     <h3 className="font-medium text-lg">{item.name}</h3>
-                    
+
+                    {/* 显示里程碑标识 */}
+                    {item.is_milestone && (
+                      <span className="ml-2 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300 font-medium">
+                        🏁 里程碑
+                      </span>
+                    )}
+
                     {/* 显示工作状态徽章 */}
                     {item.status && (
                       <span className={`ml-2 text-xs px-3 py-1 rounded-full ${

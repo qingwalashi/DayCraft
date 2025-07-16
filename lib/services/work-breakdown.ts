@@ -23,6 +23,7 @@ export interface WorkItem {
   planned_end_time?: string;
   actual_start_time?: string;
   actual_end_time?: string;
+  is_milestone?: boolean;
 }
 
 interface WorkBreakdownItemResponse {
@@ -87,12 +88,12 @@ export class WorkBreakdownService {
   
   // 添加工作项
   async addWorkItem(
-    projectId: string, 
-    userId: string, 
-    name: string, 
-    description: string, 
-    parentId: string | null, 
-    level: number, 
+    projectId: string,
+    userId: string,
+    name: string,
+    description: string,
+    parentId: string | null,
+    level: number,
     position: number,
     status: string = '未开始',
     tags: string = '',
@@ -101,7 +102,8 @@ export class WorkBreakdownService {
     planned_start_time: string = '',
     planned_end_time: string = '',
     actual_start_time: string = '',
-    actual_end_time: string = ''
+    actual_end_time: string = '',
+    is_milestone: boolean = false
   ): Promise<{ id: string }> {
     const { data, error } = await this.supabase
       .from('work_breakdown_items')
@@ -121,6 +123,7 @@ export class WorkBreakdownService {
         planned_end_time: planned_end_time || null,
         actual_start_time: actual_start_time || null,
         actual_end_time: actual_end_time || null,
+        is_milestone,
         user_id: userId
       })
       .select('id')
@@ -327,7 +330,8 @@ export class WorkBreakdownService {
         item.planned_start_time || '',
         item.planned_end_time || '',
         item.actual_start_time || '',
-        item.actual_end_time || ''
+        item.actual_end_time || '',
+        item.is_milestone || false
       );
       
       // 递归保存子项
@@ -369,7 +373,8 @@ export class WorkBreakdownService {
         planned_start_time: item.planned_start_time || undefined,
         planned_end_time: item.planned_end_time || undefined,
         actual_start_time: item.actual_start_time || undefined,
-        actual_end_time: item.actual_end_time || undefined
+        actual_end_time: item.actual_end_time || undefined,
+        is_milestone: item.is_milestone || false
       };
     });
     
