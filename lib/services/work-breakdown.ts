@@ -144,16 +144,47 @@ export class WorkBreakdownService {
       .select('project_id, user_id')
       .eq('id', id)
       .single();
-      
+
     const { error } = await this.supabase
       .from('work_breakdown_items')
       .update(updates)
       .eq('id', id);
-      
+
     if (error) {
       throw error;
     }
-    
+
+    // 清除相关缓存
+    if (itemData) {
+      const projectId = itemData.project_id as string;
+      const userId = itemData.user_id as string;
+      this.invalidateCache(projectId, userId);
+    }
+  }
+
+  // 批量更新工作项位置
+  async updateWorkItemPositions(updates: Array<{ id: string; position: number }>): Promise<void> {
+    if (updates.length === 0) return;
+
+    // 获取第一个工作项的项目和用户信息用于清除缓存
+    const { data: itemData } = await this.supabase
+      .from('work_breakdown_items')
+      .select('project_id, user_id')
+      .eq('id', updates[0].id)
+      .single();
+
+    // 批量更新位置
+    for (const update of updates) {
+      const { error } = await this.supabase
+        .from('work_breakdown_items')
+        .update({ position: update.position })
+        .eq('id', update.id);
+
+      if (error) {
+        throw error;
+      }
+    }
+
     // 清除相关缓存
     if (itemData) {
       const projectId = itemData.project_id as string;

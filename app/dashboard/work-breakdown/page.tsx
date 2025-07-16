@@ -5,12 +5,30 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
 import WorkBreakdownGuide from "./guide";
 import dynamic from "next/dynamic";
 
 // 动态导入WorkMap组件，避免服务端渲染问题
 const WorkMap = dynamic(() => import('./work-map'), { ssr: false });
+
+// 动态导入SortableWorkItem组件，避免服务端渲染问题
+const SortableWorkItem = dynamic(() => import('./sortable-work-item').then(mod => ({ default: mod.SortableWorkItem })), { ssr: false });
 
 // 视图模式
 type ViewMode = 'edit' | 'preview' | 'map';
@@ -350,6 +368,14 @@ export default function WorkBreakdownPage() {
   
   // 添加状态用于强制重新渲染
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // 拖拽传感器配置
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
   // 添加导入导出菜单状态
   const [showImportExportMenu, setShowImportExportMenu] = useState(false);
@@ -1177,6 +1203,97 @@ export default function WorkBreakdownPage() {
     setItemToDelete(null);
   };
 
+  // 处理拖拽结束事件
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    // 找到被拖拽项和目标位置的父级容器
+    const findItemAndParent = (items: WorkItem[], targetId: string, parent: WorkItem | null = null): { item: WorkItem; parent: WorkItem | null; siblings: WorkItem[] } | null => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.id === targetId) {
+          return { item, parent, siblings: items };
+        }
+        if (item.children.length > 0) {
+          const result = findItemAndParent(item.children, targetId, item);
+          if (result) return result;
+        }
+      }
+      return null;
+    };
+
+    const activeResult = findItemAndParent(workItems, active.id as string);
+    const overResult = findItemAndParent(workItems, over.id as string);
+
+    if (!activeResult || !overResult) {
+      return;
+    }
+
+    // 只允许同级拖拽排序
+    if (activeResult.parent?.id !== overResult.parent?.id) {
+      toast.error('只能在同一层级内拖拽排序');
+      return;
+    }
+
+    const siblings = activeResult.siblings;
+    const oldIndex = siblings.findIndex(item => item.id === active.id);
+    const newIndex = siblings.findIndex(item => item.id === over.id);
+
+    if (oldIndex === newIndex) {
+      return;
+    }
+
+    // 更新前端状态
+    const newSiblings = arrayMove(siblings, oldIndex, newIndex);
+
+    // 更新position字段
+    const positionUpdates: Array<{ id: string; position: number }> = [];
+    newSiblings.forEach((item, index) => {
+      if (item.dbId) {
+        positionUpdates.push({ id: item.dbId, position: index });
+      }
+    });
+
+    // 更新工作项树
+    const updateWorkItemsTree = (items: WorkItem[]): WorkItem[] => {
+      if (activeResult.parent === null) {
+        // 根级别的排序
+        return newSiblings;
+      } else {
+        // 子级别的排序
+        return items.map(item => {
+          if (item.id === activeResult.parent!.id) {
+            return { ...item, children: newSiblings };
+          }
+          if (item.children.length > 0) {
+            return { ...item, children: updateWorkItemsTree(item.children) };
+          }
+          return item;
+        });
+      }
+    };
+
+    const updatedWorkItems = updateWorkItemsTree(workItems);
+    setWorkItems(updatedWorkItems);
+
+    // 保存到数据库
+    try {
+      if (positionUpdates.length > 0) {
+        await workBreakdownService.updateWorkItemPositions(positionUpdates);
+        toast.success('排序已保存');
+      }
+    } catch (error) {
+      console.error('保存排序失败:', error);
+      toast.error('保存排序失败');
+      // 恢复原始状态
+      setWorkItems(workItems);
+    }
+  };
+
   // 导出为Excel
   const handleExportExcel = () => {
     if (!selectedProject || !workItems.length) {
@@ -1330,6 +1447,215 @@ export default function WorkBreakdownPage() {
             {member}
           </span>
         ))}
+      </div>
+    );
+  };
+
+  // 渲染查看模式
+  const renderViewMode = (item: WorkItem, level: number) => {
+    return (
+      <div>
+        {/* 优化布局：PC端更紧凑，移动端自适应 */}
+        <div className="flex flex-col sm:flex-row sm:items-center">
+          {/* 第一行/左侧：标题和状态 */}
+          <div className="flex items-center flex-grow flex-wrap">
+            {item.children.length > 0 && (
+              <button
+                onClick={() => toggleExpand(item.id)}
+                className="mr-2 p-1 rounded-md hover:bg-gray-100 transition-colors"
+              >
+                {item.isExpanded ? (
+                  <ChevronDownIcon className="h-5 w-5 text-gray-600" />
+                ) : (
+                  <ChevronRightIcon className="h-5 w-5 text-gray-600" />
+                )}
+              </button>
+            )}
+            <h3 className="font-medium text-lg">{item.name}</h3>
+
+            {/* 显示工作状态徽章 */}
+            {item.status && (
+              <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
+                item.status === '未开始' ? 'bg-gray-200 text-gray-800 border border-gray-300' :
+                item.status === '进行中' ? 'bg-blue-200 text-blue-800 border border-blue-300' :
+                item.status === '已暂停' ? 'bg-yellow-200 text-yellow-800 border border-yellow-300' :
+                item.status === '已完成' ? 'bg-green-200 text-green-800 border border-green-300' :
+                'bg-gray-200 text-gray-800 border border-gray-300'
+              }`}>
+                {item.status}
+              </span>
+            )}
+
+            {/* 显示参与人员 - 移到第一行 */}
+            {item.members && (
+              <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                {renderMembers(item.members, true)}
+              </div>
+            )}
+
+            {/* 显示工作标签 - 移到第一行 */}
+            {item.tags && (
+              <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                <TagIcon className="h-3 w-3 text-gray-500 mr-1" />
+                {item.tags.split('，').filter(Boolean).map((tag, idx) => (
+                  <span key={`tag-${idx}`} className="inline-flex items-center text-xs px-1.5 py-0.5 ml-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 transition-colors">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 描述区域 */}
+        <div className="mt-2">
+          {/* 描述 */}
+          {item.description && (
+            <div className="text-sm text-gray-600 leading-relaxed">
+              {item.description}
+            </div>
+          )}
+        </div>
+
+        {/* 工作进展备注 */}
+        {item.progress_notes && (
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+              <ClockIcon className="h-3.5 w-3.5" />
+              <span>工作进展备注:</span>
+            </div>
+            <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded-md border border-gray-100 whitespace-pre-wrap">
+              {item.progress_notes}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 渲染编辑表单
+  const renderEditForm = (item: WorkItem, level: number) => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label htmlFor={`name-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+            工作项名称
+          </label>
+          <input
+            type="text"
+            className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            defaultValue={item.name}
+            placeholder="工作项名称"
+            id={`name-${item.id}`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor={`desc-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+            工作描述
+          </label>
+          <textarea
+            className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            defaultValue={item.description}
+            placeholder="工作描述（可选）"
+            rows={3}
+            id={`desc-${item.id}`}
+          />
+        </div>
+
+        {/* 工作进展状态选择 */}
+        <div className="mb-2">
+          <label htmlFor={`status-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+            <ClockIcon className="h-4 w-4 mr-1" />
+            工作进展
+          </label>
+          <select
+            id={`status-${item.id}`}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            defaultValue={item.status || '未开始'}
+          >
+            {STATUS_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.value}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* 工作进展备注 */}
+        <div className="mb-2">
+          <label htmlFor={`progress-notes-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+            <ClockIcon className="h-4 w-4 mr-1" />
+            工作进展备注
+          </label>
+          <textarea
+            id={`progress-notes-${item.id}`}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            defaultValue={item.progress_notes || ''}
+            placeholder="记录工作进展的详细情况、遇到的问题等（可选）"
+            rows={3}
+          />
+        </div>
+
+        {/* 工作标签输入 - 使用新组件 */}
+        <div className="mb-2">
+          <label htmlFor={`tags-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+            <TagIcon className="h-4 w-4 mr-1" />
+            工作标签
+          </label>
+          <TagInput
+            itemId={item.id}
+            initialTags={item.tags || ''}
+            onTagsChange={(tags) => {
+              // 可以在这里添加额外的处理逻辑
+              console.log('标签已更新:', tags);
+            }}
+          />
+        </div>
+
+        {/* 参与人员输入 - 使用新组件 */}
+        <div className="mb-2">
+          <label htmlFor={`members-${item.id}`} className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+            <UsersIcon className="h-4 w-4 mr-1" />
+            参与人员
+          </label>
+          <MemberInput
+            itemId={item.id}
+            initialMembers={item.members || ''}
+            onMembersChange={(members) => {
+              // 可以在这里添加额外的处理逻辑
+              console.log('人员已更新:', members);
+            }}
+          />
+        </div>
+
+        <div className="flex space-x-3 pt-2">
+          <button
+            onClick={() => updateWorkItem(
+              item.id,
+              (document.getElementById(`name-${item.id}`) as HTMLInputElement).value,
+              (document.getElementById(`desc-${item.id}`) as HTMLTextAreaElement).value,
+              (document.getElementById(`status-${item.id}`) as HTMLSelectElement).value,
+              (document.getElementById(`tags-hidden-${item.id}`) as HTMLInputElement).value,
+              (document.getElementById(`members-hidden-${item.id}`) as HTMLInputElement).value,
+              (document.getElementById(`progress-notes-${item.id}`) as HTMLTextAreaElement).value
+            )}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            disabled={isSaving}
+          >
+            {isSaving && savingItemId === item.id ? (
+              <>
+                <div className="animate-spin h-4 w-4 mr-2 border-2 border-t-transparent border-white rounded-full inline-block"></div>
+                保存中...
+              </>
+            ) : "保存"}
+          </button>
+          <button
+            onClick={() => toggleEdit(item.id, true)}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+            disabled={isSaving}
+          >
+            取消
+          </button>
+        </div>
       </div>
     );
   };
@@ -2111,8 +2437,40 @@ export default function WorkBreakdownPage() {
                     </div>
                   ) : (
                     <>
-                      {(selectedStatuses.length > 0 ? filteredWorkItems : workItems).map(item => renderWorkItem(item, 0))}
-                      
+                      {viewMode === 'edit' ? (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <SortableContext
+                            items={(selectedStatuses.length > 0 ? filteredWorkItems : workItems).map(item => item.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {(selectedStatuses.length > 0 ? filteredWorkItems : workItems).map(item => (
+                              <SortableWorkItem
+                                key={item.id}
+                                item={item}
+                                level={0}
+                                onToggleExpand={toggleExpand}
+                                onToggleEdit={toggleEdit}
+                                onAddChild={addChildWorkItem}
+                                onDelete={(id) => setItemToDelete(id)}
+                                onUpdate={updateWorkItem}
+                                renderEditForm={renderEditForm}
+                                renderViewMode={renderViewMode}
+                                isSaving={isSaving}
+                                savingItemId={savingItemId}
+                                viewMode={viewMode}
+                                canAddChildren={true}
+                              />
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        (selectedStatuses.length > 0 ? filteredWorkItems : workItems).map(item => renderWorkItem(item, 0))
+                      )}
+
                       {/* 底部添加一级工作项按钮 */}
                       {viewMode === 'edit' && (
                         <div className="mt-8 flex justify-center">
