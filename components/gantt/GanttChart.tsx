@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, WheelEvent } from "react";
 import { format, addDays, startOfDay, differenceInDays, isWithinInterval, isSameDay, parseISO, startOfWeek, startOfMonth, startOfYear, addWeeks, addMonths, addYears, getWeek, getMonth, getYear } from "date-fns";
 import { zhCN } from 'date-fns/locale';
 import { ChevronRight, ChevronDown, Calendar, Clock, X, ZoomIn, ZoomOut } from "lucide-react";
-import { 
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -12,6 +12,7 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
+import { getStatusBadgeClass } from '@/lib/utils/status-colors';
 
 // 修复GanttItem接口定义
 interface GanttItem {
@@ -49,7 +50,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     plannedEndDate: "",
     actualStartDate: "",
     actualEndDate: "",
-    status: ""
+    status: "未开始"
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'planned' | 'actual'>('planned');
@@ -384,21 +385,13 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
 
   // 获取工作项状态标签
   const getStatusBadge = (item: GanttItem) => {
-    // 直接使用数据库中的状态，不再根据实际起止时间推断
-    if (item.status) {
-      switch (item.status) {
-        case '已完成':
-          return <span className="ml-1 px-1.5 py-0.5 bg-green-100 text-green-800 text-xs rounded-full whitespace-nowrap">已完成</span>;
-        case '进行中':
-          return <span className="ml-1 px-1.5 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full whitespace-nowrap">进行中</span>;
-        case '已暂停':
-          return <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full whitespace-nowrap">已暂停</span>;
-        default:
-          return <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full whitespace-nowrap">{item.status}</span>;
-      }
-    } else {
-      return <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs rounded-full whitespace-nowrap">未开始</span>;
-    }
+    const status = item.status || '未开始';
+    const badgeClass = getStatusBadgeClass(status);
+    return (
+      <span className={`ml-1 px-1.5 py-0.5 border text-xs rounded-full whitespace-nowrap ${badgeClass}`}>
+        {status}
+      </span>
+    );
   };
 
   // 处理工作项点击事件
@@ -416,7 +409,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       plannedEndDate: plannedEnd ? format(plannedEnd, 'yyyy-MM-dd') : "",
       actualStartDate: actualStart ? format(actualStart, 'yyyy-MM-dd') : "",
       actualEndDate: actualEnd ? format(actualEnd, 'yyyy-MM-dd') : "",
-      status: item.status || "" // 直接使用数据库中的状态
+      status: item.status || "未开始" // 默认使用"未开始"状态
     });
     
     // 记录当前编辑时的视图模式
@@ -1172,7 +1165,6 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 value={editForm.status}
                 onChange={(e) => setEditForm({...editForm, status: e.target.value})}
               >
-                <option value="">选择状态</option>
                 <option value="未开始">未开始</option>
                 <option value="进行中">进行中</option>
                 <option value="已暂停">已暂停</option>

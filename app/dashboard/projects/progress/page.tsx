@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { FilterIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import GanttChart from "@/components/gantt/GanttChart";
+import MilestoneTimeline from "@/components/milestone/MilestoneTimeline";
 
 export default function ProjectProgressPage() {
   const { user } = useAuth();
@@ -175,6 +176,17 @@ export default function ProjectProgressPage() {
     status: item.status
   }));
 
+  // 筛选出里程碑数据
+  const milestoneData = workItems
+    .filter(item => item.is_milestone)
+    .map(item => ({
+      id: item.id,
+      name: item.name,
+      planned_end_time: item.planned_end_time,
+      actual_end_time: item.actual_end_time,
+      status: item.status
+    }));
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
@@ -219,24 +231,32 @@ export default function ProjectProgressPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-200px)]">
-          {selectedProject ? (
-            workItems.length > 0 ? (
-            <GanttChart 
-              data={ganttData}
-              projectName={selectedProject.name}
-              onUpdateItem={handleUpdateWorkItem}
-            />
+        <div className="space-y-6">
+          {/* 里程碑时间轴 */}
+          {selectedProject && workItems.length > 0 && (
+            <MilestoneTimeline milestones={milestoneData} />
+          )}
+
+          {/* 甘特图 */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-280px)]">
+            {selectedProject ? (
+              workItems.length > 0 ? (
+              <GanttChart
+                data={ganttData}
+                projectName={selectedProject.name}
+                onUpdateItem={handleUpdateWorkItem}
+              />
+              ) : (
+                <div className="flex justify-center items-center h-full">
+                  <p className="text-gray-500">该项目暂无工作项，请先在工作分解页面添加工作项</p>
+                </div>
+              )
             ) : (
               <div className="flex justify-center items-center h-full">
-                <p className="text-gray-500">该项目暂无工作项，请先在工作分解页面添加工作项</p>
+                <p className="text-gray-500">请选择一个项目</p>
               </div>
-            )
-          ) : (
-            <div className="flex justify-center items-center h-full">
-              <p className="text-gray-500">请选择一个项目</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
