@@ -87,9 +87,15 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
           {/* 横向滚动容器 */}
           <div className="overflow-x-auto pb-1">
             {/* 时间轴容器 */}
-            <div className="relative" style={{ minWidth: `${milestones.length * 180}px` }}>
+            <div className="relative w-full flex justify-center">
               {/* 里程碑节点 */}
-              <div className="flex items-center w-full px-2">
+              <div
+                className="flex items-center px-2"
+                style={{
+                  minWidth: milestones.length <= 3 ? 'auto' : `${milestones.length * 180}px`,
+                  width: milestones.length <= 3 ? '100%' : 'auto'
+                }}
+              >
                 {milestones.map((milestone, index) => {
                   const style = getMilestoneStatusStyle(milestone.status);
                   const plannedDate = formatDate(milestone.planned_end_time);
@@ -106,9 +112,6 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
                           minWidth: '140px'
                         }}
                       >
-                      {/* 里程碑圆点 */}
-                      <div className={`w-3 h-3 rounded-full ${style.dotColor} border-2 border-white shadow-sm mb-2`}></div>
-
                       {/* 里程碑信息卡片 */}
                       <div className={`${style.bgColor} rounded-md p-2 border border-gray-200 shadow-sm w-full max-w-[140px] sm:max-w-[160px]`}>
                         {/* 里程碑名称 */}
@@ -154,10 +157,20 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
 
                       {/* 箭头连线 - 除了最后一个节点 */}
                       {!isLast && (
-                        <div className="flex items-center justify-center px-1 flex-shrink-0">
+                        <div className="flex items-center justify-center px-4 flex-shrink-0 relative">
+                          {/* 连接线容器，与卡片中心垂直对齐 */}
                           <div className="flex items-center">
-                            <div className="w-6 h-0.5 bg-gray-400"></div>
-                            <div className="w-0 h-0 border-l-[6px] border-l-gray-500 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent"></div>
+                            {/* 连接线 */}
+                            <div className="w-12 h-[2px] bg-gradient-to-r from-gray-400 via-gray-500 to-gray-600 rounded-full shadow-sm"></div>
+                            {/* 箭头 */}
+                            <div
+                              className="w-0 h-0 ml-0.5 filter drop-shadow-sm"
+                              style={{
+                                borderLeft: '7px solid #6b7280',
+                                borderTop: '5px solid transparent',
+                                borderBottom: '5px solid transparent'
+                              }}
+                            ></div>
                           </div>
                         </div>
                       )}

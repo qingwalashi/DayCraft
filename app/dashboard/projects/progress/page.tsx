@@ -173,7 +173,11 @@ export default function ProjectProgressPage() {
     actualStartDate: item.actual_start_time,
     actualEndDate: item.actual_end_time,
     progress: item.actual_start_time ? (item.actual_end_time ? 100 : 50) : 0,
-    status: item.status
+    status: item.status,
+    description: item.description,
+    tags: item.tags,
+    members: item.members,
+    progress_notes: item.progress_notes
   }));
 
   // 筛选出里程碑数据

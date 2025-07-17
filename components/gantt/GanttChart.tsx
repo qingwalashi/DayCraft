@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, WheelEvent } from "react";
+import { useState, useEffect, useRef, useCallback, WheelEvent } from "react";
 import { format, addDays, startOfDay, differenceInDays, isWithinInterval, isSameDay, parseISO, startOfWeek, startOfMonth, startOfYear, addWeeks, addMonths, addYears, getWeek, getMonth, getYear } from "date-fns";
 import { zhCN } from 'date-fns/locale';
-import { ChevronRight, ChevronDown, Calendar, Clock, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronRight, ChevronDown, Calendar, Clock, X, ZoomIn, ZoomOut, User, Tag, FileText, MessageSquare } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,10 @@ interface GanttItem {
   actualEndDate?: string | null;
   progress: number;
   status?: string;
+  description?: string;
+  tags?: string;
+  members?: string;
+  progress_notes?: string;
 }
 
 interface GanttChartProps {
@@ -45,16 +49,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 30));
   const [selectedItem, setSelectedItem] = useState<GanttItem | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    plannedStartDate: "",
-    plannedEndDate: "",
-    actualStartDate: "",
-    actualEndDate: "",
-    status: "未开始"
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'planned' | 'actual'>('planned');
-  const [currentEditingViewMode, setCurrentEditingViewMode] = useState<'planned' | 'actual'>('planned');
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -394,75 +389,33 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     );
   };
 
+  // 解析标签字符串为数组
+  const parseTags = (tagsString?: string): string[] => {
+    if (!tagsString) return [];
+    return tagsString.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+  };
+
+  // 解析成员字符串为数组
+  const parseMembers = (membersString?: string): string[] => {
+    if (!membersString) return [];
+    return membersString.split(',').map(member => member.trim()).filter(member => member.length > 0);
+  };
+
+  // 格式化日期显示
+  const formatDisplayDate = (dateString?: string | null): string => {
+    if (!dateString) return '未设置';
+    try {
+      const date = parseISO(dateString);
+      return format(date, 'yyyy年MM月dd日', { locale: zhCN });
+    } catch {
+      return '日期格式错误';
+    }
+  };
+
   // 处理工作项点击事件
   const handleItemClick = (item: GanttItem) => {
     setSelectedItem(item);
-    
-    // 初始化表单数据
-    const plannedStart = item.startDate ? new Date(item.startDate) : null;
-    const plannedEnd = item.endDate ? new Date(item.endDate) : null;
-    const actualStart = item.actualStartDate ? new Date(item.actualStartDate) : null;
-    const actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : null;
-    
-    setEditForm({
-      plannedStartDate: plannedStart ? format(plannedStart, 'yyyy-MM-dd') : "",
-      plannedEndDate: plannedEnd ? format(plannedEnd, 'yyyy-MM-dd') : "",
-      actualStartDate: actualStart ? format(actualStart, 'yyyy-MM-dd') : "",
-      actualEndDate: actualEnd ? format(actualEnd, 'yyyy-MM-dd') : "",
-      status: item.status || "未开始" // 默认使用"未开始"状态
-    });
-    
-    // 记录当前编辑时的视图模式
-    setCurrentEditingViewMode(viewMode);
     setIsDialogOpen(true);
-  };
-
-  // 处理表单提交
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedItem || !onUpdateItem) return;
-    
-    setIsSubmitting(true);
-    
-    try {
-      // 构建更新后的工作项 - 状态与实际起止时间完全独立
-      const updatedItem: GanttItem = {
-        ...selectedItem,
-        startDate: editForm.plannedStartDate ? 
-          `${editForm.plannedStartDate}T00:00:00` : null,
-        endDate: editForm.plannedEndDate ? 
-          `${editForm.plannedEndDate}T23:59:59` : null,
-        actualStartDate: editForm.actualStartDate ? 
-          `${editForm.actualStartDate}T00:00:00` : null,
-        actualEndDate: editForm.actualEndDate ? 
-          `${editForm.actualEndDate}T23:59:59` : null,
-        status: editForm.status // 直接使用表单中的状态
-      };
-      
-      // 调用更新回调
-      const success = await onUpdateItem(updatedItem);
-      
-      if (success) {
-        // 关闭对话框
-        setIsDialogOpen(false);
-        
-        // 根据当前编辑视图设置视图模式，确保在刷新后保留在同一个标签
-        if (currentEditingViewMode === 'actual') {
-          // 如果是在"实际情况"标签编辑，则保持在此标签
-          localStorage.setItem('gantt_view_mode', 'actual');
-          setViewMode('actual');
-        } else {
-          // 如果是在"计划"标签编辑，则保持在此标签
-          localStorage.setItem('gantt_view_mode', 'planned');
-          setViewMode('planned');
-        }
-      }
-    } catch (error) {
-      console.error('更新工作项失败:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   // 格式化日期显示 - 使用中文格式
@@ -592,19 +545,17 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   };
   
   // 处理拖动移动事件
-  const handleResizeMove = (e: MouseEvent) => {
+  const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     const newWidth = Math.max(160, Math.min(500, startWidth + (e.clientX - startX)));
     setItemColumnWidth(newWidth);
-  };
-  
+  }, [isResizing, startWidth, startX]);
+
   // 处理拖动结束事件
-  const handleResizeEnd = () => {
+  const handleResizeEnd = useCallback(() => {
     setIsResizing(false);
-    document.removeEventListener('mousemove', handleResizeMove);
-    document.removeEventListener('mouseup', handleResizeEnd);
     document.body.classList.remove('resizing');
-  };
+  }, []);
   
   // 使用useEffect处理拖动事件
   useEffect(() => {
@@ -618,7 +569,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       document.removeEventListener('mouseup', handleResizeEnd);
       document.body.classList.remove('resizing');
     };
-  }, [isResizing, startX, startWidth]);
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1089,106 +1040,170 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         }
       `}</style>
 
-      {/* 编辑对话框 */}
+      {/* 工作项详情对话框 */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>编辑工作项: {selectedItem?.name}</DialogTitle>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col p-0">
+          {/* 固定的标题区域 */}
+          <DialogHeader className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              {selectedItem?.name}
+            </DialogTitle>
             <DialogDescription>
-              修改工作项的计划和实际时间信息
+              工作项详细信息
             </DialogDescription>
           </DialogHeader>
-          
-          <form onSubmit={handleSubmit} className="space-y-4 py-4">
-            {/* 计划时间 */}
-            <div>
-              <h3 className="font-medium text-gray-700 mb-2 flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                计划时间
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
+
+          {/* 可滚动的内容区域 */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="space-y-6">
+              {/* 工作描述 */}
+              {selectedItem?.description && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">开始日期</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={editForm.plannedStartDate}
-                    onChange={(e) => setEditForm({...editForm, plannedStartDate: e.target.value})}
-                  />
+                  <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <FileText className="h-4 w-4 mr-1" />
+                    工作描述
+                  </h3>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                      {selectedItem.description}
+                    </p>
+                  </div>
                 </div>
+              )}
+
+              {/* 参与人员 */}
+              {selectedItem?.members && parseMembers(selectedItem.members).length > 0 && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">结束日期</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={editForm.plannedEndDate}
-                    onChange={(e) => setEditForm({...editForm, plannedEndDate: e.target.value})}
-                  />
+                  <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <User className="h-4 w-4 mr-1" />
+                    参与人员
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {parseMembers(selectedItem.members).map((member, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                      >
+                        <User className="h-3 w-3 mr-1" />
+                        {member}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 工作标签 */}
+              {selectedItem?.tags && parseTags(selectedItem.tags).length > 0 && (
+                <div>
+                  <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <Tag className="h-4 w-4 mr-1" />
+                    工作标签
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {parseTags(selectedItem.tags).map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                      >
+                        <Tag className="h-3 w-3 mr-1" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 工作进展 */}
+              <div>
+                <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+                  <Clock className="h-4 w-4 mr-1" />
+                  工作进展
+                </h3>
+                <div className="bg-gray-50 rounded-md p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-gray-600">当前状态:</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      selectedItem?.status === '已完成'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedItem?.status === '进行中'
+                        ? 'bg-blue-100 text-blue-800'
+                        : selectedItem?.status === '已暂停'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {selectedItem?.status || '未开始'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 工作进展备注 */}
+              {selectedItem?.progress_notes && (
+                <div>
+                  <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <MessageSquare className="h-4 w-4 mr-1" />
+                    工作进展备注
+                  </h3>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                      {selectedItem.progress_notes}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 时间信息 */}
+              <div>
+                <h3 className="font-medium text-gray-700 mb-3 flex items-center">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  时间信息
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 计划时间 */}
+                  <div className="bg-blue-50 rounded-md p-3">
+                    <h4 className="font-medium text-blue-800 mb-2">计划时间</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">开始:</span>
+                        <span className="text-gray-800">{formatDisplayDate(selectedItem?.startDate)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">结束:</span>
+                        <span className="text-gray-800">{formatDisplayDate(selectedItem?.endDate)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 实际时间 */}
+                  <div className="bg-green-50 rounded-md p-3">
+                    <h4 className="font-medium text-green-800 mb-2">实际时间</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">开始:</span>
+                        <span className="text-gray-800">{formatDisplayDate(selectedItem?.actualStartDate)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">结束:</span>
+                        <span className="text-gray-800">{formatDisplayDate(selectedItem?.actualEndDate)}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-            
-            {/* 实际时间 */}
-            <div>
-              <h3 className="font-medium text-gray-700 mb-2 flex items-center">
-                <Clock className="h-4 w-4 mr-1" />
-                实际时间
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">开始日期</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={editForm.actualStartDate}
-                    onChange={(e) => setEditForm({...editForm, actualStartDate: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">结束日期</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={editForm.actualEndDate}
-                    onChange={(e) => setEditForm({...editForm, actualEndDate: e.target.value})}
-                    disabled={!editForm.actualStartDate}
-                  />
-                </div>
-              </div>
-            </div>
-            
-            {/* 工作状态 */}
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">工作状态</label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                value={editForm.status}
-                onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-              >
-                <option value="未开始">未开始</option>
-                <option value="进行中">进行中</option>
-                <option value="已暂停">已暂停</option>
-                <option value="已完成">已完成</option>
-              </select>
-            </div>
-            
-            <DialogFooter>
-              <button
-                type="button"
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                onClick={() => setIsDialogOpen(false)}
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? '保存中...' : '保存'}
-              </button>
-            </DialogFooter>
-          </form>
+          </div>
+
+          {/* 固定的底部按钮区域 */}
+          <DialogFooter className="px-6 py-4 border-t border-gray-200 flex-shrink-0">
+            <button
+              type="button"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              onClick={() => setIsDialogOpen(false)}
+            >
+              关闭
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
