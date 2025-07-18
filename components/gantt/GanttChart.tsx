@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, WheelEvent } from "react";
-import { format, addDays, startOfDay, differenceInDays, isWithinInterval, isSameDay, parseISO, startOfWeek, startOfMonth, startOfYear, addWeeks, addMonths, addYears, getWeek, getMonth, getYear } from "date-fns";
+import { format, addDays, startOfDay, differenceInDays, isWithinInterval, isSameDay, parseISO, startOfWeek, startOfMonth, startOfYear, addWeeks, addMonths, addYears, getWeek, getMonth, getYear, getQuarter, startOfQuarter, addQuarters, getISOWeek, getWeekYear } from "date-fns";
 import { zhCN } from 'date-fns/locale';
-import { ChevronRight, ChevronDown, Calendar, Clock, X, ZoomIn, ZoomOut, User, Tag, FileText, MessageSquare } from "lucide-react";
+import { ChevronRight, ChevronDown, Calendar, Clock, X, ZoomIn, ZoomOut, User, Tag, FileText, MessageSquare, Target, ChevronLeft } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,12 +39,28 @@ interface GanttChartProps {
 }
 
 // 日期视图模式类型
-type DateViewMode = 'day' | 'week' | 'month' | 'year';
+type DateViewMode = 'day' | 'week' | 'month' | 'quarter' | 'halfyear' | 'year';
+
+// 时间轴单元格接口
+interface TimeCell {
+  date: Date;
+  label: string;
+  span: number; // 跨越的列数
+  isHighlight?: boolean; // 是否高亮（今天/当前月等）
+}
+
+// 时间轴数据接口
+interface TimeAxisData {
+  upperRow: TimeCell[]; // 上级时间单位行
+  lowerRow: TimeCell[]; // 下级时间单位行
+  totalColumns: number; // 总列数
+}
 
 const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [visibleItems, setVisibleItems] = useState<GanttItem[]>([]);
   const [timeScale, setTimeScale] = useState<Date[]>([]);
+  const [timeAxisData, setTimeAxisData] = useState<TimeAxisData>({ upperRow: [], lowerRow: [], totalColumns: 0 });
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 30));
   const [selectedItem, setSelectedItem] = useState<GanttItem | null>(null);
@@ -64,8 +80,8 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // 新增状态
-  const [dateViewMode, setDateViewMode] = useState<DateViewMode>('day');
-  const [columnWidth, setColumnWidth] = useState<number>(40);
+  const [dateViewMode, setDateViewMode] = useState<DateViewMode>('month');
+  const [columnWidth, setColumnWidth] = useState<number>(50);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开所有层级
   
@@ -74,6 +90,18 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const [startX, setStartX] = useState<number>(0);
   const [startWidth, setStartWidth] = useState<number>(0);
+
+  // 添加是否需要自动滚动到今天的状态
+  const [shouldScrollToToday, setShouldScrollToToday] = useState<boolean>(false);
+
+  // 添加今天是否在可见范围内的状态
+  const [isTodayVisible, setIsTodayVisible] = useState<boolean>(true);
+
+  // 添加无限滚动相关状态
+  const [isExtending, setIsExtending] = useState<boolean>(false);
+  const [lastScrollLeft, setLastScrollLeft] = useState<number>(0);
+  const [pendingScrollAdjustment, setPendingScrollAdjustment] = useState<number | null>(null);
+  const [showExtendingHint, setShowExtendingHint] = useState<string | null>(null);
   
   // 从localStorage读取视图模式
   useEffect(() => {
@@ -85,30 +113,87 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     
     // 读取日期视图模式
     const savedDateViewMode = localStorage.getItem('gantt_date_view_mode');
-    if (savedDateViewMode === 'day' || savedDateViewMode === 'week' || 
-        savedDateViewMode === 'month' || savedDateViewMode === 'year') {
-      setDateViewMode(savedDateViewMode as DateViewMode);
-      
-      // 设置相应的缩放级别
-      switch (savedDateViewMode) {
-        case 'day':
-          setZoomLevel(1.5);
-          setColumnWidth(60);
-          break;
-        case 'week':
-          setZoomLevel(1);
-          setColumnWidth(40);
-          break;
-        case 'month':
-          setZoomLevel(0.8);
-          setColumnWidth(32);
-          break;
-        case 'year':
-          setZoomLevel(0.6);
-          setColumnWidth(24);
-          break;
-      }
+    const initialMode = (savedDateViewMode === 'day' || savedDateViewMode === 'week' ||
+        savedDateViewMode === 'month' || savedDateViewMode === 'quarter' ||
+        savedDateViewMode === 'halfyear' || savedDateViewMode === 'year')
+        ? savedDateViewMode as DateViewMode
+        : 'month'; // 默认为月视图
+
+    setDateViewMode(initialMode);
+
+    // 设置相应的缩放级别
+    const minWidth = getMinColumnWidth(initialMode);
+    switch (initialMode) {
+      case 'day':
+        setZoomLevel(1.5);
+        setColumnWidth(Math.max(minWidth, 80));
+        break;
+      case 'week':
+        setZoomLevel(1.2);
+        setColumnWidth(Math.max(minWidth, 64));
+        break;
+      case 'month':
+        setZoomLevel(1);
+        setColumnWidth(Math.max(minWidth, 50));
+        break;
+      case 'quarter':
+        setZoomLevel(0.8);
+        setColumnWidth(Math.max(minWidth, 80));
+        break;
+      case 'halfyear':
+        setZoomLevel(0.7);
+        setColumnWidth(Math.max(minWidth, 60));
+        break;
+      case 'year':
+        setZoomLevel(0.6);
+        setColumnWidth(Math.max(minWidth, 60));
+        break;
     }
+
+    // 初始化时设置以今天为中心的时间范围
+    const today = new Date();
+    let initialStartDate: Date;
+    let initialEndDate: Date;
+
+    switch (initialMode) {
+      case 'day':
+        initialStartDate = startOfDay(addDays(today, -15));
+        initialEndDate = startOfDay(addDays(today, 15));
+        break;
+      case 'week':
+        const todayWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+        initialStartDate = startOfWeek(addWeeks(todayWeekStart, -8), { weekStartsOn: 1 });
+        initialEndDate = addDays(startOfWeek(addWeeks(todayWeekStart, 8), { weekStartsOn: 1 }), 6);
+        break;
+      case 'month':
+        const todayMonthStart = startOfMonth(today);
+        initialStartDate = startOfMonth(addMonths(todayMonthStart, -6));
+        initialEndDate = addDays(startOfMonth(addMonths(todayMonthStart, 7)), -1);
+        break;
+      case 'quarter':
+        const todayQuarterStart = startOfQuarter(today);
+        initialStartDate = startOfQuarter(addQuarters(todayQuarterStart, -4));
+        initialEndDate = addDays(startOfQuarter(addQuarters(todayQuarterStart, 5)), -1);
+        break;
+      case 'halfyear':
+        initialStartDate = startOfYear(addYears(today, -2));
+        initialEndDate = addDays(startOfYear(addYears(today, 3)), -1);
+        break;
+      case 'year':
+        initialStartDate = startOfYear(addYears(today, -5));
+        initialEndDate = addDays(startOfYear(addYears(today, 6)), -1);
+        break;
+      default:
+        initialStartDate = startOfDay(addDays(today, -15));
+        initialEndDate = startOfDay(addDays(today, 15));
+        break;
+    }
+
+    setStartDate(initialStartDate);
+    setEndDate(initialEndDate);
+
+    // 标记需要滚动到今天
+    setShouldScrollToToday(true);
   }, []);
   
   // 处理数据，构建树形结构
@@ -154,54 +239,113 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     // 找出所有日期范围
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
-    
+
     data.forEach(item => {
       if (item.startDate) {
         const start = parseISO(item.startDate);
         if (!minDate || start < minDate) minDate = start;
       }
-      
+
       if (item.endDate) {
         const end = parseISO(item.endDate);
         if (!maxDate || end > maxDate) maxDate = end;
       }
-      
+
       // 考虑实际日期
       if (item.actualStartDate) {
         const actualStart = parseISO(item.actualStartDate);
         if (!minDate || actualStart < minDate) minDate = actualStart;
       }
-      
+
       if (item.actualEndDate) {
         const actualEnd = parseISO(item.actualEndDate);
         if (!maxDate || actualEnd > maxDate) maxDate = actualEnd;
       }
     });
-    
-    // 如果没有任何有效日期，设置一个默认的日期范围用于显示空的甘特图
-    if (!minDate || !maxDate) {
-      const today = new Date();
-      setStartDate(startOfDay(today));
-      setEndDate(startOfDay(addDays(today, 30)));
+
+    // 检查是否已经有设置的时间范围（避免覆盖用户的视图选择）
+    const hasExistingTimeRange = startDate && endDate &&
+      Math.abs(differenceInDays(startDate, new Date())) < 365; // 如果时间范围在合理范围内，认为已设置
+
+    if (hasExistingTimeRange) {
+      // 如果已经有合理的时间范围，只确保包含所有数据
+      if (minDate && maxDate) {
+        const currentStart = startDate;
+        const currentEnd = endDate;
+
+        // 只在数据超出当前范围时才扩展
+        if (minDate < currentStart || maxDate > currentEnd) {
+          const newStart = minDate < currentStart ? minDate : currentStart;
+          const newEnd = maxDate > currentEnd ? maxDate : currentEnd;
+
+          setStartDate(newStart);
+          setEndDate(newEnd);
+        }
+      }
       return;
     }
-    
-    // 确保至少有30天的范围
-    if (differenceInDays(maxDate, minDate) < 30) {
-      maxDate = addDays(minDate, 30);
+
+    // 如果没有设置时间范围，使用以今天为中心的默认范围，并确保包含所有数据
+    const today = new Date();
+    let defaultStartDate: Date;
+    let defaultEndDate: Date;
+
+    // 根据当前视图模式设置默认的时间范围，以今天为中心
+    switch (dateViewMode) {
+      case 'day':
+        defaultStartDate = startOfDay(addDays(today, -30));
+        defaultEndDate = startOfDay(addDays(today, 30));
+        break;
+      case 'week':
+        const todayWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+        defaultStartDate = startOfWeek(addWeeks(todayWeekStart, -12), { weekStartsOn: 1 });
+        defaultEndDate = addDays(startOfWeek(addWeeks(todayWeekStart, 12), { weekStartsOn: 1 }), 6);
+        break;
+      case 'month':
+        const todayMonthStart = startOfMonth(today);
+        defaultStartDate = startOfMonth(addMonths(todayMonthStart, -12));
+        defaultEndDate = addDays(startOfMonth(addMonths(todayMonthStart, 13)), -1);
+        break;
+      case 'quarter':
+        const todayQuarterStart = startOfQuarter(today);
+        defaultStartDate = startOfQuarter(addQuarters(todayQuarterStart, -8));
+        defaultEndDate = addDays(startOfQuarter(addQuarters(todayQuarterStart, 9)), -1);
+        break;
+      case 'halfyear':
+        defaultStartDate = startOfYear(addYears(today, -3));
+        defaultEndDate = addDays(startOfYear(addYears(today, 4)), -1);
+        break;
+      case 'year':
+        defaultStartDate = startOfYear(addYears(today, -10));
+        defaultEndDate = addDays(startOfYear(addYears(today, 11)), -1);
+        break;
+      default:
+        defaultStartDate = startOfDay(addDays(today, -180));
+        defaultEndDate = startOfDay(addDays(today, 180));
+        break;
     }
-    
-    // 设置日期范围
-    setStartDate(startOfDay(minDate));
-    setEndDate(startOfDay(addDays(maxDate, 1)));
+
+    // 如果有数据，确保时间范围包含所有数据
+    if (minDate && maxDate) {
+      if (minDate < defaultStartDate) {
+        defaultStartDate = minDate;
+      }
+      if (maxDate > defaultEndDate) {
+        defaultEndDate = maxDate;
+      }
+    }
+
+    // 设置最终的时间范围
+    setStartDate(startOfDay(defaultStartDate));
+    setEndDate(startOfDay(defaultEndDate));
     
   }, [data, expandLevel]);
 
-  // 生成时间刻度 - 修改为支持不同视图模式
+  // 生成时间刻度和时间轴数据
   useEffect(() => {
     const scale: Date[] = [];
     let current = startDate;
-    
+
     switch (dateViewMode) {
       case 'day':
         while (current <= endDate) {
@@ -219,12 +363,22 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         }
         break;
       case 'month':
+      case 'halfyear':
         current = startOfMonth(current);
         // 确保包含endDate所在的月
         const endMonthStart = startOfMonth(endDate);
         while (current <= endMonthStart) {
           scale.push(current);
           current = addMonths(current, 1);
+        }
+        break;
+      case 'quarter':
+        current = startOfQuarter(current);
+        // 确保包含endDate所在的季度
+        const endQuarterStart = startOfQuarter(endDate);
+        while (current <= endQuarterStart) {
+          scale.push(current);
+          current = addQuarters(current, 1);
         }
         break;
       case 'year':
@@ -237,8 +391,406 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         }
         break;
     }
-    
+
     setTimeScale(scale);
+
+    // 生成新的时间轴数据
+    const generateAxisData = (): TimeAxisData => {
+      const upperRow: TimeCell[] = [];
+      const lowerRow: TimeCell[] = [];
+      let totalColumns = 0;
+
+      switch (dateViewMode) {
+        case 'year': {
+          // 年视图：上行显示年代，下行显示年份
+          const years: Date[] = [];
+          let current = startOfYear(startDate);
+          const endYear = startOfYear(endDate);
+
+          while (current <= endYear) {
+            years.push(current);
+            current = addYears(current, 1);
+          }
+
+          // 生成下行（年份）
+          years.forEach(year => {
+            const yearNum = getYear(year);
+            lowerRow.push({
+              date: year,
+              label: `${yearNum}年`,
+              span: 1,
+              isHighlight: yearNum === getYear(new Date())
+            });
+          });
+
+          // 生成上行（年代）
+          let currentDecade = Math.floor(getYear(years[0]) / 10) * 10;
+          let decadeStart = 0;
+          let decadeCount = 0;
+
+          years.forEach((year, index) => {
+            const yearNum = getYear(year);
+            const decade = Math.floor(yearNum / 10) * 10;
+
+            if (decade !== currentDecade) {
+              if (decadeCount > 0) {
+                upperRow.push({
+                  date: years[decadeStart],
+                  label: `${currentDecade}年代`,
+                  span: decadeCount
+                });
+              }
+              currentDecade = decade;
+              decadeStart = index;
+              decadeCount = 1;
+            } else {
+              decadeCount++;
+            }
+          });
+
+          // 添加最后一个年代
+          if (decadeCount > 0) {
+            upperRow.push({
+              date: years[decadeStart],
+              label: `${currentDecade}年代`,
+              span: decadeCount
+            });
+          }
+
+          totalColumns = years.length;
+          break;
+        }
+
+        case 'halfyear': {
+          // 半年视图：上行显示半年，下行显示月份
+          const months: Date[] = [];
+          let current = startOfMonth(startDate);
+          const endMonth = startOfMonth(endDate);
+
+          while (current <= endMonth) {
+            months.push(current);
+            current = addMonths(current, 1);
+          }
+
+          // 生成下行（月份）
+          months.forEach(month => {
+            const monthNum = getMonth(month) + 1;
+            const isCurrentMonth = getYear(month) === getYear(new Date()) && getMonth(month) === getMonth(new Date());
+            lowerRow.push({
+              date: month,
+              label: `${monthNum.toString().padStart(2, '0')}`,
+              span: 1,
+              isHighlight: isCurrentMonth
+            });
+          });
+
+          // 生成上行（半年）
+          let currentHalfYear = `${getYear(months[0])}-${Math.floor(getMonth(months[0]) / 6)}`;
+          let halfYearStart = 0;
+          let halfYearCount = 0;
+
+          months.forEach((month, index) => {
+            const halfYear = `${getYear(month)}-${Math.floor(getMonth(month) / 6)}`;
+
+            if (halfYear !== currentHalfYear) {
+              if (halfYearCount > 0) {
+                const halfYearDate = months[halfYearStart];
+                const year = getYear(halfYearDate);
+                const half = Math.floor(getMonth(halfYearDate) / 6) === 0 ? '上' : '下';
+                upperRow.push({
+                  date: halfYearDate,
+                  label: `${year}.${half}`,
+                  span: halfYearCount
+                });
+              }
+              currentHalfYear = halfYear;
+              halfYearStart = index;
+              halfYearCount = 1;
+            } else {
+              halfYearCount++;
+            }
+          });
+
+          // 添加最后一个半年
+          if (halfYearCount > 0) {
+            const halfYearDate = months[halfYearStart];
+            const year = getYear(halfYearDate);
+            const half = Math.floor(getMonth(halfYearDate) / 6) === 0 ? '上' : '下';
+            upperRow.push({
+              date: halfYearDate,
+              label: `${year}.${half}`,
+              span: halfYearCount
+            });
+          }
+
+          totalColumns = months.length;
+          break;
+        }
+
+        case 'quarter': {
+          // 季度视图：上行显示年份，下行显示季度
+          const quarters: Date[] = [];
+          let current = startOfQuarter(startDate);
+          const endQuarter = startOfQuarter(endDate);
+
+          while (current <= endQuarter) {
+            quarters.push(current);
+            current = addQuarters(current, 1);
+          }
+
+          // 生成下行（季度）
+          quarters.forEach(quarter => {
+            const quarterNum = getQuarter(quarter);
+            const quarterNames = ['', '一季度', '二季度', '三季度', '四季度'];
+            const isCurrentQuarter = getYear(quarter) === getYear(new Date()) && getQuarter(quarter) === getQuarter(new Date());
+            lowerRow.push({
+              date: quarter,
+              label: quarterNames[quarterNum],
+              span: 1,
+              isHighlight: isCurrentQuarter
+            });
+          });
+
+          // 生成上行（年份）
+          let currentYear = getYear(quarters[0]);
+          let yearStart = 0;
+          let yearCount = 0;
+
+          quarters.forEach((quarter, index) => {
+            const year = getYear(quarter);
+
+            if (year !== currentYear) {
+              if (yearCount > 0) {
+                upperRow.push({
+                  date: quarters[yearStart],
+                  label: `${currentYear}年`,
+                  span: yearCount
+                });
+              }
+              currentYear = year;
+              yearStart = index;
+              yearCount = 1;
+            } else {
+              yearCount++;
+            }
+          });
+
+          // 添加最后一个年份
+          if (yearCount > 0) {
+            upperRow.push({
+              date: quarters[yearStart],
+              label: `${currentYear}年`,
+              span: yearCount
+            });
+          }
+
+          totalColumns = quarters.length;
+          break;
+        }
+
+        case 'month': {
+          // 月视图：上行显示季度，下行显示月份
+          const months: Date[] = [];
+          let current = startOfMonth(startDate);
+          const endMonth = startOfMonth(endDate);
+
+          while (current <= endMonth) {
+            months.push(current);
+            current = addMonths(current, 1);
+          }
+
+          // 生成下行（月份）
+          months.forEach(month => {
+            const monthNum = getMonth(month) + 1;
+            const isCurrentMonth = getYear(month) === getYear(new Date()) && getMonth(month) === getMonth(new Date());
+            lowerRow.push({
+              date: month,
+              label: `${monthNum}月`,
+              span: 1,
+              isHighlight: isCurrentMonth
+            });
+          });
+
+          // 生成上行（季度）
+          let currentQuarter = `${getYear(months[0])}-${getQuarter(months[0])}`;
+          let quarterStart = 0;
+          let quarterCount = 0;
+
+          months.forEach((month, index) => {
+            const quarter = `${getYear(month)}-${getQuarter(month)}`;
+
+            if (quarter !== currentQuarter) {
+              if (quarterCount > 0) {
+                const quarterDate = months[quarterStart];
+                const year = getYear(quarterDate);
+                const quarterNum = getQuarter(quarterDate);
+                const quarterNames = ['', '一季度', '二季度', '三季度', '四季度'];
+                upperRow.push({
+                  date: quarterDate,
+                  label: `${year}.${quarterNames[quarterNum]}`,
+                  span: quarterCount
+                });
+              }
+              currentQuarter = quarter;
+              quarterStart = index;
+              quarterCount = 1;
+            } else {
+              quarterCount++;
+            }
+          });
+
+          // 添加最后一个季度
+          if (quarterCount > 0) {
+            const quarterDate = months[quarterStart];
+            const year = getYear(quarterDate);
+            const quarterNum = getQuarter(quarterDate);
+            const quarterNames = ['', '一季度', '二季度', '三季度', '四季度'];
+            upperRow.push({
+              date: quarterDate,
+              label: `${year}.${quarterNames[quarterNum]}`,
+              span: quarterCount
+            });
+          }
+
+          totalColumns = months.length;
+          break;
+        }
+
+        case 'week': {
+          // 周视图：上行显示月份，下行显示周数
+          const weeks: Date[] = [];
+          let current = startOfWeek(startDate, { weekStartsOn: 1 });
+          const endWeek = startOfWeek(endDate, { weekStartsOn: 1 });
+
+          while (current <= endWeek) {
+            weeks.push(current);
+            current = addWeeks(current, 1);
+          }
+
+          // 生成下行（周数）
+          weeks.forEach(week => {
+            const { year: weekYear, week: weekNum } = getWeekNumber(week);
+            const isCurrentWeek = isWithinInterval(new Date(), { start: week, end: addWeeks(week, 1) });
+            lowerRow.push({
+              date: week,
+              label: `${weekNum}周`,
+              span: 1,
+              isHighlight: isCurrentWeek
+            });
+          });
+
+          // 生成上行（月份）- 基于周开始日期的实际年月
+          let currentYearMonth = '';
+          let monthStart = 0;
+          let monthCount = 0;
+
+          weeks.forEach((week, index) => {
+            // 使用周开始日期的实际年月来分组
+            const actualYear = getYear(week);
+            const actualMonth = getMonth(week);
+            const yearMonth = `${actualYear}-${actualMonth}`;
+
+            if (yearMonth !== currentYearMonth) {
+              if (monthCount > 0) {
+                const monthDate = weeks[monthStart];
+                const displayYear = getYear(monthDate);
+                const displayMonth = getMonth(monthDate);
+                upperRow.push({
+                  date: monthDate,
+                  label: `${displayYear}年${(displayMonth + 1).toString().padStart(2, '0')}月`,
+                  span: monthCount
+                });
+              }
+              currentYearMonth = yearMonth;
+              monthStart = index;
+              monthCount = 1;
+            } else {
+              monthCount++;
+            }
+          });
+
+          // 添加最后一个月份
+          if (monthCount > 0) {
+            const monthDate = weeks[monthStart];
+            const displayYear = getYear(monthDate);
+            const displayMonth = getMonth(monthDate);
+            upperRow.push({
+              date: monthDate,
+              label: `${displayYear}年${(displayMonth + 1).toString().padStart(2, '0')}月`,
+              span: monthCount
+            });
+          }
+
+          totalColumns = weeks.length;
+          break;
+        }
+
+        case 'day': {
+          // 日视图：上行显示月份，下行显示日期
+          const days: Date[] = [];
+          let current = startOfDay(startDate);
+
+          while (current <= endDate) {
+            days.push(current);
+            current = addDays(current, 1);
+          }
+
+          // 生成下行（日期）
+          days.forEach(day => {
+            const dayNum = day.getDate();
+            lowerRow.push({
+              date: day,
+              label: `${dayNum.toString().padStart(2, '0')}日`,
+              span: 1,
+              isHighlight: isSameDay(day, new Date())
+            });
+          });
+
+          // 生成上行（月份）
+          let currentMonth = `${getYear(days[0])}-${getMonth(days[0])}`;
+          let monthStart = 0;
+          let monthCount = 0;
+
+          days.forEach((day, index) => {
+            const month = `${getYear(day)}-${getMonth(day)}`;
+
+            if (month !== currentMonth) {
+              if (monthCount > 0) {
+                const monthDate = days[monthStart];
+                upperRow.push({
+                  date: monthDate,
+                  label: `${getYear(monthDate)}年${(getMonth(monthDate) + 1).toString().padStart(2, '0')}月`,
+                  span: monthCount
+                });
+              }
+              currentMonth = month;
+              monthStart = index;
+              monthCount = 1;
+            } else {
+              monthCount++;
+            }
+          });
+
+          // 添加最后一个月份
+          if (monthCount > 0) {
+            const monthDate = days[monthStart];
+            upperRow.push({
+              date: monthDate,
+              label: `${getYear(monthDate)}年${(getMonth(monthDate) + 1).toString().padStart(2, '0')}月`,
+              span: monthCount
+            });
+          }
+
+          totalColumns = days.length;
+          break;
+        }
+      }
+
+      return { upperRow, lowerRow, totalColumns };
+    };
+
+    const axisData = generateAxisData();
+    setTimeAxisData(axisData);
   }, [startDate, endDate, dateViewMode]);
 
   // 计算可见的项目
@@ -284,6 +836,44 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     setVisibleItems(buildVisibleItems());
   }, [data, expandedItems]);
 
+  // 监听时间轴数据变化，在需要时自动滚动到今天
+  useEffect(() => {
+    if (shouldScrollToToday && timeAxisData.lowerRow.length > 0) {
+      setTimeout(() => {
+        scrollToToday();
+        setShouldScrollToToday(false);
+      }, 100);
+    }
+  }, [timeAxisData, shouldScrollToToday]);
+
+  // 检查今天是否在当前时间范围内
+  useEffect(() => {
+    const today = new Date();
+    const isInRange = today >= startDate && today <= endDate;
+    setIsTodayVisible(isInRange);
+  }, [startDate, endDate]);
+
+  // 监听时间轴扩展后的滚动位置调整
+  useEffect(() => {
+    if (pendingScrollAdjustment !== null && timeAxisData.totalColumns > 0) {
+      setTimeout(() => {
+        const contentElements = document.querySelectorAll('.gantt-content-scroll');
+
+        if (containerRef.current) {
+          containerRef.current.scrollLeft = pendingScrollAdjustment;
+        }
+
+        contentElements.forEach(el => {
+          if (el instanceof HTMLElement) {
+            el.scrollLeft = pendingScrollAdjustment;
+          }
+        });
+
+        setPendingScrollAdjustment(null);
+      }, 50);
+    }
+  }, [timeAxisData, pendingScrollAdjustment]);
+
   // 切换项目展开/折叠状态
   const toggleExpand = (itemId: string) => {
     setExpandedItems(prev => ({
@@ -315,26 +905,20 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         duration = Math.ceil((differenceInDays(end, start) + 1) / 7);
         break;
       case 'month':
+      case 'halfyear':
         startPos = (getYear(start) - getYear(startDate)) * 12 + getMonth(start) - getMonth(startDate);
         const endMonth = (getYear(end) - getYear(startDate)) * 12 + getMonth(end) - getMonth(startDate);
         duration = endMonth - startPos + 1;
         break;
+      case 'quarter':
+        const startQuarter = (getYear(start) - getYear(startDate)) * 4 + getQuarter(start) - getQuarter(startDate);
+        const endQuarter = (getYear(end) - getYear(startDate)) * 4 + getQuarter(end) - getQuarter(startDate);
+        startPos = startQuarter;
+        duration = endQuarter - startQuarter + 1;
+        break;
       case 'year':
         startPos = getYear(start) - getYear(startDate);
         duration = getYear(end) - getYear(start) + 1;
-        // 调试信息
-        console.log('年视图任务条位置计算:', {
-          itemName: item.name,
-          startDate: item.startDate,
-          endDate: item.endDate,
-          parsedStart: start,
-          parsedEnd: end,
-          startYear: getYear(start),
-          endYear: getYear(end),
-          baseStartYear: getYear(startDate),
-          startPos,
-          duration
-        });
         break;
     }
     
@@ -381,12 +965,24 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         duration = item.actualEndDate ? Math.ceil((differenceInDays(end, start) + 1) / 7) : 1; // 如果没有结束日期，显示1周宽度
         break;
       case 'month':
+      case 'halfyear':
         startPos = (getYear(start) - getYear(startDate)) * 12 + getMonth(start) - getMonth(startDate);
         if (item.actualEndDate) {
         const endMonth = (getYear(end) - getYear(startDate)) * 12 + getMonth(end) - getMonth(startDate);
         duration = endMonth - startPos + 1;
         } else {
           duration = 1; // 如果没有结束日期，显示1个月宽度
+        }
+        break;
+      case 'quarter':
+        const startQuarter = (getYear(start) - getYear(startDate)) * 4 + getQuarter(start) - getQuarter(startDate);
+        if (item.actualEndDate) {
+          const endQuarter = (getYear(end) - getYear(startDate)) * 4 + getQuarter(end) - getQuarter(startDate);
+          startPos = startQuarter;
+          duration = endQuarter - startQuarter + 1;
+        } else {
+          startPos = startQuarter;
+          duration = 1; // 如果没有结束日期，显示1个季度宽度
         }
         break;
       case 'year':
@@ -544,10 +1140,11 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
           </>
         );
       case 'week':
+        const { year: weekYear, week: weekNum } = getWeekNumber(date);
         return (
           <>
-            <div>{format(date, 'yyyy年', { locale: zhCN })}</div>
-            <div>{`第${getWeek(date, { weekStartsOn: 1 })}周`}</div>
+            <div>{`${weekYear}年`}</div>
+            <div>{`第${weekNum}周`}</div>
           </>
         );
       case 'month':
@@ -560,29 +1157,90 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   // 切换日期视图模式
   const changeDateViewMode = (mode: DateViewMode) => {
     setDateViewMode(mode);
-    
+
     // 保存视图模式到localStorage
     localStorage.setItem('gantt_date_view_mode', mode);
-    
+
     // 根据视图模式调整缩放级别
+    const minWidth = getMinColumnWidth(mode);
     switch (mode) {
       case 'day':
         setZoomLevel(1.5);
-        setColumnWidth(60);
+        setColumnWidth(Math.max(minWidth, 80));
         break;
       case 'week':
-        setZoomLevel(1);
-        setColumnWidth(40);
+        setZoomLevel(1.2);
+        setColumnWidth(Math.max(minWidth, 64));
         break;
       case 'month':
+        setZoomLevel(1);
+        setColumnWidth(Math.max(minWidth, 50));
+        break;
+      case 'quarter':
         setZoomLevel(0.8);
-        setColumnWidth(32);
+        setColumnWidth(Math.max(minWidth, 80));
+        break;
+      case 'halfyear':
+        setZoomLevel(0.7);
+        setColumnWidth(Math.max(minWidth, 60));
         break;
       case 'year':
         setZoomLevel(0.6);
-        setColumnWidth(24);
+        setColumnWidth(Math.max(minWidth, 60));
         break;
     }
+
+    // 切换视图模式后，重新计算以今天为中心的时间范围
+    const today = new Date();
+    let newStartDate: Date;
+    let newEndDate: Date;
+
+    // 根据新的视图模式计算合适的时间范围，以今天为中心
+    switch (mode) {
+      case 'day':
+        // 日视图：以今天为中心，前后各显示15天
+        newStartDate = startOfDay(addDays(today, -15));
+        newEndDate = startOfDay(addDays(today, 15));
+        break;
+      case 'week':
+        // 周视图：以今天所在周为中心，前后各显示8周
+        const todayWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+        newStartDate = startOfWeek(addWeeks(todayWeekStart, -8), { weekStartsOn: 1 });
+        newEndDate = addDays(startOfWeek(addWeeks(todayWeekStart, 8), { weekStartsOn: 1 }), 6);
+        break;
+      case 'month':
+        // 月视图：以今天所在月为中心，前后各显示6个月
+        const todayMonthStart = startOfMonth(today);
+        newStartDate = startOfMonth(addMonths(todayMonthStart, -6));
+        newEndDate = addDays(startOfMonth(addMonths(todayMonthStart, 7)), -1);
+        break;
+      case 'quarter':
+        // 季度视图：以今天所在季度为中心，前后各显示4个季度
+        const todayQuarterStart = startOfQuarter(today);
+        newStartDate = startOfQuarter(addQuarters(todayQuarterStart, -4));
+        newEndDate = addDays(startOfQuarter(addQuarters(todayQuarterStart, 5)), -1);
+        break;
+      case 'halfyear':
+        // 半年视图：以今天所在半年为中心，前后各显示2年
+        newStartDate = startOfYear(addYears(today, -2));
+        newEndDate = addDays(startOfYear(addYears(today, 3)), -1);
+        break;
+      case 'year':
+        // 年视图：以今天所在年为中心，前后各显示5年
+        newStartDate = startOfYear(addYears(today, -5));
+        newEndDate = addDays(startOfYear(addYears(today, 6)), -1);
+        break;
+      default:
+        newStartDate = startOfDay(addDays(today, -15));
+        newEndDate = startOfDay(addDays(today, 15));
+        break;
+    }
+
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+
+    // 标记需要滚动到今天
+    setShouldScrollToToday(true);
   };
 
   // 处理滚动事件，控制只能垂直滚动，水平滚动需要拖动
@@ -595,10 +1253,14 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   // 处理水平滚动事件
   const handleHorizontalScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollLeft = e.currentTarget.scrollLeft;
+    const scrollWidth = e.currentTarget.scrollWidth;
+    const clientWidth = e.currentTarget.clientWidth;
+
+    // 同步时间表头的滚动位置
     if (containerRef.current) {
       containerRef.current.scrollLeft = scrollLeft;
     }
-    
+
     // 同步其他甘特图内容区域的滚动位置
     const contentElements = document.querySelectorAll('.gantt-content-scroll');
     contentElements.forEach(el => {
@@ -606,23 +1268,250 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         el.scrollLeft = scrollLeft;
       }
     });
+
+    // 检查是否需要扩展时间范围
+    const scrollThreshold = Math.max(100, columnWidth * 2); // 滚动阈值，至少100像素或2个列宽
+
+    // 向前扩展（滚动到最左边）
+    if (scrollLeft <= scrollThreshold && !isExtending) {
+      extendTimeRangeBackward(scrollLeft);
+    }
+
+    // 向后扩展（滚动到最右边）
+    if (scrollLeft >= scrollWidth - clientWidth - scrollThreshold && !isExtending) {
+      extendTimeRangeForward();
+    }
+
+    setLastScrollLeft(scrollLeft);
   };
 
-  // 获取时间表头高度
+  // 获取时间表头高度 - 固定为2行
   const getTimeHeaderHeight = () => {
-    switch (dateViewMode) {
-      case 'day':
-        return 96; // 4层: 年月周日 (24px * 4)
-      case 'week':
-        return 72; // 3层: 年月周 (24px * 3)
-      case 'month':
-        return 48; // 2层: 年月 (24px * 2)
-      case 'year':
-        return 24; // 1层: 年 (24px * 1)
-      default:
-        return 96;
+    return 48; // 固定2行: 上级时间单位 + 下级时间单位 (24px * 2)
+  };
+
+  // 获取视图模式的最小列宽
+  const getMinColumnWidth = (mode: DateViewMode): number => {
+    switch (mode) {
+      case 'day': return 60; // 日期需要足够宽度显示"01日"
+      case 'week': return 50; // 周数需要足够宽度显示"25周"
+      case 'month': return 40; // 月份需要足够宽度显示"1月"
+      case 'quarter': return 70; // 季度需要足够宽度显示"一季度"
+      case 'halfyear': return 30; // 半年视图下月份显示"01"
+      case 'year': return 50; // 年份需要足够宽度显示"2025年"
+      default: return 40;
     }
   };
+
+  // 获取周数，确保显示正确的年份和周数
+  const getWeekNumber = (date: Date): { year: number; week: number } => {
+    // 使用ISO周年和ISO周数
+    const weekYear = getWeekYear(date, { weekStartsOn: 1 });
+    const isoWeek = getISOWeek(date);
+
+    // 调试信息：只在ISO周年与常规年份不一致时输出
+    if (process.env.NODE_ENV === 'development') {
+      const regularYear = getYear(date);
+      const regularWeek = getWeek(date, { weekStartsOn: 1 });
+
+      // 只在ISO周年与常规年份不一致时输出调试信息
+      if (weekYear !== regularYear) {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        console.log(`跨年周检测 - 日期: ${dateStr}, 常规年份: ${regularYear}, 常规周数: ${regularWeek}, ISO周年: ${weekYear}, ISO周数: ${isoWeek}`);
+      }
+    }
+
+    return {
+      year: weekYear,
+      week: isoWeek
+    };
+  };
+
+  // 返回今天 - 重新计算以今天为中心的时间范围
+  const goToToday = () => {
+    const today = new Date();
+    let newStartDate: Date;
+    let newEndDate: Date;
+
+    // 根据当前视图模式计算合适的时间范围，以今天为中心
+    switch (dateViewMode) {
+      case 'day':
+        // 日视图：以今天为中心，前后各显示15天
+        newStartDate = startOfDay(addDays(today, -15));
+        newEndDate = startOfDay(addDays(today, 15));
+        break;
+      case 'week':
+        // 周视图：以今天所在周为中心，前后各显示8周
+        const todayWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+        newStartDate = startOfWeek(addWeeks(todayWeekStart, -8), { weekStartsOn: 1 });
+        newEndDate = addDays(startOfWeek(addWeeks(todayWeekStart, 8), { weekStartsOn: 1 }), 6);
+        break;
+      case 'month':
+        // 月视图：以今天所在月为中心，前后各显示6个月
+        const todayMonthStart = startOfMonth(today);
+        newStartDate = startOfMonth(addMonths(todayMonthStart, -6));
+        newEndDate = addDays(startOfMonth(addMonths(todayMonthStart, 7)), -1);
+        break;
+      case 'quarter':
+        // 季度视图：以今天所在季度为中心，前后各显示4个季度
+        const todayQuarterStart = startOfQuarter(today);
+        newStartDate = startOfQuarter(addQuarters(todayQuarterStart, -4));
+        newEndDate = addDays(startOfQuarter(addQuarters(todayQuarterStart, 5)), -1);
+        break;
+      case 'halfyear':
+        // 半年视图：以今天所在半年为中心，前后各显示2年
+        newStartDate = startOfYear(addYears(today, -2));
+        newEndDate = addDays(startOfYear(addYears(today, 3)), -1);
+        break;
+      case 'year':
+        // 年视图：以今天所在年为中心，前后各显示5年
+        newStartDate = startOfYear(addYears(today, -5));
+        newEndDate = addDays(startOfYear(addYears(today, 6)), -1);
+        break;
+      default:
+        newStartDate = startOfDay(addDays(today, -15));
+        newEndDate = startOfDay(addDays(today, 15));
+        break;
+    }
+
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+
+    // 标记需要滚动到今天
+    setShouldScrollToToday(true);
+  };
+
+  // 滚动到今天的位置
+  const scrollToToday = () => {
+    if (!containerRef.current || !scrollContainerRef.current) return;
+
+    // 找到今天在时间轴中的位置
+    const todayIndex = timeAxisData.lowerRow.findIndex(cell => cell.isHighlight);
+
+    if (todayIndex >= 0) {
+      // 计算今天的位置（像素）
+      const todayPosition = todayIndex * columnWidth;
+
+      // 获取容器宽度
+      const containerWidth = containerRef.current.offsetWidth;
+
+      // 计算滚动位置，使今天位于中间
+      const scrollPosition = Math.max(0, todayPosition - containerWidth / 2);
+
+      // 同步滚动所有相关容器
+      containerRef.current.scrollLeft = scrollPosition;
+
+      // 同步甘特图内容区域的滚动
+      const contentElements = document.querySelectorAll('.gantt-content-scroll');
+      contentElements.forEach(el => {
+        if (el instanceof HTMLElement) {
+          el.scrollLeft = scrollPosition;
+        }
+      });
+    }
+  };
+
+  // 向前扩展时间范围（更早的日期）
+  const extendTimeRangeBackward = (currentScrollLeft: number) => {
+    if (isExtending) return;
+    setIsExtending(true);
+    setShowExtendingHint('正在加载更早的日期...');
+
+    // 记录当前的时间轴长度和滚动位置
+    const currentTimeAxisLength = timeAxisData.totalColumns;
+
+    let extensionAmount: Date;
+    let expectedNewColumns: number;
+
+    switch (dateViewMode) {
+      case 'day':
+        extensionAmount = addDays(startDate, -30); // 向前扩展30天
+        expectedNewColumns = 30;
+        break;
+      case 'week':
+        extensionAmount = addWeeks(startDate, -12); // 向前扩展12周
+        expectedNewColumns = 12;
+        break;
+      case 'month':
+        extensionAmount = addMonths(startDate, -6); // 向前扩展6个月
+        expectedNewColumns = 6;
+        break;
+      case 'quarter':
+        extensionAmount = addQuarters(startDate, -4); // 向前扩展4个季度
+        expectedNewColumns = 4;
+        break;
+      case 'halfyear':
+        extensionAmount = addYears(startDate, -2); // 向前扩展2年
+        expectedNewColumns = 24; // 2年 * 12个月
+        break;
+      case 'year':
+        extensionAmount = addYears(startDate, -5); // 向前扩展5年
+        expectedNewColumns = 5;
+        break;
+      default:
+        extensionAmount = addDays(startDate, -30);
+        expectedNewColumns = 30;
+        break;
+    }
+
+    // 计算新的滚动位置
+    const scrollOffset = expectedNewColumns * columnWidth;
+    const newScrollLeft = currentScrollLeft + scrollOffset;
+
+    // 设置待处理的滚动调整
+    setPendingScrollAdjustment(Math.max(0, newScrollLeft));
+
+    setStartDate(extensionAmount);
+
+    // 延迟重置扩展状态，避免频繁触发
+    setTimeout(() => {
+      setIsExtending(false);
+      setShowExtendingHint(null);
+    }, 1000);
+  };
+
+  // 向后扩展时间范围（更晚的日期）
+  const extendTimeRangeForward = () => {
+    if (isExtending) return;
+    setIsExtending(true);
+    setShowExtendingHint('正在加载更晚的日期...');
+
+    let extensionAmount: Date;
+
+    switch (dateViewMode) {
+      case 'day':
+        extensionAmount = addDays(endDate, 30); // 向后扩展30天
+        break;
+      case 'week':
+        extensionAmount = addWeeks(endDate, 12); // 向后扩展12周
+        break;
+      case 'month':
+        extensionAmount = addMonths(endDate, 6); // 向后扩展6个月
+        break;
+      case 'quarter':
+        extensionAmount = addQuarters(endDate, 4); // 向后扩展4个季度
+        break;
+      case 'halfyear':
+        extensionAmount = addYears(endDate, 2); // 向后扩展2年
+        break;
+      case 'year':
+        extensionAmount = addYears(endDate, 5); // 向后扩展5年
+        break;
+      default:
+        extensionAmount = addDays(endDate, 30);
+        break;
+    }
+
+    setEndDate(extensionAmount);
+
+    // 延迟重置扩展状态，避免频繁触发
+    setTimeout(() => {
+      setIsExtending(false);
+      setShowExtendingHint(null);
+    }, 1000);
+  };
+
+
 
   // 处理展开层级变化
   const handleExpandLevelChange = (level: number) => {
@@ -719,6 +1608,21 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         
         {/* 日期视图模式切换 */}
         <div className="ml-auto flex items-center mr-4 space-x-2">
+          {/* 返回今天按钮 */}
+          <button
+            className={`px-3 py-1 text-xs rounded flex items-center gap-1 shadow-sm transition-all ${
+              isTodayVisible
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : 'bg-orange-500 text-white hover:bg-orange-600 animate-pulse'
+            }`}
+            onClick={goToToday}
+            title={isTodayVisible ? "今天在当前视图中，点击居中显示" : "今天不在当前视图中，点击返回今天"}
+          >
+            <Target className="h-3 w-3" />
+            今天
+            {!isTodayVisible && <span className="ml-1 text-xs">!</span>}
+          </button>
+
           {/* 展开层级控制 */}
           <select
             value={expandLevel}
@@ -751,6 +1655,18 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             月
           </button>
           <button
+            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'quarter' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
+            onClick={() => changeDateViewMode('quarter')}
+          >
+            季度
+          </button>
+          <button
+            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'halfyear' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
+            onClick={() => changeDateViewMode('halfyear')}
+          >
+            半年
+          </button>
+          <button
             className={`px-2 py-1 text-xs rounded ${dateViewMode === 'year' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
             onClick={() => changeDateViewMode('year')}
           >
@@ -758,44 +1674,76 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
           </button>
           
           <div className="flex items-center border-l border-gray-200 pl-2">
-            <button 
+            <button
               className="p-1 text-gray-500 hover:text-gray-700"
               onClick={() => {
                 const newZoomLevel = Math.max(0.5, zoomLevel - 0.2);
                 setZoomLevel(newZoomLevel);
-                setColumnWidth(40 * newZoomLevel);
-                
+
+                // 根据当前视图模式和缩放级别计算列宽
+                let baseWidth = 50;
+                switch (dateViewMode) {
+                  case 'day': baseWidth = 80; break;
+                  case 'week': baseWidth = 64; break;
+                  case 'month': baseWidth = 50; break;
+                  case 'quarter': baseWidth = 80; break;
+                  case 'halfyear': baseWidth = 60; break;
+                  case 'year': baseWidth = 60; break;
+                }
+                const minWidth = getMinColumnWidth(dateViewMode);
+                setColumnWidth(Math.max(minWidth, baseWidth * newZoomLevel));
+
                 // 根据缩放级别自动切换日期视图模式
-                if (newZoomLevel < 0.7 && dateViewMode !== 'year') {
-                  setDateViewMode('year');
-                } else if (newZoomLevel < 1 && newZoomLevel >= 0.7 && dateViewMode !== 'month') {
-                  setDateViewMode('month');
-                } else if (newZoomLevel < 1.5 && newZoomLevel >= 1 && dateViewMode !== 'week') {
-                  setDateViewMode('week');
-                } else if (newZoomLevel >= 1.5 && dateViewMode !== 'day') {
-                  setDateViewMode('day');
+                if (newZoomLevel < 0.65 && dateViewMode !== 'year') {
+                  changeDateViewMode('year');
+                } else if (newZoomLevel < 0.75 && newZoomLevel >= 0.65 && dateViewMode !== 'halfyear') {
+                  changeDateViewMode('halfyear');
+                } else if (newZoomLevel < 0.9 && newZoomLevel >= 0.75 && dateViewMode !== 'quarter') {
+                  changeDateViewMode('quarter');
+                } else if (newZoomLevel < 1.1 && newZoomLevel >= 0.9 && dateViewMode !== 'month') {
+                  changeDateViewMode('month');
+                } else if (newZoomLevel < 1.4 && newZoomLevel >= 1.1 && dateViewMode !== 'week') {
+                  changeDateViewMode('week');
+                } else if (newZoomLevel >= 1.4 && dateViewMode !== 'day') {
+                  changeDateViewMode('day');
                 }
               }}
             >
               <ZoomOut className="h-4 w-4" />
             </button>
             <span className="mx-1 text-xs text-gray-500">{Math.round(zoomLevel * 100)}%</span>
-            <button 
+            <button
               className="p-1 text-gray-500 hover:text-gray-700"
               onClick={() => {
                 const newZoomLevel = Math.min(3, zoomLevel + 0.2);
                 setZoomLevel(newZoomLevel);
-                setColumnWidth(40 * newZoomLevel);
-                
+
+                // 根据当前视图模式和缩放级别计算列宽
+                let baseWidth = 50;
+                switch (dateViewMode) {
+                  case 'day': baseWidth = 80; break;
+                  case 'week': baseWidth = 64; break;
+                  case 'month': baseWidth = 50; break;
+                  case 'quarter': baseWidth = 80; break;
+                  case 'halfyear': baseWidth = 60; break;
+                  case 'year': baseWidth = 60; break;
+                }
+                const minWidth = getMinColumnWidth(dateViewMode);
+                setColumnWidth(Math.max(minWidth, baseWidth * newZoomLevel));
+
                 // 根据缩放级别自动切换日期视图模式
-                if (newZoomLevel < 0.7 && dateViewMode !== 'year') {
-                  setDateViewMode('year');
-                } else if (newZoomLevel < 1 && newZoomLevel >= 0.7 && dateViewMode !== 'month') {
-                  setDateViewMode('month');
-                } else if (newZoomLevel < 1.5 && newZoomLevel >= 1 && dateViewMode !== 'week') {
-                  setDateViewMode('week');
-                } else if (newZoomLevel >= 1.5 && dateViewMode !== 'day') {
-                  setDateViewMode('day');
+                if (newZoomLevel < 0.65 && dateViewMode !== 'year') {
+                  changeDateViewMode('year');
+                } else if (newZoomLevel < 0.75 && newZoomLevel >= 0.65 && dateViewMode !== 'halfyear') {
+                  changeDateViewMode('halfyear');
+                } else if (newZoomLevel < 0.9 && newZoomLevel >= 0.75 && dateViewMode !== 'quarter') {
+                  changeDateViewMode('quarter');
+                } else if (newZoomLevel < 1.1 && newZoomLevel >= 0.9 && dateViewMode !== 'month') {
+                  changeDateViewMode('month');
+                } else if (newZoomLevel < 1.4 && newZoomLevel >= 1.1 && dateViewMode !== 'week') {
+                  changeDateViewMode('week');
+                } else if (newZoomLevel >= 1.4 && dateViewMode !== 'day') {
+                  changeDateViewMode('day');
                 }
               }}
             >
@@ -827,157 +1775,83 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
           </div>
           
           {/* 右侧时间表头 - 固定在顶部，与甘特图内容同步水平滚动 */}
-          <div className="flex-1 overflow-hidden">
-            <div 
+          <div className="flex-1 overflow-hidden relative">
+            {/* 扩展提示 */}
+            {showExtendingHint && (
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 bg-blue-500 text-white px-3 py-1 rounded-md text-xs shadow-lg">
+                {showExtendingHint}
+              </div>
+            )}
+
+            <div
               className="bg-gray-100 border-b border-gray-200 overflow-hidden"
               ref={containerRef}
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              <div style={{ width: `${timeScale.length * columnWidth}px` }}>
-                {/* 年份行 - 所有视图模式下都显示 */}
+              <div style={{ width: `${timeAxisData.totalColumns * columnWidth}px` }} className="relative">
+                {/* 时间轴垂直分割线 - 连续的整体线 */}
+                {timeAxisData.lowerRow.map((_, index) => {
+                  // 跳过最后一条线，避免在右边缘显示
+                  if (index === timeAxisData.lowerRow.length - 1) return null;
+
+                  return (
+                    <div
+                      key={`header-grid-line-${index}`}
+                      className="absolute top-0 bottom-0 w-px bg-gray-200 z-5"
+                      style={{
+                        left: `${(index + 1) * columnWidth}px`
+                      }}
+                    ></div>
+                  );
+                })}
+
+                {/* 左侧无限滚动提示 */}
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-gray-200/80 to-transparent z-10 flex items-center justify-center">
+                  <ChevronLeft className="h-3 w-3 text-gray-500" />
+                </div>
+
+                {/* 右侧无限滚动提示 */}
+                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-gray-200/80 to-transparent z-10 flex items-center justify-center">
+                  <ChevronRight className="h-3 w-3 text-gray-500" />
+                </div>
+
+                {/* 上级时间单位行 */}
                 <div className="flex border-b border-gray-200 bg-blue-50/30">
-                  {timeScale.map((date, index) => {
-                    const prevDate = index > 0 ? timeScale[index - 1] : null;
-                    const isSameYear = prevDate && getYear(date) === getYear(prevDate);
-                    
-                    // 只在年份变化或第一个项目时显示年份
-                    if (!isSameYear) {
-                      // 计算同年的单元格数量
-                      let sameYearCount = 1;
-                      for (let i = index + 1; i < timeScale.length; i++) {
-                        if (getYear(timeScale[i]) === getYear(date)) {
-                          sameYearCount++;
-                        } else {
-                          break;
-                        }
-                      }
-                      
-                      // 确保年份有足够宽度显示完整文字
-                      const minYearWidth = dateViewMode === 'year' ? 80 : 60;
-                      const yearWidth = dateViewMode === 'month' ?
-                        columnWidth * sameYearCount : // 月视图下严格按列宽计算
-                        Math.max(minYearWidth, columnWidth * sameYearCount);
-                      
-                      return (
-                        <div
-                          key={`year-${index}`}
-                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
-                          style={{ 
-                            width: `${yearWidth}px`,
-                            height: '24px'
-                          }}
-                        >
-                          {format(date, 'yyyy年', { locale: zhCN })}
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
-                
-                {/* 月份行 - 天/周/月视图模式下显示 */}
-                {dateViewMode !== 'year' && (
-                <div className="flex border-b border-gray-200 bg-green-50/30">
-                  {timeScale.map((date, index) => {
-                    const prevDate = index > 0 ? timeScale[index - 1] : null;
-                    const isSameMonth = prevDate && 
-                                       getYear(date) === getYear(prevDate) && 
-                                       getMonth(date) === getMonth(prevDate);
-                    
-                    // 只在月份变化或第一个项目时显示月份
-                    if (!isSameMonth) {
-                      // 计算同月的单元格数量
-                      let sameMonthCount = 1;
-
-                      // 在月视图下，每个时间刻度就是一个月，所以sameMonthCount始终为1
-                      if (dateViewMode !== 'month') {
-                        for (let i = index + 1; i < timeScale.length; i++) {
-                          if (getYear(timeScale[i]) === getYear(date) &&
-                              getMonth(timeScale[i]) === getMonth(date)) {
-                            sameMonthCount++;
-                          } else {
-                            break;
-                          }
-                        }
-                      }
-
-                      // 月视图下使用固定的列宽
-                      const monthWidth = dateViewMode === 'month' ?
-                        columnWidth : // 月视图下每个月占用一个列宽
-                        Math.max(60, columnWidth * sameMonthCount); // 其他视图下按原逻辑
-                      
-                      return (
-                        <div
-                          key={`month-${index}`}
-                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
-                          style={{ 
-                            width: `${monthWidth}px`,
-                            height: '24px'
-                          }}
-                        >
-                          {format(date, 'MM月', { locale: zhCN })}
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
-                )}
-                
-                {/* 周行 - 天/周视图模式下显示 */}
-                {(dateViewMode === 'day' || dateViewMode === 'week') && (
-                <div className="flex border-b border-gray-200 bg-yellow-50/30">
-                  {timeScale.map((date, index) => {
-                    const prevDate = index > 0 ? timeScale[index - 1] : null;
-                    const isSameWeek = prevDate && 
-                                      getWeek(date, { weekStartsOn: 1 }) === getWeek(prevDate, { weekStartsOn: 1 }) &&
-                                      getYear(date) === getYear(prevDate);
-                    
-                    // 只在周变化或第一个项目时显示周
-                    if (!isSameWeek) {
-                      // 计算同周的单元格数量
-                      let sameWeekCount = 1;
-                      for (let i = index + 1; i < timeScale.length; i++) {
-                        if (getWeek(timeScale[i], { weekStartsOn: 1 }) === getWeek(date, { weekStartsOn: 1 }) &&
-                            getYear(timeScale[i]) === getYear(date)) {
-                          sameWeekCount++;
-                        } else {
-                          break;
-                        }
-                      }
-                      
-                      return (
-                        <div
-                          key={`week-${index}`}
-                          className="flex-shrink-0 py-1 text-xs font-medium text-center border-r border-gray-200 whitespace-nowrap overflow-hidden"
-                          style={{ 
-                            width: `${columnWidth * sameWeekCount}px`,
-                            height: '24px'
-                          }}
-                        >
-                          {`第${getWeek(date, { weekStartsOn: 1 })}周`}
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
-                )}
-                
-                {/* 日期行 - 仅在天视图模式下显示 */}
-                {dateViewMode === 'day' && (
-                <div className="flex bg-orange-50/30">
-                  {timeScale.map((date, index) => (
-                    <div 
-                      key={`day-${index}`} 
-                      className={`${isToday(date) ? 'bg-blue-100 text-blue-600' : index % 2 === 0 ? 'bg-gray-50/30' : ''} flex-shrink-0 border-r border-gray-200 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden`}
-                      style={{ width: `${Math.max(50, columnWidth)}px`, height: '24px' }}
+                  {timeAxisData.upperRow.map((cell, index) => (
+                    <div
+                      key={`upper-${index}`}
+                      className={`flex-shrink-0 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden ${
+                        cell.isHighlight ? 'bg-blue-100 text-blue-600' : ''
+                      }`}
+                      style={{
+                        width: `${cell.span * columnWidth}px`,
+                        height: '24px'
+                      }}
+                      title={cell.label} // 添加tooltip以防文字被截断
                     >
-                      {format(date, 'd日', { locale: zhCN })}{isToday(date) ? ' (今)' : ''}
+                      {cell.label}
                     </div>
                   ))}
                 </div>
-                )}
+
+                {/* 下级时间单位行 */}
+                <div className="flex bg-green-50/30">
+                  {timeAxisData.lowerRow.map((cell, index) => (
+                    <div
+                      key={`lower-${index}`}
+                      className={`flex-shrink-0 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden ${
+                        cell.isHighlight ? 'bg-blue-100 text-blue-600' : index % 2 === 0 ? 'bg-gray-50/30' : ''
+                      }`}
+                      style={{
+                        width: `${cell.span * columnWidth}px`,
+                        height: '24px'
+                      }}
+                      title={cell.label} // 添加tooltip以防文字被截断
+                    >
+                      {cell.label}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -1032,34 +1906,38 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             
             {/* 右侧甘特图内容 - 可水平滚动 */}
             <div className="flex-1 overflow-x-auto gantt-content-scroll" onScroll={handleHorizontalScroll} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <div style={{ width: `${timeScale.length * columnWidth}px` }}>
+              <div style={{ width: `${timeAxisData.totalColumns * columnWidth}px` }}>
             <div className="relative">
+              {/* 垂直分割线 - 连续的整体线 */}
+              {timeAxisData.lowerRow.map((_, index) => {
+                // 跳过最后一条线，避免在右边缘显示
+                if (index === timeAxisData.lowerRow.length - 1) return null;
+
+                return (
+                  <div
+                    key={`grid-line-${index}`}
+                    className="absolute top-0 w-px bg-gray-200 z-5"
+                    style={{
+                      left: `${(index + 1) * columnWidth}px`,
+                      height: `${visibleItems.length * 40}px`
+                    }}
+                  ></div>
+                );
+              })}
+
               {/* 今天的垂直线 */}
-              {timeScale.findIndex(date => {
-                switch (dateViewMode) {
-                  case 'day': return isToday(date);
-                  case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                  case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                  case 'year': return getYear(new Date()) === getYear(date);
-                      default: return false;
-                }
-              }) >= 0 && (
-                <div 
-                  className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
-                  style={{ 
-                    left: `${timeScale.findIndex(date => {
-                      switch (dateViewMode) {
-                        case 'day': return isToday(date);
-                        case 'week': return isWithinInterval(new Date(), { start: date, end: addWeeks(date, 1) });
-                        case 'month': return getMonth(new Date()) === getMonth(date) && getYear(new Date()) === getYear(date);
-                        case 'year': return getYear(new Date()) === getYear(date);
-                            default: return false;
-                      }
-                    }) * columnWidth + columnWidth / 2}px`,
-                    height: `${visibleItems.length * 40}px`
-                  }}
-                ></div>
-              )}
+              {(() => {
+                const todayIndex = timeAxisData.lowerRow.findIndex(cell => cell.isHighlight);
+                return todayIndex >= 0 ? (
+                  <div
+                    className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
+                    style={{
+                      left: `${todayIndex * columnWidth + columnWidth / 2}px`,
+                      height: `${visibleItems.length * 40}px`
+                    }}
+                  ></div>
+                ) : null;
+              })()}
               
                   {/* 行和任务条 */}
                   {visibleItems.map((item) => (
@@ -1070,33 +1948,23 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                   onClick={() => handleItemViewClick(item)}
                 >
                   {/* 背景网格 */}
-                  {timeScale.map((date, dateIndex) => {
+                  {timeAxisData.lowerRow.map((cell, dateIndex) => {
                     // 根据不同视图模式设置背景色
                     let bgClass = '';
 
-                    // 今天高亮（仅在日视图下）
-                    if (isToday(date) && dateViewMode === 'day') {
+                    // 高亮当前时间单位
+                    if (cell.isHighlight) {
                       bgClass = 'bg-blue-50/20';
                     }
-                    // 当前月份高亮（仅在月视图下）
-                    else if (dateViewMode === 'month' &&
-                             getMonth(new Date()) === getMonth(date) &&
-                             getYear(new Date()) === getYear(date)) {
-                      bgClass = 'bg-blue-50/20';
-                    }
-                    // 当前年份高亮（仅在年视图下）
-                    else if (dateViewMode === 'year' && getYear(new Date()) === getYear(date)) {
-                      bgClass = 'bg-blue-50/20';
-                    }
-                    // 奇偶行背景（除年视图外）
-                    else if (dateViewMode !== 'year' && dateIndex % 2 === 0) {
+                    // 奇偶行背景
+                    else if (dateIndex % 2 === 0) {
                       bgClass = 'bg-gray-50/30';
                     }
 
                     return (
                       <div
                         key={dateIndex}
-                        className={`flex-shrink-0 h-full border-r border-gray-100 ${bgClass}`}
+                        className={`flex-shrink-0 h-full ${bgClass}`}
                         style={{ width: `${columnWidth}px` }}
                       ></div>
                     );
@@ -1149,7 +2017,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             style={{ width: `${itemColumnWidth}px` }}
           ></div>
           <div className="flex-1 overflow-x-auto gantt-content-scroll gantt-bottom-scroll" onScroll={handleHorizontalScroll}>
-            <div style={{ width: `${timeScale.length * columnWidth}px`, height: '1px' }}></div>
+            <div style={{ width: `${timeAxisData.totalColumns * columnWidth}px`, height: '1px' }}></div>
           </div>
         </div>
       </div>
