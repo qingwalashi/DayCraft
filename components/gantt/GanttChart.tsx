@@ -267,16 +267,18 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     const hasExistingTimeRange = startDate && endDate &&
       Math.abs(differenceInDays(startDate, new Date())) < 365; // 如果时间范围在合理范围内，认为已设置
 
-    if (hasExistingTimeRange) {
+    if (hasExistingTimeRange && startDate && endDate) {
       // 如果已经有合理的时间范围，只确保包含所有数据
       if (minDate && maxDate) {
-        const currentStart = startDate;
-        const currentEnd = endDate;
+        const currentStart: Date = startDate;
+        const currentEnd: Date = endDate;
+        const dataMinDate: Date = minDate;
+        const dataMaxDate: Date = maxDate;
 
         // 只在数据超出当前范围时才扩展
-        if (minDate < currentStart || maxDate > currentEnd) {
-          const newStart = minDate < currentStart ? minDate : currentStart;
-          const newEnd = maxDate > currentEnd ? maxDate : currentEnd;
+        if (dataMinDate < currentStart || dataMaxDate > currentEnd) {
+          const newStart = dataMinDate < currentStart ? dataMinDate : currentStart;
+          const newEnd = dataMaxDate > currentEnd ? dataMaxDate : currentEnd;
 
           setStartDate(newStart);
           setEndDate(newEnd);
@@ -327,11 +329,14 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
 
     // 如果有数据，确保时间范围包含所有数据
     if (minDate && maxDate) {
-      if (minDate < defaultStartDate) {
-        defaultStartDate = minDate;
+      const dataMinDate: Date = minDate;
+      const dataMaxDate: Date = maxDate;
+
+      if (dataMinDate < defaultStartDate) {
+        defaultStartDate = dataMinDate;
       }
-      if (maxDate > defaultEndDate) {
-        defaultEndDate = maxDate;
+      if (dataMaxDate > defaultEndDate) {
+        defaultEndDate = dataMaxDate;
       }
     }
 
