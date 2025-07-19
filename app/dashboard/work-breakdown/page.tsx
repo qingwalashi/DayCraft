@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon, TrendingUp as TrendingUpIcon } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -30,15 +30,19 @@ const WorkMap = dynamic(() => import('./work-map'), { ssr: false });
 // 导入SortableWorkItem组件
 import { SortableWorkItem } from './sortable-work-item';
 
+// 导入进度计算工具和组件
+import { calculateWorkItemProgress, STATUS_PROGRESS_MAP } from '@/lib/utils/progress-calculator';
+import ProgressIndicator from '@/components/work-breakdown/ProgressIndicator';
+
 // 视图模式
 type ViewMode = 'edit' | 'preview' | 'map';
 
-// 工作进展状态选项
+// 工作进展状态选项（与进度计算保持一致）
 const STATUS_OPTIONS = [
-  { value: '未开始', color: 'bg-gray-200 text-gray-800 border-gray-300' },
-  { value: '进行中', color: 'bg-blue-200 text-blue-800 border-blue-300' },
-  { value: '已暂停', color: 'bg-yellow-200 text-yellow-800 border-yellow-300' },
-  { value: '已完成', color: 'bg-green-200 text-green-800 border-green-300' },
+  { value: '未开始', color: 'bg-gray-200 text-gray-800 border-gray-300', progress: STATUS_PROGRESS_MAP['未开始'] },
+  { value: '已暂停', color: 'bg-yellow-200 text-yellow-800 border-yellow-300', progress: STATUS_PROGRESS_MAP['已暂停'] },
+  { value: '进行中', color: 'bg-blue-200 text-blue-800 border-blue-300', progress: STATUS_PROGRESS_MAP['进行中'] },
+  { value: '已完成', color: 'bg-green-200 text-green-800 border-green-300', progress: STATUS_PROGRESS_MAP['已完成'] },
 ];
 
 // 工作标签选项
@@ -345,6 +349,9 @@ export default function WorkBreakdownPage() {
   const [filteredWorkItems, setFilteredWorkItems] = useState<WorkItem[]>([]);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement>(null);
+
+  // 添加选中工作项状态（用于预览模式下的进度概览）
+  const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   
   // 添加导入导出相关状态
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -1692,6 +1699,40 @@ export default function WorkBreakdownPage() {
     );
   };
 
+  // 计算工作项进度的辅助函数
+  const getItemProgress = (item: WorkItem): number => {
+    return calculateWorkItemProgress({
+      id: item.id,
+      status: item.status,
+      children: item.children?.map(child => ({
+        id: child.id,
+        status: child.status,
+        children: child.children?.map(grandChild => ({
+          id: grandChild.id,
+          status: grandChild.status,
+          children: grandChild.children?.map(greatGrandChild => ({
+            id: greatGrandChild.id,
+            status: greatGrandChild.status,
+            children: greatGrandChild.children
+          }))
+        }))
+      }))
+    });
+  };
+
+  // 处理工作项点击选中
+  const handleWorkItemClick = (item: WorkItem, e: React.MouseEvent) => {
+    // 阻止事件冒泡，避免触发展开/折叠
+    e.stopPropagation();
+
+    // 如果点击的是已选中的工作项，则取消选中
+    if (selectedWorkItem?.id === item.id) {
+      setSelectedWorkItem(null);
+    } else {
+      setSelectedWorkItem(item);
+    }
+  };
+
   // 渲染工作项组件
   const renderWorkItem = (item: WorkItem, level: number) => {
     // 限制最多5级（0-4级）
@@ -1699,15 +1740,24 @@ export default function WorkBreakdownPage() {
     
     // 预览模式下的简化渲染
     if (viewMode === 'preview') {
+      const isSelected = selectedWorkItem?.id === item.id;
+
       return (
         <div key={item.id} className="mb-4">
-          <div className={`flex items-start p-4 bg-white rounded-lg shadow-sm border-l-4 transition-all hover:shadow-md ${
-            level === 0 ? 'border-l-blue-500' :
-            level === 1 ? 'border-l-green-500' :
-            level === 2 ? 'border-l-yellow-500' :
-            level === 3 ? 'border-l-purple-500' :
-            'border-l-red-500'
-          }`}>
+          <div
+            className={`flex items-start p-4 rounded-lg shadow-sm border-l-4 transition-all cursor-pointer ${
+              isSelected
+                ? 'bg-blue-50 border-l-blue-600 shadow-md ring-2 ring-blue-200'
+                : 'bg-white hover:shadow-md hover:bg-gray-50'
+            } ${
+              level === 0 ? (isSelected ? 'border-l-blue-600' : 'border-l-blue-500') :
+              level === 1 ? (isSelected ? 'border-l-green-600' : 'border-l-green-500') :
+              level === 2 ? (isSelected ? 'border-l-yellow-600' : 'border-l-yellow-500') :
+              level === 3 ? (isSelected ? 'border-l-purple-600' : 'border-l-purple-500') :
+              (isSelected ? 'border-l-red-600' : 'border-l-red-500')
+            }`}
+            onClick={(e) => handleWorkItemClick(item, e)}
+          >
             <div className="flex-grow">
               {/* 优化布局：PC端更紧凑，移动端自适应 */}
               <div className="flex flex-col sm:flex-row sm:items-center">
@@ -1715,7 +1765,10 @@ export default function WorkBreakdownPage() {
                 <div className="flex items-center flex-grow flex-wrap">
                   {item.children.length > 0 && (
                     <button
-                      onClick={() => toggleExpand(item.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(item.id);
+                      }}
                       className="mr-2 p-1 rounded-md hover:bg-gray-100 transition-colors"
                     >
                       {item.isExpanded ? (
@@ -1746,6 +1799,16 @@ export default function WorkBreakdownPage() {
                       {item.status}
                     </span>
                   )}
+
+                  {/* 显示工作进度 */}
+                  <div className="ml-2">
+                    <ProgressIndicator
+                      progress={getItemProgress(item)}
+                      size="sm"
+                      showBar={true}
+                      showText={true}
+                    />
+                  </div>
                   
                   {/* 显示参与人员 - 移到第一行 */}
                   {item.members && (
@@ -1967,7 +2030,14 @@ export default function WorkBreakdownPage() {
                         )}
                       </button>
                     )}
-                    <h3 className="font-medium text-lg">{item.name}</h3>
+                    <h3 className="font-medium text-lg flex items-center">
+                      {item.name}
+                      {isSelected && (
+                        <span className="ml-2 text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
+                          已选中
+                        </span>
+                      )}
+                    </h3>
 
                     {/* 显示里程碑标识 */}
                     {item.is_milestone && (
@@ -1988,6 +2058,16 @@ export default function WorkBreakdownPage() {
                         {item.status}
                       </span>
                     )}
+
+                    {/* 显示工作进度 */}
+                    <div className="ml-2">
+                      <ProgressIndicator
+                        progress={getItemProgress(item)}
+                        size="sm"
+                        showBar={true}
+                        showText={true}
+                      />
+                    </div>
                     
                     {/* 显示参与人员 - 移到第一行 */}
                     {item.members && (
@@ -2490,6 +2570,116 @@ export default function WorkBreakdownPage() {
             <div>
               {workItems.length > 0 ? (
                 <div className="space-y-4">
+                  {/* 项目进度统计概览 */}
+                  {viewMode !== 'map' && (
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                          <TrendingUpIcon className="h-5 w-5 mr-2 text-blue-600" />
+                          {selectedWorkItem ? `${selectedWorkItem.name} 工作项进度概览` : '项目进度概览'}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          {!selectedWorkItem && (
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                              💡 点击工作项查看详细进度
+                            </span>
+                          )}
+                          {selectedWorkItem && (
+                            <button
+                              onClick={() => setSelectedWorkItem(null)}
+                              className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors"
+                            >
+                              返回项目概览
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {(() => {
+                        // 根据选中的工作项确定要统计的数据范围
+                        let itemsToAnalyze: WorkItem[];
+
+                        if (selectedWorkItem) {
+                          // 如果选中了工作项，统计该工作项及其所有子项
+                          const collectAllChildren = (item: WorkItem): WorkItem[] => {
+                            const result = [item];
+                            if (item.children && Array.isArray(item.children) && item.children.length > 0) {
+                              item.children.forEach(child => {
+                                if (child) {
+                                  result.push(...collectAllChildren(child));
+                                }
+                              });
+                            }
+                            return result;
+                          };
+                          itemsToAnalyze = collectAllChildren(selectedWorkItem);
+                        } else {
+                          // 如果没有选中工作项，使用当前筛选的结果
+                          const currentItems = selectedStatuses.length > 0 ? filteredWorkItems : workItems;
+                          itemsToAnalyze = Array.isArray(currentItems) ? currentItems : [];
+                        }
+
+                        const totalItems = itemsToAnalyze.length;
+                        const statusCounts = STATUS_OPTIONS.reduce((acc, option) => {
+                          acc[option.value] = 0;
+                          return acc;
+                        }, {} as Record<string, number>);
+
+                        // 统计工作项状态（不需要递归，因为itemsToAnalyze已经包含了所有需要统计的项）
+                        if (Array.isArray(itemsToAnalyze)) {
+                          itemsToAnalyze.forEach(item => {
+                            if (item && typeof item === 'object') {
+                              if (item.status && statusCounts.hasOwnProperty(item.status)) {
+                                statusCounts[item.status]++;
+                              } else {
+                                statusCounts['未开始']++;
+                              }
+                            }
+                          });
+                        }
+                        const totalCount = Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
+
+                        // 计算整体进度
+                        const overallProgress = totalCount > 0 ?
+                          Object.entries(statusCounts).reduce((sum, [status, count]) => {
+                            const statusOption = STATUS_OPTIONS.find(opt => opt.value === status);
+                            return sum + (statusOption?.progress || 0) * count;
+                          }, 0) / totalCount : 0;
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                            {/* 整体进度 */}
+                            <div className="col-span-2 sm:col-span-4 lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
+                              <div className="text-sm text-blue-700 mb-1">
+                                {selectedWorkItem ? '工作项进度' : '整体进度'}
+                              </div>
+                              <ProgressIndicator
+                                progress={overallProgress}
+                                size="md"
+                                showBar={true}
+                                showText={true}
+                              />
+                              <div className="text-xs text-blue-600 mt-1">
+                                共 {totalCount} 个工作项
+                              </div>
+                            </div>
+
+                            {/* 各状态统计 */}
+                            {STATUS_OPTIONS.map(option => (
+                              <div key={option.value} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div className="text-sm text-gray-700 mb-1">{option.value}</div>
+                                <div className="text-2xl font-bold text-gray-900">{statusCounts[option.value]}</div>
+                                <div className="text-xs text-gray-500">
+                                  {totalCount > 0 ? Math.round((statusCounts[option.value] / totalCount) * 100) : 0}%
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
                   {/* 思维导图视图 */}
                   {viewMode === 'map' ? (
                     <div className="bg-white p-2 sm:p-4 rounded-lg shadow-sm border border-gray-200 overflow-hidden">

@@ -85,14 +85,19 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
       {!isCollapsed && (
         <div className="relative">
           {/* 横向滚动容器 */}
-          <div className="overflow-x-auto pb-1">
+          <div
+            className="overflow-x-auto pb-1 milestone-scroll-container"
+            style={{ scrollbarWidth: 'thin' }}
+          >
             {/* 时间轴容器 */}
-            <div className="relative w-full flex justify-center">
+            <div className="relative w-full">
               {/* 里程碑节点 */}
               <div
-                className="flex items-center px-2"
+                className={`flex items-center ${
+                  milestones.length <= 3 ? 'justify-center px-2' : 'justify-start pl-4 pr-4'
+                }`}
                 style={{
-                  minWidth: milestones.length <= 3 ? 'auto' : `${milestones.length * 180}px`,
+                  minWidth: milestones.length <= 3 ? '100%' : `${milestones.length * 180 + 32}px`,
                   width: milestones.length <= 3 ? '100%' : 'auto'
                 }}
               >
@@ -109,7 +114,8 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
                         className="flex flex-col items-center relative z-10"
                         style={{
                           flex: milestones.length <= 3 ? '1' : 'none',
-                          minWidth: '140px'
+                          minWidth: '140px',
+                          maxWidth: '160px'
                         }}
                       >
                       {/* 里程碑信息卡片 */}
@@ -157,18 +163,18 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
 
                       {/* 箭头连线 - 除了最后一个节点 */}
                       {!isLast && (
-                        <div className="flex items-center justify-center px-4 flex-shrink-0 relative">
+                        <div className="flex items-center justify-center px-3 flex-shrink-0 relative">
                           {/* 连接线容器，与卡片中心垂直对齐 */}
                           <div className="flex items-center">
                             {/* 连接线 */}
-                            <div className="w-12 h-[2px] bg-gradient-to-r from-gray-400 via-gray-500 to-gray-600 rounded-full shadow-sm"></div>
+                            <div className="w-8 h-[2px] bg-gradient-to-r from-gray-400 via-gray-500 to-gray-600 rounded-full shadow-sm"></div>
                             {/* 箭头 */}
                             <div
                               className="w-0 h-0 ml-0.5 filter drop-shadow-sm"
                               style={{
-                                borderLeft: '7px solid #6b7280',
-                                borderTop: '5px solid transparent',
-                                borderBottom: '5px solid transparent'
+                                borderLeft: '6px solid #6b7280',
+                                borderTop: '4px solid transparent',
+                                borderBottom: '4px solid transparent'
                               }}
                             ></div>
                           </div>
@@ -202,6 +208,32 @@ const MilestoneTimeline: React.FC<MilestoneTimelineProps> = ({
           </div>
         </div>
       )}
+
+      {/* 添加样式 */}
+      <style jsx>{`
+        .milestone-scroll-container {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e0 #f7fafc;
+        }
+
+        .milestone-scroll-container::-webkit-scrollbar {
+          height: 8px;
+        }
+
+        .milestone-scroll-container::-webkit-scrollbar-track {
+          background: #f7fafc;
+          border-radius: 4px;
+        }
+
+        .milestone-scroll-container::-webkit-scrollbar-thumb {
+          background: #cbd5e0;
+          border-radius: 4px;
+        }
+
+        .milestone-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: #a0aec0;
+        }
+      `}</style>
     </div>
   );
 };

@@ -80,13 +80,13 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // 新增状态
-  const [dateViewMode, setDateViewMode] = useState<DateViewMode>('month');
-  const [columnWidth, setColumnWidth] = useState<number>(50);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [dateViewMode, setDateViewMode] = useState<DateViewMode>('week'); // 默认为周视图
+  const [columnWidth, setColumnWidth] = useState<number>(64);
+  const [zoomLevel, setZoomLevel] = useState<number>(1.2);
   const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开所有层级
   
-  // 添加工作项列宽度状态
-  const [itemColumnWidth, setItemColumnWidth] = useState<number>(256); // 默认宽度16rem = 256px
+  // 添加工作项列宽度状态 - 移动端适配
+  const [itemColumnWidth, setItemColumnWidth] = useState<number>(200); // 默认宽度调整为200px，移动端友好
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const [startX, setStartX] = useState<number>(0);
   const [startWidth, setStartWidth] = useState<number>(0);
@@ -102,7 +102,31 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
   const [lastScrollLeft, setLastScrollLeft] = useState<number>(0);
   const [pendingScrollAdjustment, setPendingScrollAdjustment] = useState<number | null>(null);
   const [showExtendingHint, setShowExtendingHint] = useState<string | null>(null);
+
+  // 添加移动端检测状态
+  const [isMobile, setIsMobile] = useState<boolean>(false);
   
+  // 移动端检测
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // 移动端使用更小的工作项列宽度
+      if (mobile && itemColumnWidth > 180) {
+        setItemColumnWidth(160);
+      } else if (!mobile && itemColumnWidth < 200) {
+        setItemColumnWidth(200);
+      }
+    };
+
+    // 初始检查
+    checkMobile();
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [itemColumnWidth]);
+
   // 从localStorage读取视图模式
   useEffect(() => {
     // 读取视图模式（计划/实际）
@@ -117,7 +141,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         savedDateViewMode === 'month' || savedDateViewMode === 'quarter' ||
         savedDateViewMode === 'halfyear' || savedDateViewMode === 'year')
         ? savedDateViewMode as DateViewMode
-        : 'month'; // 默认为月视图
+        : 'week'; // 默认为周视图
 
     setDateViewMode(initialMode);
 
@@ -1544,21 +1568,26 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     updateExpandState(rootItems);
   };
 
-  // 处理拖动开始事件
-  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement>) => {
+  // 处理拖动开始事件 - 支持触摸
+  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsResizing(true);
-    setStartX(e.clientX);
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    setStartX(clientX);
     setStartWidth(itemColumnWidth);
     document.body.classList.add('resizing');
   };
   
-  // 处理拖动移动事件
-  const handleResizeMove = useCallback((e: MouseEvent) => {
+  // 处理拖动移动事件 - 支持触摸
+  const handleResizeMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!isResizing) return;
-    const newWidth = Math.max(160, Math.min(500, startWidth + (e.clientX - startX)));
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const minWidth = isMobile ? 120 : 160;
+    const maxWidth = isMobile ? 300 : 500;
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + (clientX - startX)));
     setItemColumnWidth(newWidth);
-  }, [isResizing, startWidth, startX]);
+  }, [isResizing, startWidth, startX, isMobile]);
 
   // 处理拖动结束事件
   const handleResizeEnd = useCallback(() => {
@@ -1566,16 +1595,20 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
     document.body.classList.remove('resizing');
   }, []);
   
-  // 使用useEffect处理拖动事件
+  // 使用useEffect处理拖动事件 - 支持触摸
   useEffect(() => {
     if (isResizing) {
       document.addEventListener('mousemove', handleResizeMove);
       document.addEventListener('mouseup', handleResizeEnd);
+      document.addEventListener('touchmove', handleResizeMove);
+      document.addEventListener('touchend', handleResizeEnd);
     }
-    
+
     return () => {
       document.removeEventListener('mousemove', handleResizeMove);
       document.removeEventListener('mouseup', handleResizeEnd);
+      document.removeEventListener('touchmove', handleResizeMove);
+      document.removeEventListener('touchend', handleResizeEnd);
       document.body.classList.remove('resizing');
     };
   }, [isResizing, handleResizeMove, handleResizeEnd]);
@@ -1611,11 +1644,11 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
           实际进度
         </button>
         
-        {/* 日期视图模式切换 */}
-        <div className="ml-auto flex items-center mr-4 space-x-2">
+        {/* 简化的控制栏 - 移动端适配 */}
+        <div className="ml-auto flex items-center mr-2 sm:mr-4 space-x-1 sm:space-x-2">
           {/* 返回今天按钮 */}
           <button
-            className={`px-3 py-1 text-xs rounded flex items-center gap-1 shadow-sm transition-all ${
+            className={`px-2 sm:px-3 py-1 text-xs rounded flex items-center gap-1 shadow-sm transition-all ${
               isTodayVisible
                 ? 'bg-green-100 text-green-700 hover:bg-green-200'
                 : 'bg-orange-500 text-white hover:bg-orange-600 animate-pulse'
@@ -1624,63 +1657,27 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
             title={isTodayVisible ? "今天在当前视图中，点击居中显示" : "今天不在当前视图中，点击返回今天"}
           >
             <Target className="h-3 w-3" />
-            今天
+            <span className="hidden sm:inline">今天</span>
             {!isTodayVisible && <span className="ml-1 text-xs">!</span>}
           </button>
 
-          {/* 展开层级控制 */}
+          {/* 展开层级控制 - 移动端隐藏文字 */}
           <select
             value={expandLevel}
             onChange={(e) => handleExpandLevelChange(parseInt(e.target.value))}
-            className="mr-4 px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700"
+            className="mr-1 sm:mr-4 px-1 sm:px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700"
           >
-            <option value="0">仅展开1级</option>
-            <option value="1">展开到2级</option>
-            <option value="2">展开到3级</option>
-            <option value="3">展开到4级</option>
-            <option value="4">展开全部</option>
+            <option value="0">1级</option>
+            <option value="1">2级</option>
+            <option value="2">3级</option>
+            <option value="3">4级</option>
+            <option value="4">全部</option>
           </select>
 
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'day' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('day')}
-          >
-            日
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'week' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('week')}
-          >
-            周
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'month' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('month')}
-          >
-            月
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'quarter' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('quarter')}
-          >
-            季度
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'halfyear' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('halfyear')}
-          >
-            半年
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded ${dateViewMode === 'year' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-            onClick={() => changeDateViewMode('year')}
-          >
-            年
-          </button>
-          
-          <div className="flex items-center border-l border-gray-200 pl-2">
+          {/* 简化的放大缩小控制 - 移动端适配 */}
+          <div className="flex items-center border border-gray-200 rounded bg-white">
             <button
-              className="p-1 text-gray-500 hover:text-gray-700"
+              className="p-1 sm:p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-l transition-colors"
               onClick={() => {
                 const newZoomLevel = Math.max(0.5, zoomLevel - 0.2);
                 setZoomLevel(newZoomLevel);
@@ -1713,12 +1710,15 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                   changeDateViewMode('day');
                 }
               }}
+              title="缩小视图"
             >
               <ZoomOut className="h-4 w-4" />
             </button>
-            <span className="mx-1 text-xs text-gray-500">{Math.round(zoomLevel * 100)}%</span>
+            <div className="px-2 sm:px-3 py-2 text-xs text-gray-600 bg-gray-50 border-x border-gray-200 min-w-[50px] sm:min-w-[60px] text-center">
+              {Math.round(zoomLevel * 100)}%
+            </div>
             <button
-              className="p-1 text-gray-500 hover:text-gray-700"
+              className="p-1 sm:p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-r transition-colors"
               onClick={() => {
                 const newZoomLevel = Math.min(3, zoomLevel + 0.2);
                 setZoomLevel(newZoomLevel);
@@ -1751,6 +1751,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                   changeDateViewMode('day');
                 }
               }}
+              title="放大视图"
             >
               <ZoomIn className="h-4 w-4" />
             </button>
@@ -1760,11 +1761,20 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
       
       {/* 内容区域 */}
       <div className="flex-1 overflow-hidden flex flex-col relative">
+        {/* 统一的分隔线 - 覆盖整个内容区域高度，支持触摸 */}
+        <div
+          className={`absolute top-0 bottom-0 z-50 cursor-col-resize transition-all duration-150 ${
+            isMobile ? 'w-3' : 'w-1'
+          } ${isResizing ? 'bg-blue-500 shadow-lg' : 'bg-gray-300 hover:bg-blue-400'}`}
+          style={{ left: `${itemColumnWidth - (isMobile ? 6 : 1)}px` }}
+          onMouseDown={handleResizeStart}
+          onTouchStart={handleResizeStart}
+        ></div>
         {/* 表头区域 */}
         <div className="flex">
           {/* 左侧工作项表头 */}
-          <div 
-            className="flex-shrink-0 bg-gray-100 border-b border-r border-gray-200 relative"
+          <div
+            className="flex-shrink-0 bg-gray-100 border-b border-gray-200 relative"
             style={{ width: `${itemColumnWidth}px` }}
           >
             <div className="font-medium text-sm text-gray-600 flex items-center justify-center" 
@@ -1772,11 +1782,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
               工作项
             </div>
             
-            {/* 添加拖动调整宽度的分隔线 */}
-            <div 
-              className="absolute top-0 right-0 w-1 h-full bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
-              onMouseDown={handleResizeStart}
-            ></div>
+
           </div>
           
           {/* 右侧时间表头 - 固定在顶部，与甘特图内容同步水平滚动 */}
@@ -1821,13 +1827,15 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 </div>
 
                 {/* 上级时间单位行 */}
-                <div className="flex border-b border-gray-200 bg-blue-50/30">
+                <div className="flex border-b border-gray-200 bg-gray-50/30">
                   {timeAxisData.upperRow.map((cell, index) => (
                     <div
                       key={`upper-${index}`}
-                      className={`flex-shrink-0 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden ${
-                        cell.isHighlight ? 'bg-blue-100 text-blue-600' : ''
-                      }`}
+                      className={`flex-shrink-0 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden relative ${
+                        cell.span > 1
+                          ? 'bg-gray-100 border border-gray-300 border-b-0'
+                          : index < timeAxisData.upperRow.length - 1 ? 'border-r border-gray-300' : ''
+                      } ${cell.isHighlight ? 'bg-gray-200 text-gray-800' : ''}`}
                       style={{
                         width: `${cell.span * columnWidth}px`,
                         height: '24px'
@@ -1840,13 +1848,13 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 </div>
 
                 {/* 下级时间单位行 */}
-                <div className="flex bg-green-50/30">
+                <div className="flex bg-gray-50/30">
                   {timeAxisData.lowerRow.map((cell, index) => (
                     <div
                       key={`lower-${index}`}
                       className={`flex-shrink-0 py-1 text-xs font-medium text-center whitespace-nowrap overflow-hidden ${
-                        cell.isHighlight ? 'bg-blue-100 text-blue-600' : index % 2 === 0 ? 'bg-gray-50/30' : ''
-                      }`}
+                        index < timeAxisData.lowerRow.length - 1 ? 'border-r border-gray-200' : ''
+                      } ${cell.isHighlight ? 'bg-gray-200 text-gray-800' : index % 2 === 0 ? 'bg-gray-50/30' : ''}`}
                       style={{
                         width: `${cell.span * columnWidth}px`,
                         height: '24px'
@@ -1902,11 +1910,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                 </div>
               ))}
               
-              {/* 添加内容区域的分隔线 */}
-              <div 
-                className="absolute top-0 right-0 w-1 h-full bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
-                onMouseDown={handleResizeStart}
-              ></div>
+
             </div>
             
             {/* 右侧甘特图内容 - 可水平滚动 */}
@@ -2058,9 +2062,9 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
         }
       `}</style>
 
-      {/* 工作项详情对话框 */}
+      {/* 工作项详情对话框 - 移动端适配 */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col p-0">
+        <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] sm:max-h-[80vh] flex flex-col p-0 mx-2 sm:mx-auto">
           {/* 固定的标题区域 */}
           <DialogHeader className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
@@ -2254,7 +2258,7 @@ const GanttChart = ({ data, projectName, onUpdateItem }: GanttChartProps) => {
                     <Calendar className="h-4 w-4 mr-1" />
                     时间信息
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* 计划时间 */}
                     <div className="bg-blue-50 rounded-md p-3">
                       <h4 className="font-medium text-blue-800 mb-2">计划时间</h4>

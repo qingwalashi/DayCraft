@@ -8,6 +8,7 @@ import { FilterIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import GanttChart from "@/components/gantt/GanttChart";
 import MilestoneTimeline from "@/components/milestone/MilestoneTimeline";
+import { calculateWorkItemProgress } from "@/lib/utils/progress-calculator";
 
 export default function ProjectProgressPage() {
   const { user } = useAuth();
@@ -162,23 +163,37 @@ export default function ProjectProgressPage() {
     }
   }, [selectedProject, user, fetchWorkItems]);
 
-  // 转换工作项数据为甘特图所需格式
-  const ganttData = workItems.map(item => ({
-    id: item.id,
-    name: item.name,
-    level: item.level,
-    parentId: item.parent_id,
-    startDate: item.planned_start_time || null,
-    endDate: item.planned_end_time || null,
-    actualStartDate: item.actual_start_time,
-    actualEndDate: item.actual_end_time,
-    progress: item.actual_start_time ? (item.actual_end_time ? 100 : 50) : 0,
-    status: item.status,
-    description: item.description,
-    tags: item.tags,
-    members: item.members,
-    progress_notes: item.progress_notes
-  }));
+  // 转换工作项数据为甘特图所需格式，使用新的进度计算逻辑
+  const ganttData = workItems.map(item => {
+    // 构建用于进度计算的数据结构
+    const buildProgressItem = (workItem: any): any => ({
+      id: workItem.id,
+      status: workItem.status,
+      children: workItems
+        .filter(child => child.parent_id === workItem.id)
+        .map(buildProgressItem)
+    });
+
+    const progressItem = buildProgressItem(item);
+    const calculatedProgress = calculateWorkItemProgress(progressItem);
+
+    return {
+      id: item.id,
+      name: item.name,
+      level: item.level,
+      parentId: item.parent_id,
+      startDate: item.planned_start_time || null,
+      endDate: item.planned_end_time || null,
+      actualStartDate: item.actual_start_time,
+      actualEndDate: item.actual_end_time,
+      progress: calculatedProgress,
+      status: item.status,
+      description: item.description,
+      tags: item.tags,
+      members: item.members,
+      progress_notes: item.progress_notes
+    };
+  });
 
   // 筛选出里程碑数据
   const milestoneData = workItems
@@ -192,13 +207,13 @@ export default function ProjectProgressPage() {
     }));
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
           {selectedProject ? `${selectedProject.name} 进度管理` : '项目进度管理'}
         </h1>
-        
-        <div className="flex items-center gap-3">
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <FilterIcon className="h-4 w-4 text-gray-500" />
             <span className="text-sm text-gray-500">项目筛选:</span>
@@ -208,7 +223,7 @@ export default function ProjectProgressPage() {
             onValueChange={(value: string) => {
               const project = projects.find(p => p.id === value);
               setSelectedProject(project || null);
-              
+
               // 切换项目时重置数据加载状态
               if (project && project.id !== selectedProject?.id) {
                 dataLoadedRef.current = false;
@@ -216,7 +231,7 @@ export default function ProjectProgressPage() {
             }}
             disabled={isLoading}
           >
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="选择项目" />
             </SelectTrigger>
             <SelectContent>
@@ -241,8 +256,8 @@ export default function ProjectProgressPage() {
             <MilestoneTimeline milestones={milestoneData} />
           )}
 
-          {/* 甘特图 */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-280px)]">
+          {/* 甘特图 - 移动端适配高度 */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-320px)] sm:h-[calc(100vh-280px)]">
             {selectedProject ? (
               workItems.length > 0 ? (
               <GanttChart
