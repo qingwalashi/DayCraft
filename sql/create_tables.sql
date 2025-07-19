@@ -469,6 +469,88 @@ CREATE POLICY "用户可以更新自己的钉钉设置" ON public.user_dingtalk_
 CREATE POLICY "用户可以删除自己的钉钉设置" ON public.user_dingtalk_settings
   FOR DELETE USING (user_id = auth.uid());
 
+-- =====================
+-- 项目周报相关表
+-- =====================
+
+-- 项目周报主表
+CREATE TABLE public.project_weekly_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  year INTEGER NOT NULL,
+  week_number INTEGER NOT NULL CHECK (week_number >= 1 AND week_number <= 53),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  is_plan BOOLEAN DEFAULT FALSE, -- 是否为工作计划
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE (user_id, year, week_number)
+);
+
+-- 项目周报条目表
+CREATE TABLE public.project_weekly_report_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  report_id UUID REFERENCES public.project_weekly_reports(id) ON DELETE CASCADE NOT NULL,
+  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  work_item_id UUID REFERENCES public.work_breakdown_items(id), -- 可为空，支持直接在项目下添加工作
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 创建索引
+CREATE INDEX project_weekly_reports_user_id_idx ON public.project_weekly_reports(user_id);
+CREATE INDEX project_weekly_reports_year_week_idx ON public.project_weekly_reports(year, week_number);
+CREATE INDEX project_weekly_report_items_report_id_idx ON public.project_weekly_report_items(report_id);
+CREATE INDEX project_weekly_report_items_project_id_idx ON public.project_weekly_report_items(project_id);
+CREATE INDEX project_weekly_report_items_work_item_id_idx ON public.project_weekly_report_items(work_item_id);
+
+-- 为项目周报表启用行级安全策略
+ALTER TABLE public.project_weekly_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_weekly_report_items ENABLE ROW LEVEL SECURITY;
+
+-- 项目周报主表的RLS策略
+CREATE POLICY "用户可以查看自己的项目周报" ON public.project_weekly_reports
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以创建自己的项目周报" ON public.project_weekly_reports
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "用户可以更新自己的项目周报" ON public.project_weekly_reports
+  FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "用户可以删除自己的项目周报" ON public.project_weekly_reports
+  FOR DELETE USING (user_id = auth.uid());
+
+-- 项目周报条目表的RLS策略
+CREATE POLICY "用户可以查看自己项目周报中的条目" ON public.project_weekly_report_items
+  FOR SELECT USING (
+    report_id IN (
+      SELECT id FROM public.project_weekly_reports WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以创建自己项目周报中的条目" ON public.project_weekly_report_items
+  FOR INSERT WITH CHECK (
+    report_id IN (
+      SELECT id FROM public.project_weekly_reports WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以更新自己项目周报中的条目" ON public.project_weekly_report_items
+  FOR UPDATE USING (
+    report_id IN (
+      SELECT id FROM public.project_weekly_reports WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "用户可以删除自己项目周报中的条目" ON public.project_weekly_report_items
+  FOR DELETE USING (
+    report_id IN (
+      SELECT id FROM public.project_weekly_reports WHERE user_id = auth.uid()
+    )
+  );
+
 -- 创建触发器函数，在创建用户资料时自动创建默认钉钉设置
 CREATE OR REPLACE FUNCTION public.handle_new_user_dingtalk_settings()
 RETURNS TRIGGER AS $$
@@ -513,6 +595,24 @@ CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
     OR (auth.jwt() -> 'roles') ? 'admin'
   );
 
+-- project_weekly_reports
+DROP POLICY IF EXISTS "管理员可查所有项目周报" ON public.project_weekly_reports;
+CREATE POLICY "管理员可查所有项目周报" ON public.project_weekly_reports
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
+-- project_weekly_report_items
+DROP POLICY IF EXISTS "管理员可查所有项目周报条目" ON public.project_weekly_report_items;
+CREATE POLICY "管理员可查所有项目周报条目" ON public.project_weekly_report_items
+  FOR SELECT USING (
+    report_id IN (
+      SELECT id FROM public.project_weekly_reports
+      WHERE (user_id = auth.uid()) OR (auth.jwt() -> 'roles') ? 'admin'
+    )
+  );
+
 -- 先创建待办状态枚举类型
 CREATE TYPE todo_status AS ENUM ('not_started', 'in_progress', 'completed');
 
@@ -543,3 +643,39 @@ CREATE POLICY "用户可以更新自己的待办" ON public.project_todos
 
 CREATE POLICY "用户可以删除自己的待办" ON public.project_todos
   FOR DELETE USING (user_id = auth.uid());
+
+-- =====================
+-- 项目周报触发器和注释
+-- =====================
+
+-- 创建触发器函数，自动更新updated_at字段
+CREATE OR REPLACE FUNCTION public.update_project_weekly_reports_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 为项目周报主表添加触发器
+CREATE TRIGGER update_project_weekly_reports_updated_at
+  BEFORE UPDATE ON public.project_weekly_reports
+  FOR EACH ROW EXECUTE PROCEDURE public.update_project_weekly_reports_updated_at();
+
+-- 为项目周报条目表添加触发器
+CREATE TRIGGER update_project_weekly_report_items_updated_at
+  BEFORE UPDATE ON public.project_weekly_report_items
+  FOR EACH ROW EXECUTE PROCEDURE public.update_project_weekly_reports_updated_at();
+
+-- 添加表注释
+COMMENT ON TABLE public.project_weekly_reports IS '项目周报主表';
+COMMENT ON TABLE public.project_weekly_report_items IS '项目周报条目表';
+
+COMMENT ON COLUMN public.project_weekly_reports.year IS '年份';
+COMMENT ON COLUMN public.project_weekly_reports.week_number IS '周数（1-53）';
+COMMENT ON COLUMN public.project_weekly_reports.start_date IS '周开始日期';
+COMMENT ON COLUMN public.project_weekly_reports.end_date IS '周结束日期';
+COMMENT ON COLUMN public.project_weekly_reports.is_plan IS '是否为工作计划';
+
+COMMENT ON COLUMN public.project_weekly_report_items.work_item_id IS '工作项ID，可为空，支持直接在项目下添加工作';
+COMMENT ON COLUMN public.project_weekly_report_items.content IS '工作内容';

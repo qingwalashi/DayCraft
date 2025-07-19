@@ -64,7 +64,8 @@ const getNavigation = (role: string[] = []) => {
         icon: FileTextIcon,
         subItems: [
           { name: "日报", href: "/dashboard/daily-reports" },
-          { name: "周报/月报", href: "/dashboard/reports" }
+          { name: "周报/月报", href: "/dashboard/reports" },
+          { name: "项目周报", href: "/dashboard/project-reports" }
         ]
       },
       { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },
@@ -91,7 +92,8 @@ const getNavigation = (role: string[] = []) => {
         icon: FileTextIcon,
         subItems: [
           { name: "日报", href: "/dashboard/daily-reports" },
-          { name: "周报/月报", href: "/dashboard/reports" }
+          { name: "周报/月报", href: "/dashboard/reports" },
+          { name: "项目周报", href: "/dashboard/project-reports" }
         ]
       },
       { name: "设置", href: "/dashboard/settings", icon: Settings2Icon },

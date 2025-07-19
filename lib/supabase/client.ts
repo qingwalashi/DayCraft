@@ -252,3 +252,27 @@ export type WorkBreakdownItem = {
   created_at: string;
   updated_at: string;
 };
+
+// 项目周报类型
+export type ProjectWeeklyReport = {
+  id: string;
+  user_id: string;
+  year: number;
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  is_plan: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+// 项目周报条目类型
+export type ProjectWeeklyReportItem = {
+  id: string;
+  report_id: string;
+  project_id: string;
+  work_item_id: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
