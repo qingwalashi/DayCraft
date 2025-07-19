@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, FileTextIcon, AlertCircleIcon, CalendarIcon, EyeIcon, EyeOffIcon, ChevronDownIcon, ChevronRightIcon as ChevronRightIconSolid } from "lucide-react";
+import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, FileTextIcon, AlertCircleIcon, CalendarIcon, EyeIcon, EyeOffIcon, CopyIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -10,6 +10,14 @@ import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { usePersistentState } from "@/lib/utils/page-persistence";
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  is_active: boolean;
+}
 
 interface ProjectWeeklyReportData {
   id: string;
@@ -56,6 +64,7 @@ interface GroupedProjectData {
         parent_id?: string;
       };
       items: ProjectWeeklyReportItemData[];
+      mergedContent: string;
     };
   };
   directItems: ProjectWeeklyReportItemData[]; // 直接在项目下的工作项
@@ -104,7 +113,19 @@ export default function ProjectReportsPage() {
   // 显示控制状态
   const [showWorkItems, setShowWorkItems] = usePersistentState('project-reports-show-work-items', true);
   const [showHierarchy, setShowHierarchy] = usePersistentState('project-reports-show-hierarchy', false);
-  const [expandedProjects, setExpandedProjects] = usePersistentState<{ [projectId: string]: boolean }>('project-reports-expanded-projects', {});
+
+  // 删除确认状态
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
+  const [isDeletingReport, setIsDeletingReport] = useState(false);
+
+  // 年度数据状态
+  const [currentYear, setCurrentYear] = usePersistentState('project-reports-current-year', new Date().getFullYear());
+  const [yearlyData, setYearlyData] = useState<{ [week: number]: boolean }>({});
+
+  // 项目筛选状态
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = usePersistentState('project-reports-selected-project', '');
   
   // 计算当前周的数据
   const currentWeekData = useMemo(() => {
@@ -240,7 +261,8 @@ export default function ProjectReportsPage() {
         if (!grouped[projectId].workItems[workItemId]) {
           grouped[projectId].workItems[workItemId] = {
             workItem: item.work_breakdown_items,
-            items: []
+            items: [],
+            mergedContent: ''
           };
         }
         grouped[projectId].workItems[workItemId].items.push(item);
@@ -249,49 +271,29 @@ export default function ProjectReportsPage() {
       }
     });
 
-    // 为每个项目构建工作项层级结构
+    // 为每个项目构建工作项层级结构并合并相同工作项的内容
     Object.keys(grouped).forEach(projectId => {
+      // 合并相同工作项的内容
+      Object.values(grouped[projectId].workItems).forEach(workItemData => {
+        const contents = workItemData.items.map(item => item.content.trim()).filter(content => content);
+        workItemData.mergedContent = contents.join('\n');
+      });
+
       grouped[projectId].workItemsHierarchy = buildWorkItemHierarchy(projectId, grouped[projectId].items);
     });
 
-    return Object.values(grouped);
-  }, [currentWeekData.report, buildWorkItemHierarchy]);
+    // 应用项目筛选
+    let result = Object.values(grouped);
+    if (selectedProjectId) {
+      result = result.filter(projectData => projectData.project.id === selectedProjectId);
+    }
 
-  // 切换项目展开状态
-  const toggleProjectExpanded = (projectId: string) => {
-    setExpandedProjects(prev => ({
-      ...prev,
-      [projectId]: !prev[projectId]
-    }));
-  };
+    return result;
+  }, [currentWeekData.report, buildWorkItemHierarchy, selectedProjectId]);
 
-  // 渲染工作项层级结构 - 简化为平铺显示
-  const renderWorkItemHierarchy = (hierarchyItem: WorkItemHierarchy): JSX.Element => {
-    return (
-      <div key={hierarchyItem.id} className="border-l-2 border-green-300 pl-3 mb-3">
-        <div className="flex items-center space-x-2 mb-2">
-          <span className="text-sm font-medium text-green-600">
-            <span className="text-xs text-gray-400 mr-1">
-              L{hierarchyItem.level}
-            </span>
-            {hierarchyItem.fullPath}
-          </span>
-          <span className="text-xs text-gray-500 bg-green-100 px-2 py-0.5 rounded">
-            {hierarchyItem.items.length} 项
-          </span>
-        </div>
 
-        {/* 工作项内容 */}
-        <div className="space-y-2">
-          {hierarchyItem.items.map((item) => (
-            <div key={item.id} className="bg-green-50 rounded-lg p-3">
-              <p className="text-sm text-gray-700">{item.content}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+
+
 
   // 加载项目周报数据
   const fetchProjectReports = useCallback(async (forceUpdate: boolean = false) => {
@@ -401,28 +403,287 @@ export default function ProjectReportsPage() {
     }
   }, [supabase, user, setReports, setReportItems]);
 
-  // 删除项目周报
-  const handleDeleteReport = async (reportId: string) => {
-    if (!confirm('确定要删除这个项目周报吗？此操作不可撤销。')) {
-      return;
+  // 加载项目数据
+  const fetchProjects = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) {
+        throw error;
+      }
+
+      setProjects(data as Project[] || []);
+    } catch (error) {
+      console.error('获取项目失败', error);
+      toast.error('获取项目失败');
     }
-    
+  }, [supabase, user]);
+
+  // 生成年度数据
+  const generateYearlyData = useCallback(() => {
+    const yearData: { [week: number]: boolean } = {};
+
+    // 获取当前年份的所有周报
+    const currentYearReports = reports.filter(report => report.year === currentYear);
+
+    // 标记有周报的周数
+    currentYearReports.forEach(report => {
+      yearData[report.week_number] = true;
+    });
+
+    setYearlyData(yearData);
+  }, [reports, currentYear]);
+
+  // 显示删除确认对话框
+  const handleDeleteClick = (e: React.MouseEvent, reportId: string) => {
+    e.stopPropagation();
+    setReportToDelete(reportId);
+    setConfirmDeleteOpen(true);
+  };
+
+  // 取消删除操作
+  const handleCancelDelete = () => {
+    setReportToDelete(null);
+    setConfirmDeleteOpen(false);
+  };
+
+  // 确认删除项目周报
+  const handleConfirmDelete = async () => {
+    if (!reportToDelete) return;
+
+    setIsDeletingReport(true);
     try {
       const { error } = await supabase
         .from('project_weekly_reports')
         .delete()
-        .eq('id', reportId);
-      
+        .eq('id', reportToDelete);
+
       if (error) {
         throw error;
       }
-      
+
       toast.success('项目周报删除成功');
       // 强制刷新数据
       fetchProjectReports(true);
     } catch (error) {
       console.error('删除项目周报失败', error);
       toast.error('删除项目周报失败');
+    } finally {
+      setIsDeletingReport(false);
+      setReportToDelete(null);
+      setConfirmDeleteOpen(false);
+    }
+  };
+
+  // 复制项目周报为Markdown格式
+  const handleCopyMarkdown = (reportData: GroupedProjectData[]) => {
+    let markdownContent = '';
+
+    reportData.forEach(projectData => {
+      markdownContent += `## ${projectData.project.name}\n\n`;
+
+      let itemCounter = 1; // 全局序号计数器
+
+      // 按工作项分组的工作
+      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        if (showHierarchy) {
+          // 层级模式：显示完整层级路径
+          projectData.workItemsHierarchy.forEach(hierarchyItem => {
+            markdownContent += `### ${hierarchyItem.fullPath}\n`;
+            const mergedContent = projectData.workItems[hierarchyItem.id]?.mergedContent ||
+                                 hierarchyItem.items.map(item => item.content).join('\n');
+            let workItemCounter = 1; // 每个工作项下的序号从1开始
+            mergedContent.split('\n').forEach(line => {
+              if (line.trim()) {
+                markdownContent += `${workItemCounter}. ${line.trim()}\n`;
+                workItemCounter++;
+              }
+            });
+            markdownContent += '\n';
+          });
+        } else {
+          // 简单模式：显示工作项名称
+          Object.values(projectData.workItems).forEach(workItemData => {
+            markdownContent += `### ${workItemData.workItem.name}\n`;
+            let workItemCounter = 1; // 每个工作项下的序号从1开始
+            workItemData.mergedContent.split('\n').forEach(line => {
+              if (line.trim()) {
+                markdownContent += `${workItemCounter}. ${line.trim()}\n`;
+                workItemCounter++;
+              }
+            });
+            markdownContent += '\n';
+          });
+        }
+      } else if (!showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        // 隐藏工作项时：不显示工作项分组，直接列出内容
+        let hiddenItemCounter = 1; // 隐藏工作项时的序号从1开始
+        Object.values(projectData.workItems).forEach(workItemData => {
+          workItemData.mergedContent.split('\n').forEach(line => {
+            if (line.trim()) {
+              markdownContent += `${hiddenItemCounter}. ${line.trim()}\n`;
+              hiddenItemCounter++;
+            }
+          });
+        });
+        // 其他工作（未选择工作项的内容）
+        projectData.directItems.forEach(item => {
+          markdownContent += `${hiddenItemCounter}. ${item.content}\n`;
+          hiddenItemCounter++;
+        });
+        markdownContent += '\n';
+      } else {
+        // 只有其他工作的情况
+        if (projectData.directItems.length > 0) {
+          let otherItemCounter = 1;
+          projectData.directItems.forEach(item => {
+            markdownContent += `${otherItemCounter}. ${item.content}\n`;
+            otherItemCounter++;
+          });
+          markdownContent += '\n';
+        }
+      }
+
+      // 其他工作（未选择工作项的内容）- 显示工作项时单独处理
+      if (showWorkItems && Object.keys(projectData.workItems).length > 0 && projectData.directItems.length > 0) {
+        markdownContent += `### 其他工作\n`;
+        let otherItemCounter = 1; // 其他工作的序号从1开始
+        projectData.directItems.forEach(item => {
+          markdownContent += `${otherItemCounter}. ${item.content}\n`;
+          otherItemCounter++;
+        });
+        markdownContent += '\n';
+      }
+    });
+
+    copyToClipboard(markdownContent, 'Markdown格式内容已复制到剪贴板');
+  };
+
+  // 复制项目周报为YAML格式
+  const handleCopyYaml = (reportData: GroupedProjectData[]) => {
+    let yamlContent = '';
+
+    reportData.forEach(projectData => {
+      yamlContent += `${projectData.project.name}:\n`;
+
+      // 按工作项分组的工作
+      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        if (showHierarchy) {
+          // 层级模式：带层级路径的工作项标识
+          projectData.workItemsHierarchy.forEach(hierarchyItem => {
+            yamlContent += `  ${hierarchyItem.fullPath}:\n`;
+            const mergedContent = projectData.workItems[hierarchyItem.id]?.mergedContent ||
+                                 hierarchyItem.items.map(item => item.content).join('\n');
+            mergedContent.split('\n').forEach(line => {
+              if (line.trim()) {
+                yamlContent += `    - ${line.trim()}\n`;
+              }
+            });
+          });
+        } else {
+          // 简单模式：带工作项名称的标识
+          Object.values(projectData.workItems).forEach(workItemData => {
+            yamlContent += `  ${workItemData.workItem.name}:\n`;
+            workItemData.mergedContent.split('\n').forEach(line => {
+              if (line.trim()) {
+                yamlContent += `    - ${line.trim()}\n`;
+              }
+            });
+          });
+        }
+
+        // 其他工作（未选择工作项的内容）- 显示工作项时单独处理
+        if (projectData.directItems.length > 0) {
+          yamlContent += `  其他工作:\n`;
+          projectData.directItems.forEach(item => {
+            yamlContent += `    - ${item.content}\n`;
+          });
+        }
+      } else if (!showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        // 隐藏工作项时：直接在项目下列出所有内容
+        Object.values(projectData.workItems).forEach(workItemData => {
+          workItemData.mergedContent.split('\n').forEach(line => {
+            if (line.trim()) {
+              yamlContent += `  - ${line.trim()}\n`;
+            }
+          });
+        });
+        // 其他工作
+        projectData.directItems.forEach(item => {
+          yamlContent += `  - ${item.content}\n`;
+        });
+      } else {
+        // 只有其他工作的情况
+        projectData.directItems.forEach(item => {
+          yamlContent += `  - ${item.content}\n`;
+        });
+      }
+
+      yamlContent += '\n';
+    });
+
+    copyToClipboard(yamlContent, 'YAML格式内容已复制到剪贴板');
+  };
+
+  // 通用复制函数
+  const copyToClipboard = (text: string, successMessage: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            toast.success(successMessage);
+          })
+          .catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyTextToClipboard(text, successMessage);
+          });
+      } else {
+        fallbackCopyTextToClipboard(text, successMessage);
+      }
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast.error('复制失败，请重试');
+    }
+  };
+
+  // 回退复制方法
+  const fallbackCopyTextToClipboard = (text: string, successMessage: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          toast.success(successMessage);
+        } else {
+          toast.error('复制失败，请重试');
+        }
+      } catch (err) {
+        console.error('复制命令执行失败:', err);
+        toast.error('复制失败，请重试');
+      }
+
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.error('回退复制方法失败:', err);
+      toast.error('复制失败，请重试');
     }
   };
 
@@ -439,12 +700,31 @@ export default function ProjectReportsPage() {
     setCurrentWeek(new Date());
   };
 
+  // 年度导航
+  const goToPreviousYear = () => {
+    setCurrentYear(currentYear - 1);
+  };
+
+  const goToNextYear = () => {
+    setCurrentYear(currentYear + 1);
+  };
+
+  const goToCurrentYear = () => {
+    setCurrentYear(new Date().getFullYear());
+  };
+
   // 初始化数据
   useEffect(() => {
     if (user && !dataLoadedRef.current) {
       fetchProjectReports();
+      fetchProjects();
     }
-  }, [user, fetchProjectReports]);
+  }, [user, fetchProjectReports, fetchProjects]);
+
+  // 生成年度数据
+  useEffect(() => {
+    generateYearlyData();
+  }, [generateYearlyData]);
 
   // 添加页面可见性监听
   useEffect(() => {
@@ -494,45 +774,64 @@ export default function ProjectReportsPage() {
       {/* 周导航 */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
-          <div className="flex items-center justify-between">
+          <div className="flex justify-between items-center">
+            <h2 className="text-base md:text-lg font-medium">
+              项目周报
+            </h2>
             <div className="flex items-center space-x-2 md:space-x-4">
-              <button
-                onClick={goToPreviousWeek}
-                className="p-1 md:p-2 rounded-full hover:bg-gray-100"
-                aria-label="上一周"
-              >
-                <ChevronLeftIcon className="h-4 w-4 md:h-5 md:w-5" />
-              </button>
-              <div className="text-center">
-                <h2 className="text-sm md:text-lg font-medium">
-                  {currentWeekData.year}年第{currentWeekData.week_number}周
-                </h2>
-                <p className="text-xs md:text-sm text-gray-500">
-                  {currentWeekData.formattedPeriod}
-                </p>
+              {/* 项目筛选 */}
+              <div className="flex items-center">
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="text-xs md:text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 min-w-0 max-w-32 md:max-w-40"
+                >
+                  <option value="">全部项目</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button
-                onClick={goToNextWeek}
-                className="p-1 md:p-2 rounded-full hover:bg-gray-100"
-                aria-label="下一周"
-              >
-                <ChevronRightIcon className="h-4 w-4 md:h-5 md:w-5" />
-              </button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={goToCurrentWeek}
-                className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                本周
-              </button>
-              <Link
-                href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
-                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <PlusIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
-                新建周报
-              </Link>
+
+              {/* 时间导航 */}
+              <div className="flex items-center text-xs md:text-sm text-gray-500">
+                <button
+                  onClick={goToPreviousWeek}
+                  className="mr-1 md:mr-2 p-1 rounded-full hover:bg-gray-100"
+                  aria-label="上一周"
+                >
+                  <ChevronLeftIcon className="h-3 w-3 md:h-4 md:w-4" />
+                </button>
+                <span className="font-medium text-gray-700 whitespace-nowrap">
+                  {currentWeekData.year}年第{currentWeekData.week_number}周
+                </span>
+                <button
+                  onClick={goToNextWeek}
+                  className="ml-1 md:ml-2 p-1 rounded-full hover:bg-gray-100"
+                  aria-label="下一周"
+                >
+                  <ChevronRightIcon className="h-3 w-3 md:h-4 md:w-4" />
+                </button>
+              </div>
+
+              {/* 操作按钮 */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={goToCurrentWeek}
+                  className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  本周
+                </button>
+                <Link
+                  href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
+                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <PlusIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                  新建周报
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -546,171 +845,359 @@ export default function ProjectReportsPage() {
             </div>
           ) : currentWeekData.report ? (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <FileTextIcon className="h-5 w-5 text-blue-500" />
-                  <span className="text-sm md:text-base font-medium">
-                    {currentWeekData.report.formattedPeriod} 项目周报
-                  </span>
-                  {currentWeekData.report.is_plan && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      工作计划
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2">
-                  {/* 显示控制开关 */}
-                  <div className="flex items-center space-x-2 mr-2">
+              {/* 筛选状态显示 */}
+              {selectedProjectId && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="text-sm text-blue-700">
+                        正在筛选项目：
+                        <span className="font-medium ml-1">
+                          {projects.find(p => p.id === selectedProjectId)?.name || '未知项目'}
+                        </span>
+                      </div>
+                    </div>
                     <button
-                      onClick={() => setShowWorkItems(!showWorkItems)}
-                      className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
-                        showWorkItems
-                          ? 'bg-blue-50 text-blue-700 border-blue-300'
-                          : 'bg-gray-50 text-gray-700 border-gray-300'
-                      }`}
-                      title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+                      onClick={() => setSelectedProjectId('')}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                     >
-                      {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
-                      工作项
+                      清除筛选
                     </button>
-                    {showWorkItems && (
-                      <button
-                        onClick={() => setShowHierarchy(!showHierarchy)}
-                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
-                          showHierarchy
-                            ? 'bg-green-50 text-green-700 border-green-300'
-                            : 'bg-gray-50 text-gray-700 border-gray-300'
-                        }`}
-                        title={showHierarchy ? '隐藏层级' : '显示层级'}
-                      >
-                        层级
-                      </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 年度填写情况展示 - 在标题上方 */}
+              <div className="mb-4 pb-3 border-b border-gray-100">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {currentYear}年填写情况
+                  </h3>
+                  <div className="flex items-center text-xs text-gray-500">
+                    <button
+                      onClick={goToPreviousYear}
+                      className="mr-1 p-1 rounded hover:bg-gray-100"
+                      aria-label="上一年"
+                    >
+                      <ChevronLeftIcon className="h-3 w-3" />
+                    </button>
+                    <span className="font-medium text-gray-600 mx-2">
+                      {currentYear}
+                    </span>
+                    <button
+                      onClick={goToNextYear}
+                      className="ml-1 p-1 rounded hover:bg-gray-100"
+                      aria-label="下一年"
+                    >
+                      <ChevronRightIcon className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={goToCurrentYear}
+                      className="ml-2 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100"
+                    >
+                      今年
+                    </button>
+                  </div>
+                </div>
+
+                {/* 紧凑的周数展示 */}
+                <div className="space-y-1.5">
+                  {[
+                    { name: 'Q1', start: 1, end: 13 },
+                    { name: 'Q2', start: 14, end: 26 },
+                    { name: 'Q3', start: 27, end: 39 },
+                    { name: 'Q4', start: 40, end: 53 }
+                  ].map((quarter) => (
+                    <div key={quarter.name} className="flex items-center space-x-2">
+                      <div className="text-xs text-gray-500 font-medium w-6">{quarter.name}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from({ length: quarter.end - quarter.start + 1 }, (_, index) => {
+                          const weekNumber = quarter.start + index;
+                          const hasReport = yearlyData[weekNumber] || false;
+                          const isCurrentWeek = currentWeekData.year === currentYear && currentWeekData.week_number === weekNumber;
+
+                          return (
+                            <div
+                              key={weekNumber}
+                              className={`
+                                w-3 h-3 rounded-sm cursor-pointer transition-colors duration-200
+                                ${hasReport
+                                  ? 'bg-green-500 hover:bg-green-600'
+                                  : 'bg-gray-200 hover:bg-gray-300'
+                                }
+                                ${isCurrentWeek ? 'ring-1 ring-blue-500' : ''}
+                              `}
+                              title={`第${weekNumber}周${hasReport ? ' (已填写)' : ' (未填写)'}`}
+                              onClick={() => {
+                                // 点击跳转到对应周
+                                const targetDate = new Date(currentYear, 0, 1 + (weekNumber - 1) * 7);
+                                setCurrentWeek(targetDate);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 统计信息 */}
+                <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 bg-green-500 rounded-sm mr-1"></div>
+                      <span>已填写</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 bg-gray-200 rounded-sm mr-1"></div>
+                      <span>未填写</span>
+                    </div>
+                  </div>
+                  <div>
+                    {Object.keys(yearlyData).length} / 53 周
+                  </div>
+                </div>
+              </div>
+
+              {/* 周报标题和操作按钮 */}
+              <div className="mb-4">
+                {/* 第一行：标题行 */}
+                <div className="flex items-center mb-3">
+                  <div className="flex items-center space-x-2">
+                    <FileTextIcon className="h-5 w-5 text-blue-500" />
+                    <span className="text-sm md:text-base font-medium">
+                      {currentWeekData.report.formattedPeriod} 项目周报
+                      {selectedProjectId && (
+                        <span className="text-xs md:text-sm text-gray-500 ml-2">
+                          ({projects.find(p => p.id === selectedProjectId)?.name})
+                        </span>
+                      )}
+                    </span>
+                    {currentWeekData.report.is_plan && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        项目计划
+                      </span>
                     )}
                   </div>
+                </div>
 
+                {/* 第二行及以后：所有操作按钮，支持自动换行 */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* 显示控制开关 */}
+                  <button
+                    onClick={() => setShowWorkItems(!showWorkItems)}
+                    className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                      showWorkItems
+                        ? 'bg-blue-50 text-blue-700 border-blue-300'
+                        : 'bg-gray-50 text-gray-700 border-gray-300'
+                    }`}
+                    title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+                  >
+                    {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
+                    工作项
+                  </button>
+
+                  {showWorkItems && (
+                    <button
+                      onClick={() => setShowHierarchy(!showHierarchy)}
+                      className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                        showHierarchy
+                          ? 'bg-green-50 text-green-700 border-green-300'
+                          : 'bg-gray-50 text-gray-700 border-gray-300'
+                      }`}
+                      title={showHierarchy ? '隐藏层级' : '显示层级'}
+                    >
+                      层级
+                    </button>
+                  )}
+
+                  {/* 复制按钮 */}
+                  <button
+                    onClick={() => handleCopyMarkdown(groupedProjectData)}
+                    className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    title="复制为Markdown格式"
+                  >
+                    <CopyIcon className="h-3 w-3 mr-1" />
+                    MD
+                  </button>
+
+                  <button
+                    onClick={() => handleCopyYaml(groupedProjectData)}
+                    className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    title="复制为YAML格式"
+                  >
+                    <CopyIcon className="h-3 w-3 mr-1" />
+                    YML
+                  </button>
+
+                  {/* 编辑和删除按钮（所有设备都显示） */}
                   <Link
                     href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
-                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                   >
-                    <PencilIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                    <PencilIcon className="h-3 w-3 mr-1" />
                     编辑
                   </Link>
+
                   <button
-                    onClick={() => handleDeleteReport(currentWeekData.report!.id)}
-                    className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-red-300 text-xs md:text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                    onClick={(e) => handleDeleteClick(e, currentWeekData.report!.id)}
+                    className="inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
                   >
-                    <TrashIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                    <TrashIcon className="h-3 w-3 mr-1" />
                     删除
                   </button>
                 </div>
               </div>
               
-              {/* 周报条目 - 按项目分组显示 */}
-              <div className="space-y-4">
-                {groupedProjectData.map((projectData) => {
-                  const isExpanded = expandedProjects[projectData.project.id] !== false; // 默认展开
+              {/* 筛选结果统计 */}
+              {selectedProjectId && (
+                <div className="text-xs text-gray-500 mb-3">
+                  显示 {groupedProjectData.length} 个项目的工作内容
+                </div>
+              )}
 
-                  return (
-                    <div key={projectData.project.id} className="border border-gray-200 rounded-lg">
-                      {/* 项目标题 */}
-                      <div
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-t-lg cursor-pointer hover:bg-gray-100"
-                        onClick={() => toggleProjectExpanded(projectData.project.id)}
-                      >
-                        <div className="flex items-center space-x-2">
-                          {isExpanded ? (
-                            <ChevronDownIcon className="h-4 w-4 text-gray-500" />
-                          ) : (
-                            <ChevronRightIconSolid className="h-4 w-4 text-gray-500" />
-                          )}
-                          <span className="font-medium text-blue-600">
-                            {projectData.project.name} ({projectData.project.code})
-                          </span>
-                          <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                            {projectData.items.length} 项工作
-                          </span>
-                        </div>
+              {/* 周报条目 - 参考日报预览样式 */}
+              <div className="space-y-3 md:space-y-4">
+                {groupedProjectData.length > 0 ? groupedProjectData.map((projectData) => (
+                  <div key={projectData.project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
+                    {/* 项目标题 - 参考日报样式 */}
+                    <div className="flex items-center mb-1 md:mb-2">
+                      <div className="text-sm font-medium text-blue-600">
+                        {projectData.project.name}
                       </div>
+                      <div className="text-sm text-gray-500 ml-1">
+                        ({projectData.project.code})
+                      </div>
+                    </div>
 
-                      {/* 项目内容 */}
-                      {isExpanded && (
-                        <div className="p-3 space-y-3">
-                          {/* 按工作项分组的工作 */}
-                          {showWorkItems && Object.keys(projectData.workItems).length > 0 && (
-                            <div className="space-y-3">
-                              {showHierarchy ? (
-                                // 层级模式：显示完整的工作项层级路径
-                                <div className="space-y-3">
-                                  {projectData.workItemsHierarchy.map((hierarchyItem) =>
-                                    renderWorkItemHierarchy(hierarchyItem)
-                                  )}
-                                </div>
-                              ) : (
-                                // 简单模式：平铺显示工作项
-                                Object.values(projectData.workItems).map((workItemData) => (
-                                  <div key={workItemData.workItem.id} className="border-l-2 border-green-300 pl-3">
-                                    {/* 工作项标题 */}
-                                    <div className="flex items-center space-x-2 mb-2">
-                                      <span className="text-sm font-medium text-green-600">
-                                        {workItemData.workItem.name}
-                                      </span>
-                                      <span className="text-xs text-gray-500 bg-green-100 px-2 py-0.5 rounded">
-                                        {workItemData.items.length} 项
-                                      </span>
+                    {/* 项目内容 - 简化列表 */}
+                    <div>
+                      {/* 统一的工作内容列表 - 工作项单独一行，内容带序号 */}
+                      <div className="space-y-2 md:space-y-3">
+                        {/* 按工作项分组的工作 */}
+                        {showWorkItems && Object.keys(projectData.workItems).length > 0 && (
+                          <>
+                            {showHierarchy ? (
+                              // 层级模式：显示完整的工作项层级路径
+                              projectData.workItemsHierarchy.map((hierarchyItem) => {
+                                const mergedContent = projectData.workItems[hierarchyItem.id]?.mergedContent ||
+                                                     hierarchyItem.items.map(item => item.content).join('\n');
+                                const contentLines = mergedContent.split('\n').filter(line => line.trim());
+
+                                return (
+                                  <div key={hierarchyItem.id} className="text-xs md:text-sm">
+                                    {/* 工作项标题单独一行 */}
+                                    <div className="text-blue-500 font-medium mb-1">
+                                      {hierarchyItem.fullPath}
                                     </div>
-
-                                    {/* 工作项内容 */}
-                                    <div className="space-y-2">
-                                      {workItemData.items.map((item) => (
-                                        <div key={item.id} className="bg-green-50 rounded-lg p-3">
-                                          <p className="text-sm text-gray-700">{item.content}</p>
+                                    {/* 工作内容带序号 */}
+                                    <div className="ml-2 space-y-0.5">
+                                      {contentLines.map((line, index) => (
+                                        <div key={index} className="text-gray-600 flex items-start">
+                                          <span className="mr-2 text-blue-400 flex-shrink-0 font-medium">
+                                            {index + 1}.
+                                          </span>
+                                          <span className="break-words">{line.trim()}</span>
                                         </div>
                                       ))}
                                     </div>
                                   </div>
-                                ))
-                              )}
-                            </div>
-                          )}
+                                );
+                              })
+                            ) : (
+                              // 简单模式：显示工作项名称
+                              Object.values(projectData.workItems).map((workItemData) => {
+                                const contentLines = workItemData.mergedContent.split('\n').filter(line => line.trim());
 
-                          {/* 当隐藏工作项时，显示所有内容的简化视图 */}
-                          {!showWorkItems && Object.keys(projectData.workItems).length > 0 && (
-                            <div className="space-y-2">
+                                return (
+                                  <div key={workItemData.workItem.id} className="text-xs md:text-sm">
+                                    {/* 工作项标题单独一行 */}
+                                    <div className="text-blue-500 font-medium mb-1">
+                                      {workItemData.workItem.name}
+                                    </div>
+                                    {/* 工作内容带序号 */}
+                                    <div className="ml-2 space-y-0.5">
+                                      {contentLines.map((line, index) => (
+                                        <div key={index} className="text-gray-600 flex items-start">
+                                          <span className="mr-2 text-blue-400 flex-shrink-0 font-medium">
+                                            {index + 1}.
+                                          </span>
+                                          <span className="break-words">{line.trim()}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </>
+                        )}
+
+                        {/* 当隐藏工作项时，显示所有内容的简化视图 */}
+                        {!showWorkItems && Object.keys(projectData.workItems).length > 0 && (
+                          <div className="text-xs md:text-sm">
+                            <div className="space-y-0.5">
                               {Object.values(projectData.workItems).flatMap(workItemData =>
-                                workItemData.items.map((item) => (
-                                  <div key={item.id} className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-sm text-gray-700">{item.content}</p>
-                                  </div>
-                                ))
-                              )}
+                                workItemData.mergedContent.split('\n').filter(line => line.trim())
+                              ).map((line, index) => (
+                                <div key={index} className="text-gray-600 flex items-start">
+                                  <span className="mr-2 text-blue-400 flex-shrink-0 font-medium">
+                                    {index + 1}.
+                                  </span>
+                                  <span className="break-words">{line.trim()}</span>
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* 其他工作（未选择工作项的内容）- 统一显示在最后 */}
-                          {projectData.directItems.length > 0 && (
-                            <div className="border-l-2 border-gray-400 pl-3 mt-4">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <span className="text-sm font-medium text-gray-600">
-                                  其他工作
-                                </span>
-                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                                  {projectData.directItems.length} 项
-                                </span>
-                              </div>
-                              <div className="space-y-2">
-                                {projectData.directItems.map((item) => (
-                                  <div key={item.id} className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-sm text-gray-700">{item.content}</p>
-                                  </div>
-                                ))}
-                              </div>
+                        {/* 其他工作（未选择工作项的内容）- 统一显示在最后 */}
+                        {projectData.directItems.length > 0 && (
+                          <div className="text-xs md:text-sm">
+                            {/* 其他工作标题单独一行 */}
+                            <div className="text-blue-500 font-medium mb-1">
+                              其他工作
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {/* 其他工作内容带序号 */}
+                            <div className="ml-2 space-y-0.5">
+                              {projectData.directItems.map((item, index) => (
+                                <div key={item.id} className="text-gray-600 flex items-start">
+                                  <span className="mr-2 text-blue-400 flex-shrink-0 font-medium">
+                                    {index + 1}.
+                                  </span>
+                                  <span className="break-words">{item.content}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  );
-                })}
+                  </div>
+                )) : (
+                  /* 筛选后无结果的提示 */
+                  selectedProjectId && (
+                    <div className="text-center py-8">
+                      <div className="mx-auto h-12 w-12 text-gray-400 mb-4">
+                        <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-sm font-medium text-gray-900">该项目本周暂无工作内容</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        项目"{projects.find(p => p.id === selectedProjectId)?.name}"在本周没有记录工作内容
+                      </p>
+                      <div className="mt-4">
+                        <button
+                          onClick={() => setSelectedProjectId('')}
+                          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          查看所有项目
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             </div>
           ) : (
@@ -724,6 +1211,43 @@ export default function ProjectReportsPage() {
           )}
         </div>
       </div>
+
+      {/* 删除确认对话框 */}
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-3 md:p-6 max-w-md w-full mx-3 md:mx-4">
+            <div className="mb-2 md:mb-4">
+              <h3 className="text-base md:text-lg font-medium text-gray-900">确认删除</h3>
+            </div>
+            <div className="mb-4 md:mb-6">
+              <p className="text-xs md:text-sm text-gray-700">确定要删除这个项目周报吗？此操作无法撤销。</p>
+            </div>
+            <div className="flex justify-end space-x-2 md:space-x-3">
+              <button
+                onClick={handleCancelDelete}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                disabled={isDeletingReport}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                disabled={isDeletingReport}
+              >
+                {isDeletingReport ? (
+                  <>
+                    <Loader2Icon className="h-3 w-3 md:h-4 md:w-4 mr-1 animate-spin" />
+                    删除中...
+                  </>
+                ) : (
+                  "确认删除"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

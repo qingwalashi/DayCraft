@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, BookmarkIcon, Loader2Icon } from "lucide-react";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, BookmarkIcon, Loader2Icon, EyeIcon, EyeOffIcon, CopyIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -28,6 +28,12 @@ interface ProjectWeeklyReportItemData {
   content: string;
   project_id: string;
   work_item_id?: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
 }
 
 interface WorkBreakdownItem {
@@ -60,9 +66,20 @@ export default function NewProjectWeeklyReportPage() {
   const [isPlan, setIsPlan] = usePersistentState('project-weekly-report-is-plan', false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [workBreakdownItems, setWorkBreakdownItems] = useState<{ [projectId: string]: WorkBreakdownItem[] }>({});
+  const [allWorkItems, setAllWorkItems] = useState<{ [projectId: string]: WorkBreakdownItem[] }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
+
+  // 预览相关状态
+  const [showPreview, setShowPreview] = useState(false);
+
+  // 项目选择状态
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+
+  // 预览显示控制状态
+  const [showWorkItems, setShowWorkItems] = useState(true);
+  const [showHierarchy, setShowHierarchy] = useState(true);
 
   // 添加数据加载状态引用
   const dataLoadedRef = useRef(false);
@@ -154,6 +171,12 @@ export default function NewProjectWeeklyReportPage() {
         ...prev,
         [projectId]: rootItems
       }));
+
+      // 同时更新allWorkItems，包含所有项目（扁平化）
+      setAllWorkItems(prev => ({
+        ...prev,
+        [projectId]: items
+      }));
     } catch (error) {
       console.error('获取工作分解项失败', error);
       toast.error('获取工作分解项失败');
@@ -237,18 +260,47 @@ export default function NewProjectWeeklyReportPage() {
     }
   }, [supabase, user, year, weekNumber, fetchWorkBreakdownItems]);
 
-  // 添加工作项
-  const addWorkItem = () => {
-    const newItem: WorkItem = {
-      content: '',
-      projectId: ''
-    };
-    setWorkItems([...workItems, newItem]);
+  // 添加工作项 - 使用选择的项目ID
+  const addWorkItem = async () => {
+    // 使用选择的项目ID，如果没有则获取最后一个工作项的项目ID作为默认值
+    const projectId = selectedProjectId || (workItems.length > 0
+      ? workItems[workItems.length - 1].projectId
+      : (projects.length > 0 ? projects[0].id : ''));
+
+    if (projectId === '') {
+      toast.error('请先选择一个项目');
+      return;
+    }
+
+    // 确保该项目的工作分解项已加载
+    if (!workBreakdownItems[projectId]) {
+      await fetchWorkBreakdownItems(projectId);
+    }
+
+    setWorkItems([...workItems, { content: '', projectId }]);
+
+    // 重置选择的项目ID
+    setSelectedProjectId('');
+  };
+
+  // 添加特定项目的工作项
+  const handleAddWorkItem = async (projectId: string) => {
+    if (!projectId) return; // 安全检查
+
+    // 确保该项目的工作分解项已加载
+    if (!workBreakdownItems[projectId]) {
+      await fetchWorkBreakdownItems(projectId);
+    }
+
+    setWorkItems([...workItems, { content: '', projectId }]);
   };
 
   // 删除工作项
   const removeWorkItem = (index: number) => {
-    const newItems = workItems.filter((_, i) => i !== index);
+    if (index < 0 || index >= workItems.length) return; // 安全检查
+
+    const newItems = [...workItems];
+    newItems.splice(index, 1);
     setWorkItems(newItems);
   };
 
@@ -268,10 +320,53 @@ export default function NewProjectWeeklyReportPage() {
     setWorkItems(newItems);
   };
 
+  // 计算按项目分组的工作项 - 使用useMemo确保稳定性
+  const workItemsGroupedByProject = useMemo(() => {
+    return projects
+      .map(project => {
+        const projectItems = workItems.filter(item => item.projectId === project.id)
+          .map((item, index) => ({
+            ...item,
+            tempId: item.id || `temp-${project.id}-${index}`,
+            globalIndex: workItems.findIndex(wi => wi === item) // 添加全局索引
+          }));
+
+        // 计算项目的首次出现时间
+        const firstAppearanceIndex = workItems.findIndex(item => item.projectId === project.id);
+
+        return {
+          projectId: project.id,
+          projectName: `${project.name} (${project.code})`,
+          sortIndex: firstAppearanceIndex === -1 ? Number.MAX_SAFE_INTEGER : firstAppearanceIndex,
+          items: projectItems
+        };
+      })
+      // 只显示用户已添加的项目（即已在workItems中使用的项目）
+      .filter(group => workItems.some(item => item.projectId === group.projectId))
+      .sort((a, b) => a.sortIndex - b.sortIndex); // 按项目在工作项中的首次出现顺序排序
+  }, [projects, workItems]);
+
+  // 计算可用的项目（已选择的项目不再显示）
+  const availableProjects = useMemo(() => {
+    const usedProjectIds = Array.from(new Set(workItems.map(item => item.projectId)))
+      .filter(id => id !== ''); // 过滤空项目ID
+
+    return projects
+      .filter(project =>
+        // 允许选择所有未被使用的项目
+        !usedProjectIds.includes(project.id)
+      );
+  }, [projects, workItems]);
+
   // 渲染工作分解项选择器
   const renderWorkItemSelector = (projectId: string, selectedWorkItemId?: string, onChange?: (value: string) => void) => {
     const items = workBreakdownItems[projectId] || [];
-    
+
+    // 如果工作项还没有加载，尝试加载
+    if (items.length === 0 && projectId) {
+      fetchWorkBreakdownItems(projectId);
+    }
+
     const renderOptions = (items: WorkBreakdownItem[], level = 0): JSX.Element[] => {
       const options: JSX.Element[] = [];
       
@@ -395,6 +490,241 @@ export default function NewProjectWeeklyReportPage() {
     }
   };
 
+  // 切换预览模式
+  const togglePreview = () => {
+    setShowPreview(!showPreview);
+  };
+
+  // 复制为Markdown格式
+  const handleCopyMarkdown = () => {
+    const previewContent = generatePreviewContent();
+
+    if (!previewContent || previewContent.length === 0) {
+      toast.error('没有可复制的内容');
+      return;
+    }
+
+    let markdownContent = '';
+
+    previewContent.forEach((projectData: any) => {
+      markdownContent += `## ${projectData.project.name}\n`;
+
+      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        // 显示工作项时：按工作项分组
+        if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
+          // 层级模式：显示完整路径
+          projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
+            markdownContent += `### ${hierarchyItem.fullPath}\n`;
+            let itemCounter = 1;
+            hierarchyItem.items.forEach((item: any) => {
+              markdownContent += `${itemCounter}. ${item.content}\n`;
+              itemCounter++;
+            });
+          });
+        } else {
+          // 简单模式：只显示工作项名称
+          Object.values(projectData.workItems).forEach((workItemData: any) => {
+            markdownContent += `### ${workItemData.workItem.name}\n`;
+            let itemCounter = 1;
+            workItemData.items.forEach((item: any) => {
+              markdownContent += `${itemCounter}. ${item.content}\n`;
+              itemCounter++;
+            });
+          });
+        }
+
+        // 其他工作
+        if (projectData.directItems.length > 0) {
+          markdownContent += `### 其他工作\n`;
+          let otherItemCounter = 1;
+          projectData.directItems.forEach((item: any) => {
+            markdownContent += `${otherItemCounter}. ${item.content}\n`;
+            otherItemCounter++;
+          });
+        }
+      } else {
+        // 隐藏工作项时：直接列出所有内容
+        let itemCounter = 1;
+        projectData.items.forEach((item: any) => {
+          markdownContent += `${itemCounter}. ${item.content}\n`;
+          itemCounter++;
+        });
+      }
+
+      markdownContent += '\n';
+    });
+
+    navigator.clipboard.writeText(markdownContent)
+      .then(() => {
+        toast.success('Markdown格式内容已复制到剪贴板');
+      })
+      .catch(err => {
+        console.error('复制失败:', err);
+        toast.error('复制失败，请重试');
+      });
+  };
+
+  // 复制为YAML格式
+  const handleCopyYaml = () => {
+    const previewContent = generatePreviewContent();
+
+    if (!previewContent || previewContent.length === 0) {
+      toast.error('没有可复制的内容');
+      return;
+    }
+
+    let yamlContent = '';
+
+    previewContent.forEach((projectData: any) => {
+      yamlContent += `${projectData.project.name}:\n`;
+
+      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+        // 显示工作项时：按工作项分组
+        if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
+          // 层级模式：使用完整路径
+          projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
+            yamlContent += `  ${hierarchyItem.fullPath}:\n`;
+            hierarchyItem.items.forEach((item: any) => {
+              yamlContent += `    - ${item.content}\n`;
+            });
+          });
+        } else {
+          // 简单模式：使用工作项名称
+          Object.values(projectData.workItems).forEach((workItemData: any) => {
+            yamlContent += `  ${workItemData.workItem.name}:\n`;
+            workItemData.items.forEach((item: any) => {
+              yamlContent += `    - ${item.content}\n`;
+            });
+          });
+        }
+
+        // 其他工作
+        if (projectData.directItems.length > 0) {
+          yamlContent += `  其他工作:\n`;
+          projectData.directItems.forEach((item: any) => {
+            yamlContent += `    - ${item.content}\n`;
+          });
+        }
+      } else {
+        // 隐藏工作项时：直接在项目下列出
+        projectData.items.forEach((item: any) => {
+          yamlContent += `  - ${item.content}\n`;
+        });
+      }
+
+      yamlContent += '\n';
+    });
+
+    navigator.clipboard.writeText(yamlContent)
+      .then(() => {
+        toast.success('YAML格式内容已复制到剪贴板');
+      })
+      .catch(err => {
+        console.error('复制失败:', err);
+        toast.error('复制失败，请重试');
+      });
+  };
+
+  // 生成预览内容 - 支持工作项和层级显示
+  const generatePreviewContent = () => {
+    const validItems = workItems.filter(item => item.content.trim() && item.projectId);
+
+    if (validItems.length === 0) {
+      return null;
+    }
+
+    // 按项目分组
+    const projectGroups: { [projectId: string]: any } = {};
+
+    validItems.forEach(item => {
+      const project = projects.find(p => p.id === item.projectId);
+      if (project) {
+        if (!projectGroups[project.id]) {
+          projectGroups[project.id] = {
+            project,
+            items: [],
+            workItems: {},
+            directItems: [],
+            workItemsHierarchy: []
+          };
+        }
+
+        projectGroups[project.id].items.push(item);
+
+        if (item.workItemId && allWorkItems[project.id]) {
+          const workItem = allWorkItems[project.id].find(wi => wi.id === item.workItemId);
+          if (workItem) {
+            if (!projectGroups[project.id].workItems[item.workItemId]) {
+              projectGroups[project.id].workItems[item.workItemId] = {
+                workItem,
+                items: [],
+                mergedContent: ''
+              };
+            }
+            projectGroups[project.id].workItems[item.workItemId].items.push(item);
+          } else {
+            projectGroups[project.id].directItems.push(item);
+          }
+        } else {
+          projectGroups[project.id].directItems.push(item);
+        }
+      }
+    });
+
+    // 处理工作项层级结构和合并内容
+    Object.values(projectGroups).forEach((projectData: any) => {
+      // 合并相同工作项的内容
+      Object.values(projectData.workItems).forEach((workItemData: any) => {
+        const contents = workItemData.items.map((item: any) => item.content).filter((content: string) => content.trim());
+        workItemData.mergedContent = contents.join('\n');
+      });
+
+      // 构建层级结构
+      if (showHierarchy && allWorkItems[projectData.project.id]) {
+        const hierarchyMap = new Map();
+
+        Object.values(projectData.workItems).forEach((workItemData: any) => {
+          const workItem = workItemData.workItem;
+          const fullPath = buildWorkItemPath(workItem, allWorkItems[projectData.project.id]);
+
+          if (!hierarchyMap.has(workItem.id)) {
+            hierarchyMap.set(workItem.id, {
+              id: workItem.id,
+              name: workItem.name,
+              level: workItem.level || 0,
+              parent_id: workItem.parent_id,
+              children: [],
+              items: [],
+              fullPath: fullPath
+            });
+          }
+
+          const hierarchyItem = hierarchyMap.get(workItem.id);
+          hierarchyItem.items.push(...workItemData.items);
+        });
+
+        projectData.workItemsHierarchy = Array.from(hierarchyMap.values());
+      }
+    });
+
+    return Object.values(projectGroups);
+  };
+
+  // 构建工作项路径
+  const buildWorkItemPath = (workItem: any, allProjectWorkItems: any[]): string => {
+    if (!workItem.parent_id) {
+      return workItem.name;
+    }
+
+    const parent = allProjectWorkItems.find(wi => wi.id === workItem.parent_id);
+    if (parent) {
+      const parentPath = buildWorkItemPath(parent, allProjectWorkItems);
+      return `${parentPath} > ${workItem.name}`;
+    }
+
+    return workItem.name;
+  };
+
   // 初始化数据
   useEffect(() => {
     if (user && !dataLoadedRef.current) {
@@ -422,19 +752,54 @@ export default function NewProjectWeeklyReportPage() {
   }, []);
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
-        <div className="flex items-center space-x-2 md:space-x-4">
-          <Link
-            href="/dashboard/project-reports"
-            className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-gray-300 text-xs md:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <ArrowLeftIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
-            返回
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center">
+          <Link href="/dashboard/project-reports" className="mr-3 p-2 rounded-full text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+            <ArrowLeftIcon className="h-5 w-5" />
           </Link>
-          <h1 className="text-xl md:text-2xl font-bold">
-            {reportId ? '编辑' : '新建'}项目周报
-          </h1>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">{reportId ? '编辑项目周报' : '新建项目周报'}</h1>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {reportId && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  已有周报
+                </span>
+              )}
+              {isPlan && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  项目计划
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={togglePreview}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+          >
+            <EyeIcon className="h-4 w-4 mr-1.5" />
+            {showPreview ? '返回编辑' : '预览'}
+          </button>
+          <button
+            type="button"
+            onClick={saveReport}
+            disabled={isSaving || projects.length === 0}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSaving ? (
+              <>
+                <Loader2Icon className="h-4 w-4 mr-1.5 animate-spin" />
+                保存中...
+              </>
+            ) : (
+              <>
+                <SaveIcon className="h-4 w-4 mr-1.5" />
+                保存周报
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -443,147 +808,460 @@ export default function NewProjectWeeklyReportPage() {
           <div className="animate-spin rounded-full h-6 w-6 md:h-8 md:w-8 border-t-2 border-b-2 border-blue-500"></div>
           <span className="ml-2 text-sm md:text-base text-gray-500">加载中...</span>
         </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0">
-              <div>
-                <h2 className="text-base md:text-lg font-medium">
-                  {year}年第{weekNumber}周项目周报
-                </h2>
-                <p className="text-xs md:text-sm text-gray-500">
-                  {formattedPeriod}
-                </p>
-              </div>
-              
-              {/* 工作计划标记 */}
+      ) : showPreview ? (
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6 border border-gray-100">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 pb-3 border-b gap-3">
+            <div>
+              <h2 className="text-lg font-medium">项目周报预览</h2>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">查看格式化后的周报内容</p>
+            </div>
+
+            {/* 控制按钮区域 */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* 显示控制开关 */}
               <div className="flex items-center space-x-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={isPlan}
-                    onChange={(e) => setIsPlan(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">标记为工作计划</span>
-                  <BookmarkIcon className="h-4 w-4 ml-1 text-green-500" />
-                </label>
+                <button
+                  onClick={() => setShowWorkItems(!showWorkItems)}
+                  className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                    showWorkItems
+                      ? 'bg-blue-50 text-blue-700 border-blue-300'
+                      : 'bg-gray-50 text-gray-700 border-gray-300'
+                  }`}
+                  title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+                >
+                  {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
+                  工作项
+                </button>
+                {showWorkItems && (
+                  <button
+                    onClick={() => setShowHierarchy(!showHierarchy)}
+                    className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                      showHierarchy
+                        ? 'bg-green-50 text-green-700 border-green-300'
+                        : 'bg-gray-50 text-gray-700 border-gray-300'
+                    }`}
+                    title={showHierarchy ? '隐藏层级' : '显示层级'}
+                  >
+                    层级
+                  </button>
+                )}
+              </div>
+
+              {/* 复制按钮 */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleCopyMarkdown}
+                  className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 border border-blue-200 rounded-md hover:bg-blue-50"
+                >
+                  <CopyIcon className="h-3 w-3 mr-1" />Markdown
+                </button>
+                <button
+                  onClick={handleCopyYaml}
+                  className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 border border-blue-200 rounded-md hover:bg-blue-50"
+                >
+                  <CopyIcon className="h-3 w-3 mr-1" />YAML
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="p-3 md:p-4 space-y-4">
-            {/* 工作项列表 */}
-            {workItems.map((item, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-900">工作项 {index + 1}</h3>
-                  <button
-                    onClick={() => removeWorkItem(index)}
-                    className="text-red-600 hover:text-red-800"
-                    title="删除工作项"
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* 项目选择 */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      项目 <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={item.projectId}
-                      onChange={(e) => updateWorkItem(index, 'projectId', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      required
-                    >
-                      <option value="">选择项目</option>
-                      {projects.map(project => (
-                        <option key={project.id} value={project.id}>
-                          {project.name} ({project.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  {/* 工作项选择 */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      工作项
-                    </label>
-                    {item.projectId ? (
-                      renderWorkItemSelector(
-                        item.projectId,
-                        item.workItemId,
-                        (value) => updateWorkItem(index, 'workItemId', value)
-                      )
-                    ) : (
-                      <select
-                        disabled
-                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm"
-                      >
-                        <option>请先选择项目</option>
-                      </select>
-                    )}
-                  </div>
-                </div>
-                
-                {/* 工作内容 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    工作内容 <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={item.content}
-                    onChange={(e) => updateWorkItem(index, 'content', e.target.value)}
-                    rows={3}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="请描述本周在该项目/工作项上的具体工作内容..."
-                    required
-                  />
-                </div>
-              </div>
-            ))}
-            
-            {/* 添加工作项按钮 */}
-            <button
-              onClick={addWorkItem}
-              className="w-full flex items-center justify-center px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-gray-400 hover:text-gray-700"
-            >
-              <PlusIcon className="h-4 w-4 mr-2" />
-              添加工作项
-            </button>
-            
-            {/* 操作按钮 */}
-            <div className="flex flex-col md:flex-row md:justify-end gap-2 md:gap-3 pt-4 border-t border-gray-200">
-              <Link
-                href="/dashboard/project-reports"
-                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                取消
-              </Link>
-              <button
-                onClick={saveReport}
-                disabled={isSaving}
-                className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  <>
-                    <SaveIcon className="h-4 w-4 mr-2" />
-                    保存周报
-                  </>
-                )}
-              </button>
+          <div className="border-b pb-3 mb-4">
+            <div className="flex items-center">
+              <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500 mr-2" />
+              <p className="font-medium text-sm sm:text-base text-gray-800">{year}年第{weekNumber}周 ({formattedPeriod})</p>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className={`px-2 py-0.5 text-xs rounded-full inline-flex items-center ${reportId ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                {reportId ? '已保存' : '未保存'}
+              </span>
+              {isPlan && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 inline-flex items-center">
+                  项目计划
+                </span>
+              )}
             </div>
           </div>
+
+          {(() => {
+            const previewContent = generatePreviewContent();
+            return previewContent && previewContent.length > 0 ? (
+              <div className="space-y-4">
+                {previewContent.map((projectData: any) => (
+                  <div key={projectData.project.id} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    {/* 项目标题 */}
+                    <div className="flex items-center mb-3 pb-2 border-b border-blue-200">
+                      <div className="text-base font-medium text-blue-700">
+                        {projectData.project.name}
+                      </div>
+                      <div className="text-sm text-blue-500 ml-2">
+                        ({projectData.project.code})
+                      </div>
+                    </div>
+
+                    {/* 工作内容 */}
+                    <div className="space-y-3">
+                      {showWorkItems && Object.keys(projectData.workItems).length > 0 ? (
+                        <>
+                          {/* 显示工作项分组 */}
+                          {showHierarchy && projectData.workItemsHierarchy.length > 0 ? (
+                            // 层级模式
+                            projectData.workItemsHierarchy.map((hierarchyItem: any) => (
+                              <div key={hierarchyItem.id} className="bg-white border border-blue-100 rounded-md p-3">
+                                <div className="text-sm font-medium text-blue-600 mb-2">
+                                  L{hierarchyItem.level} {hierarchyItem.fullPath}
+                                </div>
+                                <div className="space-y-1">
+                                  {hierarchyItem.items.map((item: any, index: number) => (
+                                    <div key={index} className="text-sm text-gray-700">
+                                      {index + 1}. {item.content}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            // 简单模式
+                            Object.values(projectData.workItems).map((workItemData: any) => (
+                              <div key={workItemData.workItem.id} className="bg-white border border-blue-100 rounded-md p-3">
+                                <div className="text-sm font-medium text-blue-600 mb-2">
+                                  {workItemData.workItem.name}
+                                </div>
+                                <div className="space-y-1">
+                                  {workItemData.items.map((item: any, index: number) => (
+                                    <div key={index} className="text-sm text-gray-700">
+                                      {index + 1}. {item.content}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))
+                          )}
+
+                          {/* 其他工作 */}
+                          {projectData.directItems.length > 0 && (
+                            <div className="bg-white border border-blue-100 rounded-md p-3">
+                              <div className="text-sm font-medium text-blue-600 mb-2">
+                                其他工作
+                              </div>
+                              <div className="space-y-1">
+                                {projectData.directItems.map((item: any, index: number) => (
+                                  <div key={index} className="text-sm text-gray-700">
+                                    {index + 1}. {item.content}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        // 隐藏工作项时：直接显示所有内容
+                        <div className="bg-white border border-blue-100 rounded-md p-3">
+                          <div className="space-y-1">
+                            {projectData.items.map((item: any, index: number) => (
+                              <div key={index} className="text-sm text-gray-700">
+                                {index + 1}. {item.content}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 py-6 sm:py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                <p className="text-xs sm:text-sm">预览将在此处显示</p>
+                <p className="text-xs mt-0.5 sm:mt-1">请先添加工作项内容</p>
+              </div>
+            );
+          })()}
         </div>
+      ) : (
+        <form onSubmit={(e) => { e.preventDefault(); saveReport(); }} className="space-y-4 sm:space-y-6">
+          {/* 周报基本信息 */}
+          <div className="bg-white shadow rounded-lg p-4 sm:p-6 border border-gray-100">
+            <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  周报时间
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                  </div>
+                  <div className="block w-full pl-10 pr-3 py-2 sm:py-2.5 border border-gray-300 rounded-md leading-5 bg-gray-50 text-sm text-gray-700">
+                    {year}年第{weekNumber}周 ({formattedPeriod})
+                  </div>
+                </div>
+                {reportId && (
+                  <div className="mt-1.5 sm:mt-2 flex items-center">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      已有周报
+                    </span>
+                    <span className="ml-2 text-xs sm:text-sm text-gray-600">
+                      已加载该周的周报内容
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 项目计划区域 */}
+              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center mb-1.5 sm:mb-2">
+                  <input
+                    id="is-plan"
+                    name="is-plan"
+                    type="checkbox"
+                    checked={isPlan}
+                    onChange={(e) => setIsPlan(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-colors"
+                  />
+                  <label htmlFor="is-plan" className="ml-2 block text-sm font-medium text-gray-700">
+                    标记为项目计划
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  项目计划将显示蓝色标签，用于区分计划性工作和实际完成的工作
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 工作内容和预览区域 */}
+          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+            {/* 工作内容区域 */}
+            <div className="w-full lg:w-2/3">
+              <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-800 flex items-center">
+                <FileTextIcon className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />项目工作内容
+              </h3>
+              <div className="space-y-3 sm:space-y-4 mb-4">
+                {/* 添加新项目工作 */}
+                {projects && projects.length > 0 && (
+                  <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-sm text-gray-700">添加新项目工作</h4>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-grow">
+                        <select
+                          value={selectedProjectId}
+                          onChange={(e) => setSelectedProjectId(e.target.value)}
+                          className="w-full p-1.5 sm:p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
+                        >
+                          <option value="">选择项目...</option>
+                          {availableProjects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name} ({project.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addWorkItem}
+                        disabled={!selectedProjectId}
+                        className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center text-xs sm:text-sm transition-colors"
+                      >
+                        <PlusIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> 添加
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 按项目分组的工作项 */}
+                {workItemsGroupedByProject.map((group, groupIndex) => (
+                  <div key={groupIndex} className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-center mb-2 sm:mb-3">
+                      <h4 className="font-medium text-sm text-blue-600">{group.projectName}</h4>
+                      <button
+                        type="button"
+                        onClick={() => handleAddWorkItem(group.projectId)}
+                        className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm font-medium flex items-center transition-colors"
+                      >
+                        <PlusIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" /> 添加工作项
+                      </button>
+                    </div>
+                    <div className="space-y-2 sm:space-y-3">
+                      {group.items.map((item, itemIndex) => (
+                        <div key={item.tempId} className="flex items-start gap-2 sm:gap-3">
+                          <div className="flex-grow space-y-2">
+                            {/* 工作项分类选择 */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                工作项分类（可选）
+                              </label>
+                              {renderWorkItemSelector(
+                                group.projectId,
+                                item.workItemId,
+                                (value) => {
+                                  if (item.globalIndex !== -1) {
+                                    updateWorkItem(item.globalIndex, 'workItemId', value);
+                                  }
+                                }
+                              )}
+                            </div>
+
+                            {/* 工作内容输入 */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                工作内容 <span className="text-red-500">*</span>
+                              </label>
+                              <textarea
+                                value={item.content}
+                                onChange={(e) => {
+                                  if (item.globalIndex !== -1) {
+                                    updateWorkItem(item.globalIndex, 'content', e.target.value);
+                                  }
+                                }}
+                                rows={2}
+                                placeholder="请输入工作内容..."
+                                className="w-full p-1.5 sm:p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm transition-all"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (item.globalIndex !== -1) {
+                                removeWorkItem(item.globalIndex);
+                              }
+                            }}
+                            className="flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
+                          >
+                            <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 实时预览面板 */}
+            <div className="w-full lg:w-1/3">
+              <div className="sticky top-4">
+                <h3 className="text-base sm:text-lg font-semibold mb-2 text-gray-800 flex items-center">
+                  <EyeIcon className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />实时预览
+                </h3>
+                <div className="bg-white shadow rounded-lg p-4 border border-gray-100">
+                  <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-100">
+                    <div className="text-sm font-medium text-gray-700">
+                      {year}年第{weekNumber}周
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={handleCopyMarkdown}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-1 py-0.5 border border-blue-200 rounded hover:bg-blue-50"
+                      >
+                        <CopyIcon className="h-3 w-3 mr-0.5" />MD
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCopyYaml}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-1 py-0.5 border border-blue-200 rounded hover:bg-blue-50"
+                      >
+                        <CopyIcon className="h-3 w-3 mr-0.5" />YAML
+                      </button>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const previewContent = generatePreviewContent();
+                    return previewContent && previewContent.length > 0 ? (
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {previewContent.map((projectData: any) => (
+                          <div key={projectData.project.id} className="bg-blue-50 border border-blue-200 rounded p-2">
+                            {/* 项目标题 */}
+                            <div className="text-xs font-medium text-blue-700 mb-2 pb-1 border-b border-blue-200">
+                              {projectData.project.name}
+                            </div>
+
+                            {/* 工作内容 */}
+                            <div className="space-y-2">
+                              {showWorkItems && Object.keys(projectData.workItems).length > 0 ? (
+                                <>
+                                  {/* 显示工作项分组 */}
+                                  {showHierarchy && projectData.workItemsHierarchy.length > 0 ? (
+                                    // 层级模式
+                                    projectData.workItemsHierarchy.map((hierarchyItem: any) => (
+                                      <div key={hierarchyItem.id} className="bg-white border border-blue-100 rounded p-2">
+                                        <div className="text-xs font-medium text-blue-600 mb-1">
+                                          L{hierarchyItem.level} {hierarchyItem.fullPath}
+                                        </div>
+                                        <div className="space-y-0.5">
+                                          {hierarchyItem.items.map((item: any, index: number) => (
+                                            <div key={index} className="text-xs text-gray-700">
+                                              {index + 1}. {item.content}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    // 简单模式
+                                    Object.values(projectData.workItems).map((workItemData: any) => (
+                                      <div key={workItemData.workItem.id} className="bg-white border border-blue-100 rounded p-2">
+                                        <div className="text-xs font-medium text-blue-600 mb-1">
+                                          {workItemData.workItem.name}
+                                        </div>
+                                        <div className="space-y-0.5">
+                                          {workItemData.items.map((item: any, index: number) => (
+                                            <div key={index} className="text-xs text-gray-700">
+                                              {index + 1}. {item.content}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+
+                                  {/* 其他工作 */}
+                                  {projectData.directItems.length > 0 && (
+                                    <div className="bg-white border border-blue-100 rounded p-2">
+                                      <div className="text-xs font-medium text-blue-600 mb-1">
+                                        其他工作
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        {projectData.directItems.map((item: any, index: number) => (
+                                          <div key={index} className="text-xs text-gray-700">
+                                            {index + 1}. {item.content}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                // 隐藏工作项时：直接显示所有内容
+                                <div className="bg-white border border-blue-100 rounded p-2">
+                                  <div className="space-y-0.5">
+                                    {projectData.items.map((item: any, index: number) => (
+                                      <div key={index} className="text-xs text-gray-700">
+                                        {index + 1}. {item.content}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-gray-400 py-6 bg-gray-50 rounded border border-dashed border-gray-200">
+                        <p className="text-xs">预览将在此处显示</p>
+                        <p className="text-xs mt-1">请先添加工作项内容</p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
       )}
     </div>
   );
