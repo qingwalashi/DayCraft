@@ -11,13 +11,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { usePersistentState } from "@/lib/utils/page-persistence";
 
-interface Project {
-  id: string;
-  name: string;
-  code: string;
-  description?: string;
-  is_active: boolean;
-}
+
 
 interface ProjectWeeklyReportData {
   id: string;

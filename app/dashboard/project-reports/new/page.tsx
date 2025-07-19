@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, BookmarkIcon, Loader2Icon, EyeIcon, EyeOffIcon, CopyIcon, FileTextIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
-import { createClient, Project } from "@/lib/supabase/client";
+import { createClient, Project, WorkBreakdownItem as DbWorkBreakdownItem } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { format, startOfISOWeek, endOfISOWeek, getISOWeek, getYear } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -30,18 +30,14 @@ interface ProjectWeeklyReportItemData {
   work_item_id?: string;
 }
 
-interface Project {
-  id: string;
-  name: string;
-  code: string;
-}
 
-interface WorkBreakdownItem {
+
+interface WorkBreakdownItemWithChildren {
   id: string;
   name: string;
   level: number;
-  parent_id?: string;
-  children?: WorkBreakdownItem[];
+  parent_id: string | null;
+  children?: WorkBreakdownItemWithChildren[];
 }
 
 export default function NewProjectWeeklyReportPage() {
@@ -65,8 +61,8 @@ export default function NewProjectWeeklyReportPage() {
   const [workItems, setWorkItems] = usePersistentState<WorkItem[]>('project-weekly-report-work-items', []);
   const [isPlan, setIsPlan] = usePersistentState('project-weekly-report-is-plan', false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [workBreakdownItems, setWorkBreakdownItems] = useState<{ [projectId: string]: WorkBreakdownItem[] }>({});
-  const [allWorkItems, setAllWorkItems] = useState<{ [projectId: string]: WorkBreakdownItem[] }>({});
+  const [workBreakdownItems, setWorkBreakdownItems] = useState<{ [projectId: string]: WorkBreakdownItemWithChildren[] }>({});
+  const [allWorkItems, setAllWorkItems] = useState<{ [projectId: string]: DbWorkBreakdownItem[] }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
@@ -146,20 +142,20 @@ export default function NewProjectWeeklyReportPage() {
       }
       
       // 构建树形结构
-      const items = data || [];
-      const itemMap: { [id: string]: WorkBreakdownItem } = {};
-      const rootItems: WorkBreakdownItem[] = [];
+      const items = (data || []) as DbWorkBreakdownItem[];
+      const itemMap: { [id: string]: WorkBreakdownItemWithChildren } = {};
+      const rootItems: WorkBreakdownItemWithChildren[] = [];
 
       // 创建所有项目的映射
-      items.forEach((item: any) => {
+      items.forEach((item: DbWorkBreakdownItem) => {
         itemMap[item.id] = {
           ...item,
           children: []
         };
       });
-      
+
       // 构建父子关系
-      items.forEach((item: any) => {
+      items.forEach((item: DbWorkBreakdownItem) => {
         if (item.parent_id && itemMap[item.parent_id]) {
           itemMap[item.parent_id].children!.push(itemMap[item.id]);
         } else {
@@ -367,7 +363,7 @@ export default function NewProjectWeeklyReportPage() {
       fetchWorkBreakdownItems(projectId);
     }
 
-    const renderOptions = (items: WorkBreakdownItem[], level = 0): JSX.Element[] => {
+    const renderOptions = (items: WorkBreakdownItemWithChildren[], level = 0): JSX.Element[] => {
       const options: JSX.Element[] = [];
       
       items.forEach(item => {
