@@ -1866,6 +1866,8 @@ export default function WorkBreakdownPage() {
     }
     
     // 编辑模式下的渲染
+    const isSelected = selectedWorkItem?.id === item.id;
+
     return (
       <div key={item.id} className="mb-4">
         <div className={`flex items-start p-4 bg-white rounded-lg shadow-sm border-l-4 transition-all hover:shadow-md ${
