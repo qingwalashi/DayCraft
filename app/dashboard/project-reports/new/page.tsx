@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, BookmarkIcon, Loader2Icon, EyeIcon, EyeOffIcon, CopyIcon, FileTextIcon } from "lucide-react";
+import { CalendarIcon, PlusIcon, TrashIcon, SaveIcon, ArrowLeftIcon, BookmarkIcon, Loader2Icon, EyeIcon, EyeOffIcon, CopyIcon, FileTextIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project, WorkBreakdownItem as DbWorkBreakdownItem } from "@/lib/supabase/client";
@@ -394,17 +394,13 @@ export default function NewProjectWeeklyReportPage() {
     );
   };
 
-  // 保存项目周报
-  const saveReport = async () => {
+  // 暂存项目周报
+  const saveDraft = async () => {
     if (!user) return;
-    
-    // 验证数据
+
+    // 暂存不需要验证数据，允许保存空内容
     const validItems = workItems.filter(item => item.content.trim() && item.projectId);
-    if (validItems.length === 0) {
-      toast.error('请至少添加一个有效的工作项');
-      return;
-    }
-    
+
     setIsSaving(true);
     try {
       let currentReportId = reportId;
@@ -471,11 +467,99 @@ export default function NewProjectWeeklyReportPage() {
         throw insertError;
       }
       
+      toast.success('项目周报暂存成功');
+
+      // 暂存后不清除页面状态，也不跳转
+    } catch (error) {
+      console.error('暂存项目周报失败', error);
+      toast.error('暂存项目周报失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 保存项目周报
+  const saveReport = async () => {
+    if (!user) return;
+
+    // 验证数据
+    const validItems = workItems.filter(item => item.content.trim() && item.projectId);
+    if (validItems.length === 0) {
+      toast.error('请至少添加一个有效的工作项');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let currentReportId = reportId;
+
+      if (currentReportId) {
+        // 更新现有报告
+        const { error: updateError } = await supabase
+          .from('project_weekly_reports')
+          .update({
+            is_plan: isPlan,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentReportId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        // 删除现有条目
+        const { error: deleteError } = await supabase
+          .from('project_weekly_report_items')
+          .delete()
+          .eq('report_id', currentReportId);
+
+        if (deleteError) {
+          throw deleteError;
+        }
+      } else {
+        // 创建新报告
+        const { data: reportData, error: reportError } = await supabase
+          .from('project_weekly_reports')
+          .insert({
+            user_id: user.id,
+            year,
+            week_number: weekNumber,
+            start_date: format(weekStart, 'yyyy-MM-dd'),
+            end_date: format(weekEnd, 'yyyy-MM-dd'),
+            is_plan: isPlan
+          })
+          .select()
+          .single();
+
+        if (reportError) {
+          throw reportError;
+        }
+
+        currentReportId = reportData.id as string;
+        setReportId(currentReportId);
+      }
+
+      // 插入新条目
+      const itemsToInsert = validItems.map(item => ({
+        report_id: currentReportId,
+        project_id: item.projectId,
+        work_item_id: item.workItemId || null,
+        content: item.content.trim()
+      }));
+
+      const { error: insertError } = await supabase
+        .from('project_weekly_report_items')
+        .insert(itemsToInsert);
+
+      if (insertError) {
+        throw insertError;
+      }
+
       toast.success('项目周报保存成功');
-      
+
       // 清除页面状态
       clearPageState('project-weekly-report');
-      
+
       // 返回列表页
       router.push('/dashboard/project-reports');
     } catch (error) {
@@ -489,6 +573,42 @@ export default function NewProjectWeeklyReportPage() {
   // 切换预览模式
   const togglePreview = () => {
     setShowPreview(!showPreview);
+  };
+
+  // 切换到上一周
+  const goToPreviousWeek = () => {
+    const currentDate = new Date(year, 0, 1 + (weekNumber - 1) * 7);
+    const previousWeek = new Date(currentDate);
+    previousWeek.setDate(currentDate.getDate() - 7);
+
+    const newYear = getYear(startOfISOWeek(previousWeek));
+    const newWeek = getISOWeek(startOfISOWeek(previousWeek));
+
+    // 立即清空当前状态，避免数据混乱
+    setReportId('');
+    setWorkItems([]);
+    setIsPlan(false);
+
+    setYear(newYear);
+    setWeekNumber(newWeek);
+  };
+
+  // 切换到下一周
+  const goToNextWeek = () => {
+    const currentDate = new Date(year, 0, 1 + (weekNumber - 1) * 7);
+    const nextWeek = new Date(currentDate);
+    nextWeek.setDate(currentDate.getDate() + 7);
+
+    const newYear = getYear(startOfISOWeek(nextWeek));
+    const newWeek = getISOWeek(startOfISOWeek(nextWeek));
+
+    // 立即清空当前状态，避免数据混乱
+    setReportId('');
+    setWorkItems([]);
+    setIsPlan(false);
+
+    setYear(newYear);
+    setWeekNumber(newWeek);
   };
 
   // 复制为Markdown格式
@@ -734,6 +854,20 @@ export default function NewProjectWeeklyReportPage() {
     }
   }, [user, fetchProjects, fetchExistingReport]);
 
+  // 监听年份和周数变化，重新加载数据
+  useEffect(() => {
+    if (user && dataLoadedRef.current) {
+      // 重置报告ID，因为切换了时间
+      setReportId('');
+      // 清空当前工作项内容
+      setWorkItems([]);
+      // 重置计划状态
+      setIsPlan(false);
+      // 重新加载该周的报告数据
+      fetchExistingReport(true);
+    }
+  }, [year, weekNumber, user, fetchExistingReport]);
+
   // 添加页面可见性监听
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -759,7 +893,7 @@ export default function NewProjectWeeklyReportPage() {
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">{reportId ? '编辑项目周报' : '新建项目周报'}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">编辑项目周报</h1>
             <div className="flex flex-wrap gap-2 mt-1.5">
               {reportId && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -781,6 +915,24 @@ export default function NewProjectWeeklyReportPage() {
           >
             <EyeIcon className="h-4 w-4 mr-1.5" />
             {showPreview ? '返回编辑' : '预览'}
+          </button>
+          <button
+            type="button"
+            onClick={saveDraft}
+            disabled={isSaving || projects.length === 0}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSaving ? (
+              <>
+                <Loader2Icon className="h-4 w-4 mr-1.5 animate-spin" />
+                暂存中...
+              </>
+            ) : (
+              <>
+                <BookmarkIcon className="h-4 w-4 mr-1.5" />
+                暂存
+              </>
+            )}
           </button>
           <button
             type="button"
@@ -983,15 +1135,35 @@ export default function NewProjectWeeklyReportPage() {
           <div className="bg-white shadow rounded-lg p-4 sm:p-6 border border-gray-100">
             <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   周报时间
                 </label>
-                <div className="relative rounded-md shadow-sm">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg flex-1 mr-3">
+                    <CalendarIcon className="h-4 w-4 text-blue-500 mr-2 flex-shrink-0" />
+                    <div className="text-sm font-medium text-blue-700">
+                      {year}年第{weekNumber}周 ({formattedPeriod})
+                    </div>
                   </div>
-                  <div className="block w-full pl-10 pr-3 py-2 sm:py-2.5 border border-gray-300 rounded-md leading-5 bg-gray-50 text-sm text-gray-700">
-                    {year}年第{weekNumber}周 ({formattedPeriod})
+
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={goToPreviousWeek}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      title="上一周"
+                    >
+                      <ChevronLeftIcon className="h-4 w-4 text-gray-600" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={goToNextWeek}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      title="下一周"
+                    >
+                      <ChevronRightIcon className="h-4 w-4 text-gray-600" />
+                    </button>
                   </div>
                 </div>
                 {reportId && (
