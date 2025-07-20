@@ -1128,25 +1128,30 @@ export default function ProjectReportsPage() {
                         )}
 
                         {/* 当隐藏工作项时，显示所有内容的简化视图 */}
-                        {!showWorkItems && Object.keys(projectData.workItems).length > 0 && (
+                        {!showWorkItems && (Object.keys(projectData.workItems).length > 0 || projectData.directItems.length > 0) && (
                           <div className="text-xs md:text-sm">
                             <div className="space-y-0.5">
-                              {Object.values(projectData.workItems).flatMap(workItemData =>
-                                workItemData.mergedContent.split('\n').filter(line => line.trim())
-                              ).map((line, index) => (
+                              {[
+                                // 工作项内容
+                                ...Object.values(projectData.workItems).flatMap(workItemData =>
+                                  workItemData.mergedContent.split('\n').filter(line => line.trim())
+                                ),
+                                // 其他工作内容
+                                ...projectData.directItems.map(item => item.content.trim()).filter(content => content)
+                              ].map((line, index) => (
                                 <div key={index} className="text-gray-600 flex items-start">
                                   <span className="mr-2 text-blue-400 flex-shrink-0 font-medium">
                                     {index + 1}.
                                   </span>
-                                  <span className="break-words">{line.trim()}</span>
+                                  <span className="break-words">{line}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {/* 其他工作（未选择工作项的内容）- 统一显示在最后 */}
-                        {projectData.directItems.length > 0 && (
+                        {/* 其他工作（未选择工作项的内容）- 只在显示工作项时单独显示 */}
+                        {showWorkItems && projectData.directItems.length > 0 && (
                           <div className="text-xs md:text-sm">
                             {/* 其他工作标题单独一行 */}
                             <div className="text-blue-500 font-medium mb-1">

@@ -505,31 +505,33 @@ export default function NewProjectWeeklyReportPage() {
     previewContent.forEach((projectData: any) => {
       markdownContent += `## ${projectData.project.name}\n`;
 
-      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+      if (showWorkItems) {
         // 显示工作项时：按工作项分组
-        if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
-          // 层级模式：显示完整路径
-          projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
-            markdownContent += `### ${hierarchyItem.fullPath}\n`;
-            let itemCounter = 1;
-            hierarchyItem.items.forEach((item: any) => {
-              markdownContent += `${itemCounter}. ${item.content}\n`;
-              itemCounter++;
+        if (Object.keys(projectData.workItems).length > 0) {
+          if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
+            // 层级模式：显示完整路径
+            projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
+              markdownContent += `### ${hierarchyItem.fullPath}\n`;
+              let itemCounter = 1;
+              hierarchyItem.items.forEach((item: any) => {
+                markdownContent += `${itemCounter}. ${item.content}\n`;
+                itemCounter++;
+              });
             });
-          });
-        } else {
-          // 简单模式：只显示工作项名称
-          Object.values(projectData.workItems).forEach((workItemData: any) => {
-            markdownContent += `### ${workItemData.workItem.name}\n`;
-            let itemCounter = 1;
-            workItemData.items.forEach((item: any) => {
-              markdownContent += `${itemCounter}. ${item.content}\n`;
-              itemCounter++;
+          } else {
+            // 简单模式：只显示工作项名称
+            Object.values(projectData.workItems).forEach((workItemData: any) => {
+              markdownContent += `### ${workItemData.workItem.name}\n`;
+              let itemCounter = 1;
+              workItemData.items.forEach((item: any) => {
+                markdownContent += `${itemCounter}. ${item.content}\n`;
+                itemCounter++;
+              });
             });
-          });
+          }
         }
 
-        // 其他工作
+        // 其他工作（显示工作项时单独显示）
         if (projectData.directItems.length > 0) {
           markdownContent += `### 其他工作\n`;
           let otherItemCounter = 1;
@@ -574,27 +576,29 @@ export default function NewProjectWeeklyReportPage() {
     previewContent.forEach((projectData: any) => {
       yamlContent += `${projectData.project.name}:\n`;
 
-      if (showWorkItems && Object.keys(projectData.workItems).length > 0) {
+      if (showWorkItems) {
         // 显示工作项时：按工作项分组
-        if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
-          // 层级模式：使用完整路径
-          projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
-            yamlContent += `  ${hierarchyItem.fullPath}:\n`;
-            hierarchyItem.items.forEach((item: any) => {
-              yamlContent += `    - ${item.content}\n`;
+        if (Object.keys(projectData.workItems).length > 0) {
+          if (showHierarchy && projectData.workItemsHierarchy.length > 0) {
+            // 层级模式：使用完整路径
+            projectData.workItemsHierarchy.forEach((hierarchyItem: any) => {
+              yamlContent += `  ${hierarchyItem.fullPath}:\n`;
+              hierarchyItem.items.forEach((item: any) => {
+                yamlContent += `    - ${item.content}\n`;
+              });
             });
-          });
-        } else {
-          // 简单模式：使用工作项名称
-          Object.values(projectData.workItems).forEach((workItemData: any) => {
-            yamlContent += `  ${workItemData.workItem.name}:\n`;
-            workItemData.items.forEach((item: any) => {
-              yamlContent += `    - ${item.content}\n`;
+          } else {
+            // 简单模式：使用工作项名称
+            Object.values(projectData.workItems).forEach((workItemData: any) => {
+              yamlContent += `  ${workItemData.workItem.name}:\n`;
+              workItemData.items.forEach((item: any) => {
+                yamlContent += `    - ${item.content}\n`;
+              });
             });
-          });
+          }
         }
 
-        // 其他工作
+        // 其他工作（显示工作项时单独显示）
         if (projectData.directItems.length > 0) {
           yamlContent += `  其他工作:\n`;
           projectData.directItems.forEach((item: any) => {
@@ -813,51 +817,51 @@ export default function NewProjectWeeklyReportPage() {
             </div>
 
             {/* 控制按钮区域 */}
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               {/* 显示控制开关 */}
-              <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowWorkItems(!showWorkItems)}
+                className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                  showWorkItems
+                    ? 'bg-blue-50 text-blue-700 border-blue-300'
+                    : 'bg-gray-50 text-gray-700 border-gray-300'
+                }`}
+                title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+              >
+                {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
+                工作项
+              </button>
+
+              {showWorkItems && (
                 <button
-                  onClick={() => setShowWorkItems(!showWorkItems)}
+                  onClick={() => setShowHierarchy(!showHierarchy)}
                   className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
-                    showWorkItems
-                      ? 'bg-blue-50 text-blue-700 border-blue-300'
+                    showHierarchy
+                      ? 'bg-green-50 text-green-700 border-green-300'
                       : 'bg-gray-50 text-gray-700 border-gray-300'
                   }`}
-                  title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+                  title={showHierarchy ? '隐藏层级' : '显示层级'}
                 >
-                  {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
-                  工作项
+                  层级
                 </button>
-                {showWorkItems && (
-                  <button
-                    onClick={() => setShowHierarchy(!showHierarchy)}
-                    className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
-                      showHierarchy
-                        ? 'bg-green-50 text-green-700 border-green-300'
-                        : 'bg-gray-50 text-gray-700 border-gray-300'
-                    }`}
-                    title={showHierarchy ? '隐藏层级' : '显示层级'}
-                  >
-                    层级
-                  </button>
-                )}
-              </div>
+              )}
 
               {/* 复制按钮 */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={handleCopyMarkdown}
-                  className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 border border-blue-200 rounded-md hover:bg-blue-50"
-                >
-                  <CopyIcon className="h-3 w-3 mr-1" />Markdown
-                </button>
-                <button
-                  onClick={handleCopyYaml}
-                  className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 border border-blue-200 rounded-md hover:bg-blue-50"
-                >
-                  <CopyIcon className="h-3 w-3 mr-1" />YAML
-                </button>
-              </div>
+              <button
+                onClick={handleCopyMarkdown}
+                className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                title="复制为Markdown格式"
+              >
+                <CopyIcon className="h-3 w-3 mr-1" />MD
+              </button>
+
+              <button
+                onClick={handleCopyYaml}
+                className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                title="复制为YAML格式"
+              >
+                <CopyIcon className="h-3 w-3 mr-1" />YML
+              </button>
             </div>
           </div>
 
@@ -896,7 +900,7 @@ export default function NewProjectWeeklyReportPage() {
 
                     {/* 工作内容 */}
                     <div className="space-y-3">
-                      {showWorkItems && Object.keys(projectData.workItems).length > 0 ? (
+                      {showWorkItems ? (
                         <>
                           {/* 显示工作项分组 */}
                           {showHierarchy && projectData.workItemsHierarchy.length > 0 ? (
@@ -904,7 +908,7 @@ export default function NewProjectWeeklyReportPage() {
                             projectData.workItemsHierarchy.map((hierarchyItem: any) => (
                               <div key={hierarchyItem.id} className="bg-white border border-blue-100 rounded-md p-3">
                                 <div className="text-sm font-medium text-blue-600 mb-2">
-                                  L{hierarchyItem.level} {hierarchyItem.fullPath}
+                                  {hierarchyItem.fullPath}
                                 </div>
                                 <div className="space-y-1">
                                   {hierarchyItem.items.map((item: any, index: number) => (
@@ -933,7 +937,7 @@ export default function NewProjectWeeklyReportPage() {
                             ))
                           )}
 
-                          {/* 其他工作 */}
+                          {/* 其他工作（未选择工作项的内容）- 显示工作项时单独显示 */}
                           {projectData.directItems.length > 0 && (
                             <div className="bg-white border border-blue-100 rounded-md p-3">
                               <div className="text-sm font-medium text-blue-600 mb-2">
@@ -950,7 +954,7 @@ export default function NewProjectWeeklyReportPage() {
                           )}
                         </>
                       ) : (
-                        // 隐藏工作项时：直接显示所有内容
+                        // 隐藏工作项时：显示所有内容的简化视图
                         <div className="bg-white border border-blue-100 rounded-md p-3">
                           <div className="space-y-1">
                             {projectData.items.map((item: any, index: number) => (
@@ -1150,18 +1154,51 @@ export default function NewProjectWeeklyReportPage() {
                       <button
                         type="button"
                         onClick={handleCopyMarkdown}
-                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-1 py-0.5 border border-blue-200 rounded hover:bg-blue-50"
+                        className="inline-flex items-center px-1 py-0.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                        title="复制为Markdown格式"
                       >
                         <CopyIcon className="h-3 w-3 mr-0.5" />MD
                       </button>
                       <button
                         type="button"
                         onClick={handleCopyYaml}
-                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-1 py-0.5 border border-blue-200 rounded hover:bg-blue-50"
+                        className="inline-flex items-center px-1 py-0.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                        title="复制为YAML格式"
                       >
-                        <CopyIcon className="h-3 w-3 mr-0.5" />YAML
+                        <CopyIcon className="h-3 w-3 mr-0.5" />YML
                       </button>
                     </div>
+                  </div>
+
+                  {/* 控制按钮区域 */}
+                  <div className="flex flex-wrap items-center gap-1 mb-3 pb-2 border-b border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowWorkItems(!showWorkItems)}
+                      className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                        showWorkItems
+                          ? 'bg-blue-50 text-blue-700 border-blue-300'
+                          : 'bg-gray-50 text-gray-700 border-gray-300'
+                      }`}
+                      title={showWorkItems ? '隐藏工作项' : '显示工作项'}
+                    >
+                      {showWorkItems ? <EyeIcon className="h-3 w-3 mr-1" /> : <EyeOffIcon className="h-3 w-3 mr-1" />}
+                      工作项
+                    </button>
+                    {showWorkItems && (
+                      <button
+                        type="button"
+                        onClick={() => setShowHierarchy(!showHierarchy)}
+                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border ${
+                          showHierarchy
+                            ? 'bg-green-50 text-green-700 border-green-300'
+                            : 'bg-gray-50 text-gray-700 border-gray-300'
+                        }`}
+                        title={showHierarchy ? '隐藏层级' : '显示层级'}
+                      >
+                        层级
+                      </button>
+                    )}
                   </div>
 
                   {(() => {
@@ -1177,7 +1214,7 @@ export default function NewProjectWeeklyReportPage() {
 
                             {/* 工作内容 */}
                             <div className="space-y-2">
-                              {showWorkItems && Object.keys(projectData.workItems).length > 0 ? (
+                              {showWorkItems ? (
                                 <>
                                   {/* 显示工作项分组 */}
                                   {showHierarchy && projectData.workItemsHierarchy.length > 0 ? (
@@ -1185,7 +1222,7 @@ export default function NewProjectWeeklyReportPage() {
                                     projectData.workItemsHierarchy.map((hierarchyItem: any) => (
                                       <div key={hierarchyItem.id} className="bg-white border border-blue-100 rounded p-2">
                                         <div className="text-xs font-medium text-blue-600 mb-1">
-                                          L{hierarchyItem.level} {hierarchyItem.fullPath}
+                                          {hierarchyItem.fullPath}
                                         </div>
                                         <div className="space-y-0.5">
                                           {hierarchyItem.items.map((item: any, index: number) => (
@@ -1214,7 +1251,7 @@ export default function NewProjectWeeklyReportPage() {
                                     ))
                                   )}
 
-                                  {/* 其他工作 */}
+                                  {/* 其他工作（未选择工作项的内容）- 显示工作项时单独显示 */}
                                   {projectData.directItems.length > 0 && (
                                     <div className="bg-white border border-blue-100 rounded p-2">
                                       <div className="text-xs font-medium text-blue-600 mb-1">
@@ -1231,7 +1268,7 @@ export default function NewProjectWeeklyReportPage() {
                                   )}
                                 </>
                               ) : (
-                                // 隐藏工作项时：直接显示所有内容
+                                // 隐藏工作项时：显示所有内容的简化视图
                                 <div className="bg-white border border-blue-100 rounded p-2">
                                   <div className="space-y-0.5">
                                     {projectData.items.map((item: any, index: number) => (
