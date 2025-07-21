@@ -27,13 +27,18 @@ interface ProjectWeeklyReportData {
 interface ProjectWeeklyReportItemData {
   id: string;
   content: string;
-  projects: Project;
+  projects?: Project; // 改为可选，因为项目可能已被删除
   work_breakdown_items?: {
     id: string;
     name: string;
     level?: number;
     parent_id?: string;
   };
+  // 快照字段，用于保留历史记录
+  project_name?: string;
+  project_code?: string;
+  work_item_name?: string;
+  work_item_path?: string;
 }
 
 interface WorkItemHierarchy {
@@ -98,6 +103,54 @@ export default function ProjectReportsPage() {
   const [reports, setReports] = usePersistentState<ProjectWeeklyReportData[]>('project-reports-reports', []);
   const [reportItems, setReportItems] = usePersistentState<{ [reportId: string]: ProjectWeeklyReportItemData[] }>('project-reports-items', {});
   const [allWorkItems, setAllWorkItems] = useState<{ [projectId: string]: any[] }>({});
+
+  // 辅助函数：获取项目显示信息，优先使用快照字段
+  const getProjectDisplayInfo = useCallback((item: ProjectWeeklyReportItemData) => {
+    // 优先使用快照字段
+    if (item.project_name) {
+      return {
+        name: item.project_name,
+        code: item.project_code || '',
+        isDeleted: !item.projects // 如果没有关联的项目对象，说明项目已被删除
+      };
+    }
+    // 如果没有快照字段，使用关联的项目信息
+    if (item.projects) {
+      return {
+        name: item.projects.name,
+        code: item.projects.code,
+        isDeleted: false
+      };
+    }
+    // 都没有的话，返回默认值
+    return {
+      name: '未知项目',
+      code: '',
+      isDeleted: true
+    };
+  }, []);
+
+  // 辅助函数：获取工作项显示信息，优先使用快照字段
+  const getWorkItemDisplayInfo = useCallback((item: ProjectWeeklyReportItemData) => {
+    // 优先使用快照字段
+    if (item.work_item_name) {
+      return {
+        name: item.work_item_name,
+        path: item.work_item_path || item.work_item_name,
+        isDeleted: !item.work_breakdown_items // 如果没有关联的工作项对象，说明工作项已被删除
+      };
+    }
+    // 如果没有快照字段，使用关联的工作项信息
+    if (item.work_breakdown_items) {
+      return {
+        name: item.work_breakdown_items.name,
+        path: item.work_breakdown_items.name, // 这里可以后续优化为完整路径
+        isDeleted: false
+      };
+    }
+    // 都没有的话，返回null（表示没有工作项）
+    return null;
+  }, []);
 
   // 添加数据加载状态引用
   const dataLoadedRef = useRef(false);
@@ -233,14 +286,28 @@ export default function ProjectReportsPage() {
   const groupedProjectData = useMemo(() => {
     if (!currentWeekData.report) return [];
 
-    const grouped: { [projectId: string]: GroupedProjectData } = {};
+    const grouped: { [projectKey: string]: GroupedProjectData } = {};
 
     currentWeekData.report.items.forEach(item => {
-      const projectId = item.projects.id;
+      const projectInfo = getProjectDisplayInfo(item);
+      // 使用项目名称作为分组键，因为项目可能已被删除
+      const projectKey = item.projects?.id || `deleted_${projectInfo.name}_${projectInfo.code}`;
 
-      if (!grouped[projectId]) {
-        grouped[projectId] = {
-          project: item.projects,
+      if (!grouped[projectKey]) {
+        // 创建项目对象，优先使用实际项目信息，否则使用快照信息
+        const project: Project = item.projects || {
+          id: projectKey,
+          name: projectInfo.name,
+          code: projectInfo.code,
+          description: null,
+          user_id: '',
+          created_at: '',
+          updated_at: '',
+          is_active: false
+        };
+
+        grouped[projectKey] = {
+          project,
           items: [],
           workItems: {},
           directItems: [],
@@ -248,20 +315,30 @@ export default function ProjectReportsPage() {
         };
       }
 
-      grouped[projectId].items.push(item);
+      grouped[projectKey].items.push(item);
 
-      if (item.work_breakdown_items) {
-        const workItemId = item.work_breakdown_items.id;
-        if (!grouped[projectId].workItems[workItemId]) {
-          grouped[projectId].workItems[workItemId] = {
-            workItem: item.work_breakdown_items,
+      // 处理工作项信息
+      const workItemInfo = getWorkItemDisplayInfo(item);
+      if (workItemInfo) {
+        const workItemId = item.work_breakdown_items?.id || `deleted_${workItemInfo.name}`;
+        if (!grouped[projectKey].workItems[workItemId]) {
+          // 创建工作项对象，优先使用实际工作项信息，否则使用快照信息
+          const workItem = item.work_breakdown_items || {
+            id: workItemId,
+            name: workItemInfo.name,
+            level: 0,
+            parent_id: undefined
+          };
+
+          grouped[projectKey].workItems[workItemId] = {
+            workItem,
             items: [],
             mergedContent: ''
           };
         }
-        grouped[projectId].workItems[workItemId].items.push(item);
+        grouped[projectKey].workItems[workItemId].items.push(item);
       } else {
-        grouped[projectId].directItems.push(item);
+        grouped[projectKey].directItems.push(item);
       }
     });
 
@@ -334,6 +411,10 @@ export default function ProjectReportsPage() {
             id,
             content,
             report_id,
+            project_name,
+            project_code,
+            work_item_name,
+            work_item_path,
             projects:project_id (
               id, name, code
             ),
@@ -359,7 +440,9 @@ export default function ProjectReportsPage() {
         setReportItems(itemsByReport);
 
         // 获取所有相关项目的工作项数据，用于构建层级结构
-        const projectIds = Array.from(new Set(itemsData?.map((item: any) => item.projects.id) || []));
+        const projectIds = Array.from(new Set(
+          itemsData?.map((item: any) => item.projects?.id).filter(Boolean) || []
+        ));
         if (projectIds.length > 0) {
           const { data: workItemsData, error: workItemsError } = await supabase
             .from('work_breakdown_items')
@@ -1097,12 +1180,17 @@ export default function ProjectReportsPage() {
                   <div key={projectData.project.id} className="border-l-2 border-blue-500 pl-2 md:pl-4 py-1 md:py-2">
                     {/* 项目标题 - 参考日报样式 */}
                     <div className="flex items-center mb-1 md:mb-2">
-                      <div className="text-sm font-medium text-blue-600">
+                      <div className={`text-sm font-medium ${projectData.project.is_active === false ? 'text-gray-500' : 'text-blue-600'}`}>
                         {projectData.project.name}
                       </div>
                       <div className="text-sm text-gray-500 ml-1">
                         ({projectData.project.code})
                       </div>
+                      {projectData.project.is_active === false && (
+                        <span className="text-xs text-red-500 ml-2 px-1 py-0.5 bg-red-50 rounded">
+                          已删除
+                        </span>
+                      )}
                     </div>
 
                     {/* 项目内容 - 简化列表 */}
@@ -1119,11 +1207,22 @@ export default function ProjectReportsPage() {
                                                      hierarchyItem.items.map(item => item.content).join('\n');
                                 const contentLines = mergedContent.split('\n').filter(line => line.trim());
 
+                                // 检查工作项是否已删除
+                                const workItemData = projectData.workItems[hierarchyItem.id];
+                                const isWorkItemDeleted = workItemData?.items.some(item =>
+                                  getWorkItemDisplayInfo(item)?.isDeleted
+                                );
+
                                 return (
                                   <div key={hierarchyItem.id} className="text-xs md:text-sm">
                                     {/* 工作项标题单独一行 */}
-                                    <div className="text-blue-500 font-medium mb-1">
-                                      {hierarchyItem.fullPath}
+                                    <div className={`font-medium mb-1 flex items-center ${isWorkItemDeleted ? 'text-gray-500' : 'text-blue-500'}`}>
+                                      <span>{hierarchyItem.fullPath}</span>
+                                      {isWorkItemDeleted && (
+                                        <span className="text-xs text-red-500 ml-2 px-1 py-0.5 bg-red-50 rounded">
+                                          已删除
+                                        </span>
+                                      )}
                                     </div>
                                     {/* 工作内容带序号 */}
                                     <div className="ml-2 space-y-0.5">
@@ -1144,11 +1243,21 @@ export default function ProjectReportsPage() {
                               Object.values(projectData.workItems).map((workItemData) => {
                                 const contentLines = workItemData.mergedContent.split('\n').filter(line => line.trim());
 
+                                // 检查工作项是否已删除
+                                const isWorkItemDeleted = workItemData.items.some(item =>
+                                  getWorkItemDisplayInfo(item)?.isDeleted
+                                );
+
                                 return (
                                   <div key={workItemData.workItem.id} className="text-xs md:text-sm">
                                     {/* 工作项标题单独一行 */}
-                                    <div className="text-blue-500 font-medium mb-1">
-                                      {workItemData.workItem.name}
+                                    <div className={`font-medium mb-1 flex items-center ${isWorkItemDeleted ? 'text-gray-500' : 'text-blue-500'}`}>
+                                      <span>{workItemData.workItem.name}</span>
+                                      {isWorkItemDeleted && (
+                                        <span className="text-xs text-red-500 ml-2 px-1 py-0.5 bg-red-50 rounded">
+                                          已删除
+                                        </span>
+                                      )}
                                     </div>
                                     {/* 工作内容带序号 */}
                                     <div className="ml-2 space-y-0.5">

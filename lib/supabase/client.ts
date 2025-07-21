@@ -270,9 +270,14 @@ export type ProjectWeeklyReport = {
 export type ProjectWeeklyReportItem = {
   id: string;
   report_id: string;
-  project_id: string;
+  project_id: string | null; // 改为可空，支持历史记录
   work_item_id: string | null;
   content: string;
+  // 快照字段，用于保留历史记录
+  project_name: string | null;
+  project_code: string | null;
+  work_item_name: string | null;
+  work_item_path: string | null;
   created_at: string;
   updated_at: string;
 };

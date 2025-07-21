@@ -101,6 +101,24 @@ export default function NewProjectWeeklyReportPage() {
   const { weekStart, weekEnd } = getWeekDates(year, weekNumber);
   const formattedPeriod = `${format(weekStart, 'M月d日', { locale: zhCN })} - ${format(weekEnd, 'M月d日', { locale: zhCN })}`;
 
+  // 构建工作项路径的辅助函数
+  const buildWorkItemPath = useCallback((workItem: any, allWorkItems: any[]): string => {
+    const path: string[] = [];
+    let currentItem = workItem;
+
+    // 递归向上查找父级工作项
+    while (currentItem) {
+      path.unshift(currentItem.name);
+      if (currentItem.parent_id) {
+        currentItem = allWorkItems.find(item => item.id === currentItem.parent_id);
+      } else {
+        break;
+      }
+    }
+
+    return path.join(' > ');
+  }, []);
+
   // 加载项目数据
   const fetchProjects = useCallback(async () => {
     if (!user) return;
@@ -451,12 +469,34 @@ export default function NewProjectWeeklyReportPage() {
         setReportId(currentReportId);
       }
       
-      // 插入新条目
-      const itemsToInsert = validItems.map(item => ({
-        report_id: currentReportId,
-        project_id: item.projectId,
-        work_item_id: item.workItemId || null,
-        content: item.content.trim()
+      // 插入新条目，包含快照字段
+      const itemsToInsert = await Promise.all(validItems.map(async (item) => {
+        // 获取项目信息用于快照
+        const project = projects.find(p => p.id === item.projectId);
+
+        // 获取工作项信息用于快照
+        let workItemName = null;
+        let workItemPath = null;
+        if (item.workItemId && workBreakdownItems[item.projectId]) {
+          const workItem = workBreakdownItems[item.projectId].find(w => w.id === item.workItemId);
+          if (workItem) {
+            workItemName = workItem.name;
+            // 构建工作项路径
+            workItemPath = buildWorkItemPath(workItem, workBreakdownItems[item.projectId]);
+          }
+        }
+
+        return {
+          report_id: currentReportId,
+          project_id: item.projectId,
+          work_item_id: item.workItemId || null,
+          content: item.content.trim(),
+          // 快照字段
+          project_name: project?.name || null,
+          project_code: project?.code || null,
+          work_item_name: workItemName,
+          work_item_path: workItemPath
+        };
       }));
       
       const { error: insertError } = await supabase
@@ -539,12 +579,34 @@ export default function NewProjectWeeklyReportPage() {
         setReportId(currentReportId);
       }
 
-      // 插入新条目
-      const itemsToInsert = validItems.map(item => ({
-        report_id: currentReportId,
-        project_id: item.projectId,
-        work_item_id: item.workItemId || null,
-        content: item.content.trim()
+      // 插入新条目，包含快照字段
+      const itemsToInsert = await Promise.all(validItems.map(async (item) => {
+        // 获取项目信息用于快照
+        const project = projects.find(p => p.id === item.projectId);
+
+        // 获取工作项信息用于快照
+        let workItemName = null;
+        let workItemPath = null;
+        if (item.workItemId && workBreakdownItems[item.projectId]) {
+          const workItem = workBreakdownItems[item.projectId].find(w => w.id === item.workItemId);
+          if (workItem) {
+            workItemName = workItem.name;
+            // 构建工作项路径
+            workItemPath = buildWorkItemPath(workItem, workBreakdownItems[item.projectId]);
+          }
+        }
+
+        return {
+          report_id: currentReportId,
+          project_id: item.projectId,
+          work_item_id: item.workItemId || null,
+          content: item.content.trim(),
+          // 快照字段
+          project_name: project?.name || null,
+          project_code: project?.code || null,
+          work_item_name: workItemName,
+          work_item_path: workItemPath
+        };
       }));
 
       const { error: insertError } = await supabase
@@ -830,20 +892,7 @@ export default function NewProjectWeeklyReportPage() {
     return Object.values(projectGroups);
   };
 
-  // 构建工作项路径
-  const buildWorkItemPath = (workItem: any, allProjectWorkItems: any[]): string => {
-    if (!workItem.parent_id) {
-      return workItem.name;
-    }
 
-    const parent = allProjectWorkItems.find(wi => wi.id === workItem.parent_id);
-    if (parent) {
-      const parentPath = buildWorkItemPath(parent, allProjectWorkItems);
-      return `${parentPath} > ${workItem.name}`;
-    }
-
-    return workItem.name;
-  };
 
   // 初始化数据
   useEffect(() => {

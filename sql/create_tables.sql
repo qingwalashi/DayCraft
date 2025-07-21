@@ -235,7 +235,7 @@ CREATE TABLE public.work_breakdown_items (
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
-  parent_id UUID REFERENCES public.work_breakdown_items(id),
+  parent_id UUID REFERENCES public.work_breakdown_items(id) ON DELETE CASCADE,
   level INTEGER NOT NULL CHECK (level >= 0 AND level <= 4), -- 限制最多5级（0-4级）
   position INTEGER NOT NULL DEFAULT 0, -- 同级项目中的排序位置
   is_expanded BOOLEAN DEFAULT true,
@@ -299,14 +299,17 @@ CREATE TRIGGER update_work_breakdown_items_timestamp
   BEFORE UPDATE ON public.work_breakdown_items
   FOR EACH ROW EXECUTE PROCEDURE public.update_work_breakdown_items_updated_at();
 
--- 创建触发器函数，级联删除子工作项
+-- 创建触发器函数，用于工作项删除时的额外处理
 CREATE OR REPLACE FUNCTION public.cascade_delete_work_breakdown_items()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- 递归删除所有子项
-  DELETE FROM public.work_breakdown_items
-  WHERE parent_id = OLD.id;
-  
+  -- 由于外键约束已经设置为 ON DELETE CASCADE，
+  -- 这个触发器主要用于记录日志或其他清理工作
+  -- 实际的级联删除由数据库外键约束处理
+
+  -- 可以在这里添加额外的清理逻辑，比如记录删除日志
+  -- 但不需要手动删除子工作项，外键约束会自动处理
+
   RETURN OLD;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -491,9 +494,14 @@ CREATE TABLE public.project_weekly_reports (
 CREATE TABLE public.project_weekly_report_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_id UUID REFERENCES public.project_weekly_reports(id) ON DELETE CASCADE NOT NULL,
-  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL, -- 改为SET NULL以保留历史记录，允许为空
   work_item_id UUID REFERENCES public.work_breakdown_items(id) ON DELETE SET NULL, -- 可为空，支持直接在项目下添加工作
   content TEXT NOT NULL,
+  -- 快照字段，用于保留历史记录
+  project_name TEXT, -- 项目名称快照
+  project_code TEXT, -- 项目编码快照
+  work_item_name TEXT, -- 工作项名称快照
+  work_item_path TEXT, -- 工作项层级路径快照（如：父项目 > 子项目 > 具体任务）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
