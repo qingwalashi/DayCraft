@@ -2598,11 +2598,15 @@ export default function WorkBreakdownPage() {
                       </div>
 
                       {(() => {
-                        // 根据选中的工作项确定要统计的数据范围
+                        // 根据选中的工作项确定要统计的数据范围和计算进度
                         let itemsToAnalyze: WorkItem[];
+                        let overallProgress: number;
 
                         if (selectedWorkItem) {
-                          // 如果选中了工作项，统计该工作项及其所有子项
+                          // 如果选中了工作项，直接使用该工作项的计算进度
+                          overallProgress = getItemProgress(selectedWorkItem);
+
+                          // 统计该工作项及其所有子项的状态分布
                           const collectAllChildren = (item: WorkItem): WorkItem[] => {
                             const result = [item];
                             if (item.children && Array.isArray(item.children) && item.children.length > 0) {
@@ -2616,12 +2620,22 @@ export default function WorkBreakdownPage() {
                           };
                           itemsToAnalyze = collectAllChildren(selectedWorkItem);
                         } else {
-                          // 如果没有选中工作项，使用当前筛选的结果
+                          // 如果没有选中工作项，计算项目整体进度
                           const currentItems = selectedStatuses.length > 0 ? filteredWorkItems : workItems;
                           itemsToAnalyze = Array.isArray(currentItems) ? currentItems : [];
+
+                          // 计算顶级工作项的加权平均进度（复用各工作项的进度计算逻辑）
+                          if (itemsToAnalyze.length > 0) {
+                            const totalProgress = itemsToAnalyze.reduce((sum, item) => {
+                              return sum + getItemProgress(item);
+                            }, 0);
+                            overallProgress = totalProgress / itemsToAnalyze.length;
+                          } else {
+                            overallProgress = 0;
+                          }
                         }
 
-                        const totalItems = itemsToAnalyze.length;
+                        // 统计状态分布（用于显示各状态的数量）
                         const statusCounts = STATUS_OPTIONS.reduce((acc, option) => {
                           acc[option.value] = 0;
                           return acc;
@@ -2640,13 +2654,6 @@ export default function WorkBreakdownPage() {
                           });
                         }
                         const totalCount = Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
-
-                        // 计算整体进度
-                        const overallProgress = totalCount > 0 ?
-                          Object.entries(statusCounts).reduce((sum, [status, count]) => {
-                            const statusOption = STATUS_OPTIONS.find(opt => opt.value === status);
-                            return sum + (statusOption?.progress || 0) * count;
-                          }, 0) / totalCount : 0;
 
                         return (
                           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
