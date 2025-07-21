@@ -484,14 +484,7 @@ export default function DailyReportsPage() {
     }
   };
 
-  // 强制刷新当前周数据
-  const handleRefreshData = () => {
-    if (user && currentWeekData) {
-      toast.info('正在刷新数据...');
-      // 强制刷新当前周数据
-      fetchWeekReports(currentWeekData, true);
-    }
-  };
+
 
   // 切换到上一周
   const handlePreviousWeek = () => {
@@ -972,35 +965,6 @@ export default function DailyReportsPage() {
           <div className="flex justify-between items-center">
             <h2 className="text-base md:text-lg font-medium">日报列表</h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleRefreshData}
-                disabled={isLoading}
-                className="px-2 py-1 rounded hover:bg-blue-100 text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center border border-blue-200"
-                aria-label="刷新数据"
-                title="刷新当前周数据"
-              >
-                <svg 
-                  className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isLoading ? 'animate-spin' : ''}`} 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  fill="none" 
-                  viewBox="0 0 24 24"
-                >
-                  <circle 
-                    className="opacity-25" 
-                    cx="12" 
-                    cy="12" 
-                    r="10" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                  />
-                  <path 
-                    className="opacity-75" 
-                    fill="currentColor" 
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <span className="ml-1 text-xs md:text-sm">刷新</span>
-              </button>
               {currentWeekData && (
                 <Breadcrumbs 
                   year={currentYear}

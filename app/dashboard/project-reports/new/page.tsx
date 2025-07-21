@@ -64,7 +64,8 @@ export default function NewProjectWeeklyReportPage() {
   const [workBreakdownItems, setWorkBreakdownItems] = useState<{ [projectId: string]: WorkBreakdownItemWithChildren[] }>({});
   const [allWorkItems, setAllWorkItems] = useState<{ [projectId: string]: DbWorkBreakdownItem[] }>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isSavingReport, setIsSavingReport] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
 
   // 预览相关状态
@@ -419,7 +420,7 @@ export default function NewProjectWeeklyReportPage() {
     // 暂存不需要验证数据，允许保存空内容
     const validItems = workItems.filter(item => item.content.trim() && item.projectId);
 
-    setIsSaving(true);
+    setIsSavingDraft(true);
     try {
       let currentReportId = reportId;
       
@@ -514,7 +515,7 @@ export default function NewProjectWeeklyReportPage() {
       console.error('暂存项目周报失败', error);
       toast.error('暂存项目周报失败');
     } finally {
-      setIsSaving(false);
+      setIsSavingDraft(false);
     }
   };
 
@@ -529,7 +530,7 @@ export default function NewProjectWeeklyReportPage() {
       return;
     }
 
-    setIsSaving(true);
+    setIsSavingReport(true);
     try {
       let currentReportId = reportId;
 
@@ -628,7 +629,7 @@ export default function NewProjectWeeklyReportPage() {
       console.error('保存项目周报失败', error);
       toast.error('保存项目周报失败');
     } finally {
-      setIsSaving(false);
+      setIsSavingReport(false);
     }
   };
 
@@ -968,10 +969,10 @@ export default function NewProjectWeeklyReportPage() {
           <button
             type="button"
             onClick={saveDraft}
-            disabled={isSaving || projects.length === 0}
+            disabled={isSavingDraft || isSavingReport || projects.length === 0}
             className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isSaving ? (
+            {isSavingDraft ? (
               <>
                 <Loader2Icon className="h-4 w-4 mr-1.5 animate-spin" />
                 暂存中...
@@ -986,10 +987,10 @@ export default function NewProjectWeeklyReportPage() {
           <button
             type="button"
             onClick={saveReport}
-            disabled={isSaving || projects.length === 0}
+            disabled={isSavingDraft || isSavingReport || projects.length === 0}
             className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isSaving ? (
+            {isSavingReport ? (
               <>
                 <Loader2Icon className="h-4 w-4 mr-1.5 animate-spin" />
                 保存中...
