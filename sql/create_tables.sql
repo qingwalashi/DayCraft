@@ -492,7 +492,7 @@ CREATE TABLE public.project_weekly_report_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_id UUID REFERENCES public.project_weekly_reports(id) ON DELETE CASCADE NOT NULL,
   project_id UUID REFERENCES public.projects(id) NOT NULL,
-  work_item_id UUID REFERENCES public.work_breakdown_items(id), -- 可为空，支持直接在项目下添加工作
+  work_item_id UUID REFERENCES public.work_breakdown_items(id) ON DELETE SET NULL, -- 可为空，支持直接在项目下添加工作
   content TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
