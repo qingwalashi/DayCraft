@@ -788,14 +788,17 @@ export default function ProjectReportsPage() {
   // 年度导航
   const goToPreviousYear = () => {
     setCurrentYear(currentYear - 1);
+    setIsYearManuallyChanged(true);
   };
 
   const goToNextYear = () => {
     setCurrentYear(currentYear + 1);
+    setIsYearManuallyChanged(true);
   };
 
   const goToCurrentYear = () => {
     setCurrentYear(new Date().getFullYear());
+    setIsYearManuallyChanged(false); // 回到当前年份时重置标志
   };
 
   // 初始化数据
@@ -823,12 +826,15 @@ export default function ProjectReportsPage() {
     }
   }, [yearlyData]);
 
-  // 同步当前周的年份到年度显示
+  // 初始化时同步当前周的年份到年度显示
+  const [isYearManuallyChanged, setIsYearManuallyChanged] = useState(false);
+
   useEffect(() => {
-    if (currentWeekData.year !== currentYear) {
+    // 只在用户没有手动改变年份时才自动同步
+    if (!isYearManuallyChanged && currentWeekData.year !== currentYear) {
       setCurrentYear(currentWeekData.year);
     }
-  }, [currentWeekData.year, currentYear, setCurrentYear]);
+  }, [currentWeekData.year, currentYear, setCurrentYear, isYearManuallyChanged]);
 
   // 添加页面可见性监听
   useEffect(() => {
@@ -863,7 +869,7 @@ export default function ProjectReportsPage() {
             <div className="ml-3">
               <p className="text-sm text-blue-700">
                 您本周还没有填写项目周报，
-                <Link 
+                <Link
                   href={`/dashboard/project-reports/new?year=${todayWeekReportReminder.year}&week=${todayWeekReportReminder.week_number}`}
                   className="font-medium underline text-blue-700 hover:text-blue-600"
                 >
@@ -874,6 +880,114 @@ export default function ProjectReportsPage() {
           </div>
         </div>
       )}
+
+      {/* 年度填写情况展示 - 独立区域 */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base md:text-lg font-medium text-gray-700">
+              {currentYear}年填写情况
+            </h2>
+            <div className="flex items-center text-xs text-gray-500">
+              <button
+                onClick={goToPreviousYear}
+                className="mr-1 p-1 rounded hover:bg-gray-100"
+                aria-label="上一年"
+              >
+                <ChevronLeftIcon className="h-3 w-3" />
+              </button>
+              <span className="font-medium text-gray-600 mx-2">
+                {currentYear}
+              </span>
+              <button
+                onClick={goToNextYear}
+                className="ml-1 p-1 rounded hover:bg-gray-100"
+                aria-label="下一年"
+              >
+                <ChevronRightIcon className="h-3 w-3" />
+              </button>
+              <button
+                onClick={goToCurrentYear}
+                className="ml-2 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100"
+              >
+                今年
+              </button>
+            </div>
+          </div>
+
+          {/* 紧凑的周数展示 */}
+          <div className="space-y-1.5">
+            {[
+              { name: 'Q1', start: 1, end: 13 },
+              { name: 'Q2', start: 14, end: 26 },
+              { name: 'Q3', start: 27, end: 39 },
+              { name: 'Q4', start: 40, end: 53 }
+            ].map((quarter) => (
+              <div key={quarter.name} className="flex items-center space-x-2">
+                <div className="text-xs text-gray-500 font-medium w-6">{quarter.name}</div>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: quarter.end - quarter.start + 1 }, (_, index) => {
+                    const weekNumber = quarter.start + index;
+                    const weekData = yearlyData[weekNumber] || { hasReport: false, isPlan: false };
+                    const isCurrentWeek = currentWeekData.year === currentYear && currentWeekData.week_number === weekNumber;
+
+                    let bgColor = 'bg-gray-200 hover:bg-gray-300';
+                    let statusText = '未填写';
+
+                    if (weekData.hasReport) {
+                      if (weekData.isPlan) {
+                        bgColor = 'bg-blue-500 hover:bg-blue-600';
+                        statusText = '已填写 (计划)';
+                      } else {
+                        bgColor = 'bg-green-500 hover:bg-green-600';
+                        statusText = '已填写';
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={weekNumber}
+                        className={`
+                          w-3 h-3 rounded-sm cursor-pointer transition-colors duration-200
+                          ${bgColor}
+                          ${isCurrentWeek ? 'ring-1 ring-orange-500' : ''}
+                        `}
+                        title={`第${weekNumber}周 (${statusText})`}
+                        onClick={() => {
+                          // 点击跳转到对应周
+                          const targetDate = new Date(currentYear, 0, 1 + (weekNumber - 1) * 7);
+                          setCurrentWeek(targetDate);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 统计信息 */}
+          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-sm mr-1"></div>
+                <span>已填写</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-blue-500 rounded-sm mr-1"></div>
+                <span>计划</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-gray-200 rounded-sm mr-1"></div>
+                <span>未填写</span>
+              </div>
+            </div>
+            <div>
+              {Object.values(yearlyData).filter(data => data.hasReport).length} / 53 周
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* 周导航 */}
       <div className="bg-white shadow rounded-lg">
@@ -942,111 +1056,6 @@ export default function ProjectReportsPage() {
 
         {/* 周报内容 */}
         <div className="p-3 md:p-4">
-          {/* 年度填写情况展示 - 总是显示 */}
-          <div className="mb-4 pb-3 border-b border-gray-100">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-sm font-medium text-gray-700">
-                {currentYear}年填写情况
-              </h3>
-              <div className="flex items-center text-xs text-gray-500">
-                <button
-                  onClick={goToPreviousYear}
-                  className="mr-1 p-1 rounded hover:bg-gray-100"
-                  aria-label="上一年"
-                >
-                  <ChevronLeftIcon className="h-3 w-3" />
-                </button>
-                <span className="font-medium text-gray-600 mx-2">
-                  {currentYear}
-                </span>
-                <button
-                  onClick={goToNextYear}
-                  className="ml-1 p-1 rounded hover:bg-gray-100"
-                  aria-label="下一年"
-                >
-                  <ChevronRightIcon className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={goToCurrentYear}
-                  className="ml-2 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100"
-                >
-                  今年
-                </button>
-              </div>
-            </div>
-
-            {/* 紧凑的周数展示 */}
-            <div className="space-y-1.5">
-              {[
-                { name: 'Q1', start: 1, end: 13 },
-                { name: 'Q2', start: 14, end: 26 },
-                { name: 'Q3', start: 27, end: 39 },
-                { name: 'Q4', start: 40, end: 53 }
-              ].map((quarter) => (
-                <div key={quarter.name} className="flex items-center space-x-2">
-                  <div className="text-xs text-gray-500 font-medium w-6">{quarter.name}</div>
-                  <div className="flex flex-wrap gap-1">
-                    {Array.from({ length: quarter.end - quarter.start + 1 }, (_, index) => {
-                      const weekNumber = quarter.start + index;
-                      const weekData = yearlyData[weekNumber] || { hasReport: false, isPlan: false };
-                      const isCurrentWeek = currentWeekData.year === currentYear && currentWeekData.week_number === weekNumber;
-
-                      let bgColor = 'bg-gray-200 hover:bg-gray-300';
-                      let statusText = '未填写';
-
-                      if (weekData.hasReport) {
-                        if (weekData.isPlan) {
-                          bgColor = 'bg-blue-500 hover:bg-blue-600';
-                          statusText = '已填写 (计划)';
-                        } else {
-                          bgColor = 'bg-green-500 hover:bg-green-600';
-                          statusText = '已填写';
-                        }
-                      }
-
-                      return (
-                        <div
-                          key={weekNumber}
-                          className={`
-                            w-3 h-3 rounded-sm cursor-pointer transition-colors duration-200
-                            ${bgColor}
-                            ${isCurrentWeek ? 'ring-1 ring-orange-500' : ''}
-                          `}
-                          title={`第${weekNumber}周 (${statusText})`}
-                          onClick={() => {
-                            // 点击跳转到对应周
-                            const targetDate = new Date(currentYear, 0, 1 + (weekNumber - 1) * 7);
-                            setCurrentWeek(targetDate);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* 统计信息 */}
-            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-sm mr-1"></div>
-                  <span>已填写</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-blue-500 rounded-sm mr-1"></div>
-                  <span>计划</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-gray-200 rounded-sm mr-1"></div>
-                  <span>未填写</span>
-                </div>
-              </div>
-              <div>
-                {Object.values(yearlyData).filter(data => data.hasReport).length} / 53 周
-              </div>
-            </div>
-          </div>
 
           {isLoading ? (
             <div className="flex justify-center items-center p-6 md:p-12">
