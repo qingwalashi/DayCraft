@@ -996,17 +996,80 @@ export default function ProjectReportsPage() {
       {/* 周导航 */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-3 md:px-4 py-3 md:py-5 sm:px-6 border-b border-gray-200">
-          <div className="flex justify-between items-center">
-            <h2 className="text-base md:text-lg font-medium">
+          {/* 移动端：垂直布局 */}
+          <div className="block md:hidden">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-base font-medium">项目周报</h2>
+              <Link
+                href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                新建周报
+              </Link>
+            </div>
+
+            {/* 移动端控制区域 */}
+            <div className="space-y-3">
+              {/* 项目筛选 - 移动端全宽 */}
+              <div>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">全部项目</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 时间导航和本周按钮 */}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center text-sm text-gray-500">
+                  <button
+                    onClick={goToPreviousWeek}
+                    className="mr-2 p-2 rounded-full hover:bg-gray-100"
+                    aria-label="上一周"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4" />
+                  </button>
+                  <span className="font-medium text-gray-700 whitespace-nowrap px-2">
+                    {currentWeekData.year}年第{currentWeekData.week_number}周
+                  </span>
+                  <button
+                    onClick={goToNextWeek}
+                    className="ml-2 p-2 rounded-full hover:bg-gray-100"
+                    aria-label="下一周"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <button
+                  onClick={goToCurrentWeek}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  本周
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 桌面端：水平布局 */}
+          <div className="hidden md:flex justify-between items-center">
+            <h2 className="text-lg font-medium">
               项目周报
             </h2>
-            <div className="flex items-center space-x-2 md:space-x-4">
+            <div className="flex items-center space-x-4">
               {/* 项目筛选 */}
               <div className="flex items-center">
                 <select
                   value={selectedProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="text-xs md:text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 min-w-0 max-w-32 md:max-w-40"
+                  className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 min-w-40"
                 >
                   <option value="">全部项目</option>
                   {projects.map((project) => (
@@ -1018,23 +1081,23 @@ export default function ProjectReportsPage() {
               </div>
 
               {/* 时间导航 */}
-              <div className="flex items-center text-xs md:text-sm text-gray-500">
+              <div className="flex items-center text-sm text-gray-500">
                 <button
                   onClick={goToPreviousWeek}
-                  className="mr-1 md:mr-2 p-1 rounded-full hover:bg-gray-100"
+                  className="mr-2 p-1 rounded-full hover:bg-gray-100"
                   aria-label="上一周"
                 >
-                  <ChevronLeftIcon className="h-3 w-3 md:h-4 md:w-4" />
+                  <ChevronLeftIcon className="h-4 w-4" />
                 </button>
                 <span className="font-medium text-gray-700 whitespace-nowrap">
                   {currentWeekData.year}年第{currentWeekData.week_number}周
                 </span>
                 <button
                   onClick={goToNextWeek}
-                  className="ml-1 md:ml-2 p-1 rounded-full hover:bg-gray-100"
+                  className="ml-2 p-1 rounded-full hover:bg-gray-100"
                   aria-label="下一周"
                 >
-                  <ChevronRightIcon className="h-3 w-3 md:h-4 md:w-4" />
+                  <ChevronRightIcon className="h-4 w-4" />
                 </button>
               </div>
 
@@ -1042,15 +1105,15 @@ export default function ProjectReportsPage() {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={goToCurrentWeek}
-                  className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   本周
                 </button>
                 <Link
                   href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
-                  className="inline-flex items-center px-2 md:px-3 py-1 md:py-1.5 border border-transparent text-xs md:text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                 >
-                  <PlusIcon className="h-3 w-3 md:h-4 md:w-4 mr-0.5 md:mr-1" />
+                  <PlusIcon className="h-4 w-4 mr-1" />
                   新建周报
                 </Link>
               </div>

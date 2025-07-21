@@ -103,6 +103,8 @@ export default function PresentationMode({
   const [isAutoPlay, setIsAutoPlay] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   // 生成幻灯片数据
   const generateSlides = useCallback(() => {
@@ -195,6 +197,44 @@ export default function PresentationMode({
     }
   }, [isOpen, reportData, generateSlides]);
 
+  // 定义回调函数
+  const goToNextSlide = useCallback(() => {
+    setCurrentSlide((prev) => {
+      if (prev < slides.length - 1) {
+        return prev + 1;
+      }
+      return prev; // 在最后一张幻灯片时保持不变
+    });
+  }, [slides.length]);
+
+  const goToPreviousSlide = useCallback(() => {
+    setCurrentSlide((prev) => {
+      if (prev > 0) {
+        return prev - 1;
+      }
+      return prev; // 在第一张幻灯片时保持不变
+    });
+  }, []);
+
+  const toggleAutoPlay = useCallback(() => {
+    setIsAutoPlay(!isAutoPlay);
+  }, [isAutoPlay]);
+
+  const resetPresentation = useCallback(() => {
+    setCurrentSlide(0);
+    setIsAutoPlay(false);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  }, []);
+
   // 自动播放
   useEffect(() => {
     if (isAutoPlay && slides.length > 0) {
@@ -255,42 +295,31 @@ export default function PresentationMode({
       document.addEventListener('keydown', handleKeyPress);
       return () => document.removeEventListener('keydown', handleKeyPress);
     }
-  }, [isOpen]);
+  }, [isOpen, goToPreviousSlide, goToNextSlide, onClose, toggleAutoPlay, toggleFullscreen]);
 
-  const goToNextSlide = () => {
-    setCurrentSlide((prev) => {
-      if (prev < slides.length - 1) {
-        return prev + 1;
-      }
-      return prev; // 在最后一张幻灯片时保持不变
-    });
+  // 触摸手势处理
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
   };
 
-  const goToPreviousSlide = () => {
-    setCurrentSlide((prev) => {
-      if (prev > 0) {
-        return prev - 1;
-      }
-      return prev; // 在第一张幻灯片时保持不变
-    });
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
   };
 
-  const toggleAutoPlay = () => {
-    setIsAutoPlay(!isAutoPlay);
-  };
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
 
-  const resetPresentation = () => {
-    setCurrentSlide(0);
-    setIsAutoPlay(false);
-  };
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+    if (isLeftSwipe) {
+      goToNextSlide();
+    } else if (isRightSwipe) {
+      goToPreviousSlide();
     }
   };
 
@@ -304,12 +333,68 @@ export default function PresentationMode({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-7xl h-[90vh] p-0 bg-gradient-to-br from-blue-50 to-indigo-100 [&>button]:hidden rounded-xl overflow-hidden"
+        className="max-w-[95vw] h-[100vh] md:h-[95vh] p-0 bg-gradient-to-br from-blue-50 to-indigo-100 [&>button]:hidden rounded-none md:rounded-xl overflow-hidden w-full"
       >
         <div className="flex flex-col h-full">
           {/* 控制栏 */}
-          <div className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm border-b">
-            <div className="flex items-center space-x-4">
+          <div className="flex items-center justify-between p-2 md:p-4 bg-white/80 backdrop-blur-sm border-b">
+            {/* 移动端：简化的控制栏 */}
+            <div className="flex md:hidden items-center justify-between w-full">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-medium text-gray-600">
+                  {currentSlide + 1} / {slides.length}
+                </span>
+                <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${((currentSlide + 1) / slides.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPreviousSlide}
+                  disabled={currentSlide === 0}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeftIcon className="h-3 w-3" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleAutoPlay}
+                  className="h-8 w-8 p-0"
+                >
+                  {isAutoPlay ? <PauseIcon className="h-3 w-3" /> : <PlayIcon className="h-3 w-3" />}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextSlide}
+                  disabled={currentSlide === slides.length - 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRightIcon className="h-3 w-3" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onClose}
+                  className="h-8 w-8 p-0"
+                >
+                  <XIcon className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            {/* 桌面端：完整的控制栏 */}
+            <div className="hidden md:flex items-center space-x-4">
               <span className="text-sm font-medium text-gray-600">
                 {currentSlide + 1} / {slides.length}
               </span>
@@ -319,12 +404,12 @@ export default function PresentationMode({
                   style={{ width: `${((currentSlide + 1) / slides.length) * 100}%` }}
                 />
               </div>
-              <div className="text-xs text-gray-500 hidden md:block">
+              <div className="text-xs text-gray-500 hidden lg:block">
                 快捷键: ← → 翻页 | 空格 下一页 | P 自动播放 | F 全屏 | R 重置 | ESC 退出
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="hidden md:flex items-center space-x-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -333,7 +418,7 @@ export default function PresentationMode({
               >
                 <ChevronLeftIcon className="h-4 w-4" />
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -341,7 +426,7 @@ export default function PresentationMode({
               >
                 {isAutoPlay ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -349,7 +434,7 @@ export default function PresentationMode({
               >
                 <RotateCcwIcon className="h-4 w-4" />
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -357,7 +442,7 @@ export default function PresentationMode({
               >
                 {isFullscreen ? <MinimizeIcon className="h-4 w-4" /> : <FullscreenIcon className="h-4 w-4" />}
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -366,7 +451,7 @@ export default function PresentationMode({
               >
                 <ChevronRightIcon className="h-4 w-4" />
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -378,21 +463,26 @@ export default function PresentationMode({
           </div>
 
           {/* 幻灯片内容 */}
-          <div className="flex-1 flex items-center justify-center p-8">
+          <div
+            className="flex-1 flex items-center justify-center p-3 md:p-8 overflow-y-auto"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
             <div className="w-full max-w-4xl">
               {currentSlideData.type === 'title' && (
                 <div className="text-center">
-                  <div className="mb-8">
-                    <div className="w-20 h-1 bg-blue-600 mx-auto mb-6"></div>
-                    <h1 className="text-5xl md:text-6xl font-bold text-gray-800 mb-6 leading-tight">
+                  <div className="mb-4 md:mb-8">
+                    <div className="w-12 md:w-20 h-0.5 md:h-1 bg-blue-600 mx-auto mb-3 md:mb-6"></div>
+                    <h1 className="text-2xl md:text-5xl lg:text-6xl font-bold text-gray-800 mb-3 md:mb-6 leading-tight px-2">
                       {currentSlideData.title}
                     </h1>
-                    <div className="w-20 h-1 bg-blue-600 mx-auto mb-6"></div>
+                    <div className="w-12 md:w-20 h-0.5 md:h-1 bg-blue-600 mx-auto mb-3 md:mb-6"></div>
                   </div>
-                  <p className="text-xl md:text-2xl text-gray-600 font-light">
+                  <p className="text-base md:text-xl lg:text-2xl text-gray-600 font-light px-4">
                     {currentSlideData.subtitle}
                   </p>
-                  <div className="mt-8 text-sm text-gray-500">
+                  <div className="mt-4 md:mt-8 text-xs md:text-sm text-gray-500">
                     {new Date().toLocaleDateString('zh-CN', {
                       year: 'numeric',
                       month: 'long',
@@ -404,62 +494,62 @@ export default function PresentationMode({
 
               {currentSlideData.type === 'project' && currentSlideData.projectData && (
                 <div>
-                  <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 text-white rounded-full mb-4">
-                      <span className="text-2xl font-bold">
+                  <div className="text-center mb-4 md:mb-8">
+                    <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 bg-blue-600 text-white rounded-full mb-2 md:mb-4">
+                      <span className="text-lg md:text-2xl font-bold">
                         {currentSlideData.title.charAt(0)}
                       </span>
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-bold text-blue-800 mb-2">
+                    <h1 className="text-xl md:text-4xl lg:text-5xl font-bold text-blue-800 mb-1 md:mb-2 px-2">
                       {currentSlideData.title}
                     </h1>
-                    <p className="text-lg text-gray-600">
+                    <p className="text-sm md:text-lg text-gray-600 px-4">
                       {currentSlideData.subtitle}
                     </p>
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-8">
-                    <div className="bg-white/70 rounded-xl p-6 backdrop-blur-sm shadow-lg">
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                        <div className="w-1 h-6 bg-blue-600 mr-3"></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+                    <div className="bg-white/70 rounded-xl p-4 md:p-6 backdrop-blur-sm shadow-lg">
+                      <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-3 md:mb-4 flex items-center">
+                        <div className="w-1 h-4 md:h-6 bg-blue-600 mr-2 md:mr-3"></div>
                         工作项概览
                       </h3>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2 md:space-y-3 max-h-48 md:max-h-none overflow-y-auto">
                         {Object.values(currentSlideData.projectData.workItems).slice(0, 6).map((workItem, index) => (
                           <li key={index} className="flex items-center text-gray-700">
-                            <div className="w-2 h-2 bg-blue-400 rounded-full mr-3 flex-shrink-0"></div>
-                            <span className="text-sm">{workItem.workItem.name}</span>
+                            <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-blue-400 rounded-full mr-2 md:mr-3 flex-shrink-0"></div>
+                            <span className="text-xs md:text-sm">{workItem.workItem.name}</span>
                           </li>
                         ))}
                         {Object.keys(currentSlideData.projectData.workItems).length > 6 && (
-                          <li className="text-gray-500 text-sm italic">
+                          <li className="text-gray-500 text-xs md:text-sm italic">
                             ... 还有 {Object.keys(currentSlideData.projectData.workItems).length - 6} 项工作内容
                           </li>
                         )}
                       </ul>
                     </div>
 
-                    <div className="bg-white/70 rounded-xl p-6 backdrop-blur-sm shadow-lg">
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                        <div className="w-1 h-6 bg-green-600 mr-3"></div>
+                    <div className="bg-white/70 rounded-xl p-4 md:p-6 backdrop-blur-sm shadow-lg">
+                      <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-3 md:mb-4 flex items-center">
+                        <div className="w-1 h-4 md:h-6 bg-green-600 mr-2 md:mr-3"></div>
                         统计信息
                       </h3>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                          <span className="text-gray-700">工作项数量</span>
-                          <span className="text-2xl font-bold text-blue-600">
+                      <div className="space-y-3 md:space-y-4">
+                        <div className="flex justify-between items-center p-2 md:p-3 bg-blue-50 rounded-lg">
+                          <span className="text-xs md:text-sm text-gray-700">工作项数量</span>
+                          <span className="text-lg md:text-2xl font-bold text-blue-600">
                             {Object.keys(currentSlideData.projectData.workItems).length}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                          <span className="text-gray-700">直接工作内容</span>
-                          <span className="text-2xl font-bold text-green-600">
+                        <div className="flex justify-between items-center p-2 md:p-3 bg-green-50 rounded-lg">
+                          <span className="text-xs md:text-sm text-gray-700">直接工作内容</span>
+                          <span className="text-lg md:text-2xl font-bold text-green-600">
                             {currentSlideData.projectData.directItems.length}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                          <span className="text-gray-700">总条目数</span>
-                          <span className="text-2xl font-bold text-purple-600">
+                        <div className="flex justify-between items-center p-2 md:p-3 bg-purple-50 rounded-lg">
+                          <span className="text-xs md:text-sm text-gray-700">总条目数</span>
+                          <span className="text-lg md:text-2xl font-bold text-purple-600">
                             {currentSlideData.projectData.items.length}
                           </span>
                         </div>
@@ -471,30 +561,30 @@ export default function PresentationMode({
 
               {currentSlideData.type === 'workItem' && (
                 <div>
-                  <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-green-600 text-white rounded-lg mb-4">
-                      <span className="text-lg font-bold">✓</span>
+                  <div className="text-center mb-4 md:mb-8">
+                    <div className="inline-flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-green-600 text-white rounded-lg mb-2 md:mb-4">
+                      <span className="text-sm md:text-lg font-bold">✓</span>
                     </div>
-                    <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-2">
+                    <h1 className="text-lg md:text-3xl lg:text-4xl font-bold text-gray-800 mb-1 md:mb-2 px-2">
                       {currentSlideData.title}
                     </h1>
-                    <p className="text-lg text-gray-600">
+                    <p className="text-sm md:text-lg text-gray-600 px-4">
                       {currentSlideData.subtitle}
                     </p>
                   </div>
 
-                  <div className="bg-white/70 rounded-xl p-8 backdrop-blur-sm shadow-lg">
+                  <div className="bg-white/70 rounded-xl p-4 md:p-8 backdrop-blur-sm shadow-lg max-h-96 md:max-h-none overflow-y-auto">
                     {currentSlideData.workItemData ? (
-                      <div className="prose prose-lg max-w-none">
-                        <div className="text-gray-700 leading-relaxed text-lg whitespace-pre-wrap">
+                      <div className="prose prose-sm md:prose-lg max-w-none">
+                        <div className="text-gray-700 leading-relaxed text-sm md:text-lg whitespace-pre-wrap">
                           {currentSlideData.workItemData.mergedContent}
                         </div>
                       </div>
                     ) : (
-                      <ul className="space-y-4">
+                      <ul className="space-y-2 md:space-y-4">
                         {currentSlideData.content?.map((item, index) => (
-                          <li key={index} className="flex items-start text-lg text-gray-700 leading-relaxed">
-                            <div className="w-2 h-2 bg-green-500 rounded-full mt-3 mr-4 flex-shrink-0"></div>
+                          <li key={index} className="flex items-start text-sm md:text-lg text-gray-700 leading-relaxed">
+                            <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full mt-2 md:mt-3 mr-3 md:mr-4 flex-shrink-0"></div>
                             <span>{item}</span>
                           </li>
                         ))}
@@ -506,29 +596,29 @@ export default function PresentationMode({
 
               {currentSlideData.type === 'summary' && (
                 <div className="text-center">
-                  <div className="mb-8">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full mb-6">
-                      <span className="text-3xl">🎯</span>
+                  <div className="mb-4 md:mb-8">
+                    <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full mb-3 md:mb-6">
+                      <span className="text-2xl md:text-3xl">🎯</span>
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
+                    <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-2 md:mb-4 px-2">
                       {currentSlideData.title}
                     </h1>
                   </div>
 
-                  <div className="bg-white/70 rounded-xl p-8 backdrop-blur-sm shadow-lg max-w-2xl mx-auto">
-                    <ul className="space-y-6">
+                  <div className="bg-white/70 rounded-xl p-4 md:p-8 backdrop-blur-sm shadow-lg max-w-2xl mx-auto max-h-80 md:max-h-none overflow-y-auto">
+                    <ul className="space-y-3 md:space-y-6">
                       {currentSlideData.content?.map((item, index) => (
-                        <li key={index} className="flex items-center text-xl text-gray-700">
-                          <div className="flex items-center justify-center w-8 h-8 bg-blue-600 text-white rounded-full mr-4 flex-shrink-0">
-                            <span className="text-sm font-bold">{index + 1}</span>
+                        <li key={index} className="flex items-center text-sm md:text-xl text-gray-700">
+                          <div className="flex items-center justify-center w-6 h-6 md:w-8 md:h-8 bg-blue-600 text-white rounded-full mr-3 md:mr-4 flex-shrink-0">
+                            <span className="text-xs md:text-sm font-bold">{index + 1}</span>
                           </div>
                           <span className="text-left">{item}</span>
                         </li>
                       ))}
                     </ul>
 
-                    <div className="mt-8 pt-6 border-t border-gray-200">
-                      <p className="text-lg text-gray-600 font-light">
+                    <div className="mt-4 md:mt-8 pt-3 md:pt-6 border-t border-gray-200">
+                      <p className="text-sm md:text-lg text-gray-600 font-light">
                         谢谢大家！
                       </p>
                     </div>
@@ -539,15 +629,15 @@ export default function PresentationMode({
           </div>
 
           {/* 底部导航点 */}
-          <div className="flex justify-center p-4 bg-white/80 backdrop-blur-sm">
-            <div className="flex space-x-2">
+          <div className="flex justify-center p-2 md:p-4 bg-white/80 backdrop-blur-sm">
+            <div className="flex space-x-1 md:space-x-2 max-w-full overflow-x-auto px-2">
               {slides.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentSlide(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                    index === currentSlide 
-                      ? 'bg-blue-600 scale-125' 
+                  className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all duration-200 flex-shrink-0 ${
+                    index === currentSlide
+                      ? 'bg-blue-600 scale-125'
                       : 'bg-gray-300 hover:bg-gray-400'
                   }`}
                 />
