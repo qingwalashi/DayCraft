@@ -156,7 +156,7 @@ CREATE TRIGGER update_user_report_edit_time
 CREATE TABLE public.report_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_id UUID REFERENCES public.daily_reports(id) NOT NULL,
-  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   content TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -232,7 +232,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 创建工作分解表
 CREATE TABLE public.work_breakdown_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   parent_id UUID REFERENCES public.work_breakdown_items(id),
@@ -491,7 +491,7 @@ CREATE TABLE public.project_weekly_reports (
 CREATE TABLE public.project_weekly_report_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_id UUID REFERENCES public.project_weekly_reports(id) ON DELETE CASCADE NOT NULL,
-  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   work_item_id UUID REFERENCES public.work_breakdown_items(id) ON DELETE SET NULL, -- 可为空，支持直接在项目下添加工作
   content TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -620,7 +620,7 @@ CREATE TYPE todo_status AS ENUM ('not_started', 'in_progress', 'completed');
 CREATE TABLE public.project_todos (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) NOT NULL,
-  project_id UUID REFERENCES public.projects(id) NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
   content TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
   due_date DATE NOT NULL,
