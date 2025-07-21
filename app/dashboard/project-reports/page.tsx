@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, FileTextIcon, AlertCircleIcon, CalendarIcon, EyeIcon, EyeOffIcon, CopyIcon } from "lucide-react";
+import { PlusIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, TrashIcon, PencilIcon, FileTextIcon, AlertCircleIcon, CalendarIcon, EyeIcon, EyeOffIcon, CopyIcon, PresentationIcon } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import { zhCN } from "date-fns/locale";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { usePersistentState } from "@/lib/utils/page-persistence";
+import PresentationMode from "@/components/project-reports/PresentationMode";
 
 
 
@@ -173,6 +174,9 @@ export default function ProjectReportsPage() {
   // 项目筛选状态
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = usePersistentState('project-reports-selected-project', '');
+
+  // 演示模式状态
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
   
   // 计算当前周的数据
   const currentWeekData = useMemo(() => {
@@ -1157,6 +1161,16 @@ export default function ProjectReportsPage() {
                     YML
                   </button>
 
+                  {/* 演示模式按钮 */}
+                  <button
+                    onClick={() => setIsPresentationMode(true)}
+                    className="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                    title="演示模式"
+                  >
+                    <PresentationIcon className="h-3 w-3 mr-1" />
+                    演示
+                  </button>
+
                   {/* 编辑和删除按钮（所有设备都显示） */}
                   <Link
                     href={`/dashboard/project-reports/new?year=${currentWeekData.year}&week=${currentWeekData.week_number}`}
@@ -1406,6 +1420,15 @@ export default function ProjectReportsPage() {
           </div>
         </div>
       )}
+
+      {/* 演示模式组件 */}
+      <PresentationMode
+        isOpen={isPresentationMode}
+        onClose={() => setIsPresentationMode(false)}
+        reportData={groupedProjectData}
+        reportPeriod={currentWeekData.report?.formattedPeriod || ''}
+        isPlan={currentWeekData.report?.is_plan || false}
+      />
     </div>
   );
 }
