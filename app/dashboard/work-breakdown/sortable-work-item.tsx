@@ -6,16 +6,17 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { WorkItem } from '@/lib/services/work-breakdown';
-import { 
-  ChevronDownIcon, 
-  ChevronRightIcon, 
-  PlusIcon, 
-  PencilIcon, 
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  PencilIcon,
   TrashIcon,
   ClockIcon,
   TagIcon,
   UsersIcon,
-  GripVerticalIcon
+  GripVerticalIcon,
+  MoveIcon
 } from 'lucide-react';
 
 interface SortableWorkItemProps {
@@ -25,6 +26,7 @@ interface SortableWorkItemProps {
   onToggleEdit: (id: string, cancel?: boolean) => void;
   onAddChild: (parentId: string, level: number) => void;
   onDelete: (id: string) => void;
+  onMove: (item: WorkItem) => void;
   onUpdate: (id: string, name: string, description: string, status: string, tags: string, members: string, progress_notes: string, is_milestone: boolean) => void;
   renderEditForm: (item: WorkItem, level: number) => React.ReactNode;
   renderViewMode: (item: WorkItem, level: number) => React.ReactNode;
@@ -41,6 +43,7 @@ export function SortableWorkItem({
   onToggleEdit,
   onAddChild,
   onDelete,
+  onMove,
   onUpdate,
   renderEditForm,
   renderViewMode,
@@ -106,7 +109,7 @@ export function SortableWorkItem({
                     <PencilIcon className="h-4 w-4 mr-1" />
                     编辑
                   </button>
-                  
+
                   {canAddChildren && (
                     <button
                       onClick={() => onAddChild(item.id, level)}
@@ -117,7 +120,17 @@ export function SortableWorkItem({
                       添加子项
                     </button>
                   )}
-                  
+
+                  <button
+                    onClick={() => onMove(item)}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                    disabled={isSaving || !item.dbId}
+                    title={!item.dbId ? "请先保存工作项再进行移动" : "移动层级"}
+                  >
+                    <MoveIcon className="h-4 w-4 mr-1" />
+                    移动层级
+                  </button>
+
                   <button
                     onClick={() => onDelete(item.id)}
                     className="inline-flex items-center px-3 py-1.5 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
@@ -146,6 +159,7 @@ export function SortableWorkItem({
                 onToggleEdit={onToggleEdit}
                 onAddChild={onAddChild}
                 onDelete={onDelete}
+                onMove={onMove}
                 onUpdate={onUpdate}
                 renderEditForm={renderEditForm}
                 renderViewMode={renderViewMode}

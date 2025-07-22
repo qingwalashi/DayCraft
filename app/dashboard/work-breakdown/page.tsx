@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon, TrendingUp as TrendingUpIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon, TrendingUp as TrendingUpIcon, MoveIcon } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -33,6 +33,9 @@ import { SortableWorkItem } from './sortable-work-item';
 // 导入进度计算工具和组件
 import { calculateWorkItemProgress, STATUS_PROGRESS_MAP } from '@/lib/utils/progress-calculator';
 import ProgressIndicator from '@/components/work-breakdown/ProgressIndicator';
+
+// 导入移动对话框组件
+import MoveWorkItemDialog from './move-work-item-dialog';
 
 // 视图模式
 type ViewMode = 'edit' | 'preview' | 'map';
@@ -337,6 +340,10 @@ export default function WorkBreakdownPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null); // 正在保存的工作项ID
   const [itemToDelete, setItemToDelete] = useState<string | null>(null); // 待删除的工作项ID
+  // 添加移动相关状态
+  const [itemToMove, setItemToMove] = useState<WorkItem | null>(null); // 待移动的工作项
+  const [showMoveDialog, setShowMoveDialog] = useState(false); // 是否显示移动对话框
+  const [allPotentialParents, setAllPotentialParents] = useState<Array<{ id: string; name: string; level: number; path: string }>>([]);
   // 添加请求控制状态
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
@@ -504,7 +511,11 @@ export default function WorkBreakdownPage() {
       const itemsWithExpandState = setInitialExpandState(formattedItems);
       setWorkItems(itemsWithExpandState);
       setLastProjectId(projectId);
-      
+
+      // 计算所有可能的移动目标
+      const potentialParents = calculateAllPotentialParents(itemsWithExpandState);
+      setAllPotentialParents(potentialParents);
+
       // 更新数据加载状态和时间戳
       dataLoadedRef.current = true;
       lastLoadTimeRef.current = Date.now();
@@ -1219,6 +1230,95 @@ export default function WorkBreakdownPage() {
   // 取消删除
   const cancelDeleteWorkItem = () => {
     setItemToDelete(null);
+  };
+
+  // 移动工作项
+  const moveWorkItem = (item: WorkItem) => {
+    // 只有已保存的工作项才能移动
+    if (!item.dbId) {
+      toast.error('请先保存工作项再进行移动');
+      return;
+    }
+    setItemToMove(item);
+    setShowMoveDialog(true);
+  };
+
+  // 处理移动完成
+  const handleMoveComplete = async () => {
+    setShowMoveDialog(false);
+    setItemToMove(null);
+
+    // 重新加载工作项数据
+    if (selectedProject && user) {
+      try {
+        setIsLoadingItems(true);
+        const workItemsTree = await workBreakdownService.getWorkBreakdownItems(
+          selectedProject.id,
+          user.id
+        );
+        setWorkItems(workItemsTree);
+
+        // 重新计算所有可能的移动目标
+        const potentialParents = calculateAllPotentialParents(workItemsTree);
+        setAllPotentialParents(potentialParents);
+
+        setRefreshKey(prev => prev + 1); // 强制重新渲染
+      } catch (error) {
+        console.error('重新加载工作项失败:', error);
+        toast.error('重新加载工作项失败');
+      } finally {
+        setIsLoadingItems(false);
+      }
+    }
+  };
+
+  // 取消移动
+  const cancelMoveWorkItem = () => {
+    setShowMoveDialog(false);
+    setItemToMove(null);
+  };
+
+  // 计算所有可能的移动目标
+  const calculateAllPotentialParents = useCallback((workItemsTree: WorkItem[]) => {
+    const flattenItems = (items: WorkItem[], result: any[] = []): any[] => {
+      for (const item of items) {
+        if (item.dbId && item.level < 4) { // 只有已保存且层级不超过3级的项目可以作为父级
+          result.push({
+            id: item.dbId,
+            name: item.name,
+            level: item.level,
+            path: buildItemPathFromWorkItems(item.dbId, workItemsTree)
+          });
+        }
+
+        // 递归处理子项
+        if (item.children && item.children.length > 0) {
+          flattenItems(item.children, result);
+        }
+      }
+      return result;
+    };
+
+    return flattenItems(workItemsTree);
+  }, []);
+
+  // 从工作项树构建路径
+  const buildItemPathFromWorkItems = (itemId: string, items: WorkItem[], parentPath: string = ''): string => {
+    for (const item of items) {
+      const currentPath = parentPath ? `${parentPath} > ${item.name}` : item.name;
+
+      if (item.dbId === itemId) {
+        return currentPath;
+      }
+
+      if (item.children && item.children.length > 0) {
+        const childPath = buildItemPathFromWorkItems(itemId, item.children, currentPath);
+        if (childPath) {
+          return childPath;
+        }
+      }
+    }
+    return '';
   };
 
   // 处理拖拽结束事件
@@ -2093,6 +2193,14 @@ export default function WorkBreakdownPage() {
                   
                   {/* 操作按钮：在PC端放在右侧，移动端放在下方 */}
                   <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
+                    <button
+                      onClick={() => toggleEdit(item.id)}
+                      className="text-xs px-3 py-1.5 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 flex items-center border border-gray-200 transition-colors"
+                      disabled={isSaving}
+                    >
+                      <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                      编辑
+                    </button>
                     {canAddChildren && (
                       <button
                         onClick={() => addChildWorkItem(item.id, level)}
@@ -2113,12 +2221,13 @@ export default function WorkBreakdownPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => toggleEdit(item.id)}
+                      onClick={() => moveWorkItem(item)}
                       className="text-xs px-3 py-1.5 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 flex items-center border border-gray-200 transition-colors"
-                      disabled={isSaving}
+                      disabled={isSaving || !item.dbId}
+                      title={!item.dbId ? "请先保存工作项再进行移动" : "移动层级"}
                     >
-                      <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                      编辑
+                      <MoveIcon className="h-3.5 w-3.5 mr-1" />
+                      移动层级
                     </button>
                     <button
                       onClick={() => deleteWorkItem(item.id)}
@@ -2273,7 +2382,18 @@ export default function WorkBreakdownPage() {
           </div>
         </div>
       )}
-      
+
+      {/* 移动工作项对话框 */}
+      <MoveWorkItemDialog
+        isOpen={showMoveDialog}
+        onClose={cancelMoveWorkItem}
+        workItem={itemToMove}
+        projectId={selectedProject?.id || ''}
+        userId={user?.id || ''}
+        onMoveComplete={handleMoveComplete}
+        potentialParents={allPotentialParents}
+      />
+
       {/* Excel导入进度对话框 */}
       {isImportingExcel && importExcelProgress > 0 && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2715,6 +2835,7 @@ export default function WorkBreakdownPage() {
                                 onToggleEdit={toggleEdit}
                                 onAddChild={addChildWorkItem}
                                 onDelete={(id) => setItemToDelete(id)}
+                                onMove={moveWorkItem}
                                 onUpdate={updateWorkItem}
                                 renderEditForm={renderEditForm}
                                 renderViewMode={renderViewMode}
