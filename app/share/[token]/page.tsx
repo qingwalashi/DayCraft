@@ -1,12 +1,32 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { EyeIcon, EyeOffIcon, LockIcon, CalendarIcon, TagIcon, UsersIcon, ClockIcon } from "lucide-react";
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  CalendarIcon,
+  TagIcon,
+  UsersIcon,
+  ClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  TrendingUpIcon,
+  ChevronDown
+} from "lucide-react";
 import { WorkItem } from "@/lib/services/work-breakdown";
 import { calculateWorkItemProgress, STATUS_PROGRESS_MAP } from '@/lib/utils/progress-calculator';
 import ProgressIndicator from '@/components/work-breakdown/ProgressIndicator';
+
+// 工作进展状态选项（与工作分解页保持一致）
+const STATUS_OPTIONS = [
+  { value: '未开始', color: 'bg-gray-200 text-gray-800 border-gray-300', progress: STATUS_PROGRESS_MAP['未开始'] },
+  { value: '已暂停', color: 'bg-yellow-200 text-yellow-800 border-yellow-300', progress: STATUS_PROGRESS_MAP['已暂停'] },
+  { value: '进行中', color: 'bg-blue-200 text-blue-800 border-blue-300', progress: STATUS_PROGRESS_MAP['进行中'] },
+  { value: '已完成', color: 'bg-green-200 text-green-800 border-green-300', progress: STATUS_PROGRESS_MAP['已完成'] },
+];
 
 interface ShareData {
   project: {
@@ -37,6 +57,70 @@ export default function SharePage() {
   // 筛选状态
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
+  const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开所有层级
+  const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
+  const [filteredWorkItems, setFilteredWorkItems] = useState<WorkItem[]>([]);
+
+  // 引用
+  const statusFilterRef = useRef<HTMLDivElement>(null);
+
+  // 工具函数
+  const getItemProgress = (item: WorkItem): number => {
+    return calculateWorkItemProgress(item);
+  };
+
+  // 处理状态筛选切换
+  const handleStatusFilterToggle = (status: string) => {
+    setSelectedStatuses(prev => {
+      if (prev.includes(status)) {
+        return prev.filter(s => s !== status);
+      } else {
+        return [...prev, status];
+      }
+    });
+  };
+
+  // 清除状态筛选
+  const clearStatusFilters = () => {
+    setSelectedStatuses([]);
+  };
+
+  // 处理工作项点击
+  const handleWorkItemClick = (item: WorkItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedWorkItem?.id === item.id) {
+      setSelectedWorkItem(null);
+    } else {
+      setSelectedWorkItem(item);
+    }
+  };
+
+  // 渲染成员
+  const renderMembers = (members: string, compact: boolean = false) => {
+    if (!members) return null;
+
+    const memberList = members.split('，').filter(Boolean);
+    const displayCount = compact ? 3 : memberList.length;
+    const displayMembers = memberList.slice(0, displayCount);
+    const remainingCount = memberList.length - displayCount;
+
+    return (
+      <>
+        {displayMembers.map((member, idx) => (
+          <span key={`member-${idx}`} className="inline-flex items-center text-xs px-2 py-1 ml-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+            <UsersIcon className="h-3 w-3 mr-1" />
+            {member}
+          </span>
+        ))}
+        {remainingCount > 0 && (
+          <span className="inline-flex items-center text-xs px-2 py-1 ml-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+            +{remainingCount}
+          </span>
+        )}
+      </>
+    );
+  };
 
   // 加载分享数据
   const loadShareData = async (passwordParam?: string) => {
@@ -130,19 +214,80 @@ export default function SharePage() {
     setExpandedItems(newExpanded);
   };
 
+  // 根据层级设置展开状态
+  const setExpandByLevel = (items: WorkItem[], level: number, currentLevel: number = 0): WorkItem[] => {
+    return items.map(item => {
+      const shouldExpand = currentLevel < level;
+      const updatedItem = {
+        ...item,
+        isExpanded: shouldExpand
+      };
+
+      if (shouldExpand) {
+        expandedItems.add(item.id);
+      } else {
+        expandedItems.delete(item.id);
+      }
+
+      if (item.children) {
+        updatedItem.children = setExpandByLevel(item.children, level, currentLevel + 1);
+      }
+
+      return updatedItem;
+    });
+  };
+
   // 筛选工作项
   const filterWorkItems = (items: WorkItem[]): WorkItem[] => {
     if (selectedStatuses.length === 0) return items;
-    
-    return items.filter(item => {
-      const matchesStatus = selectedStatuses.includes(item.status || '未开始');
-      const hasMatchingChildren = item.children && filterWorkItems(item.children).length > 0;
-      return matchesStatus || hasMatchingChildren;
-    }).map(item => ({
-      ...item,
-      children: item.children ? filterWorkItems(item.children) : []
-    }));
+
+    const filterItemsByStatus = (items: WorkItem[]): WorkItem[] => {
+      return items.filter(item => {
+        const matchesStatus = selectedStatuses.includes(item.status || '未开始');
+        const hasMatchingChildren = item.children && filterItemsByStatus(item.children).length > 0;
+        return matchesStatus || hasMatchingChildren;
+      }).map(item => ({
+        ...item,
+        children: item.children ? filterItemsByStatus(item.children) : []
+      }));
+    };
+
+    return filterItemsByStatus(items);
   };
+
+  // 处理筛选和展开
+  useEffect(() => {
+    if (shareData?.work_items) {
+      const filtered = filterWorkItems(shareData.work_items);
+      setFilteredWorkItems(filtered);
+    }
+  }, [shareData?.work_items, selectedStatuses]);
+
+  // 处理展开层级变化
+  useEffect(() => {
+    if (shareData?.work_items) {
+      const updatedItems = setExpandByLevel(shareData.work_items, expandLevel);
+      setShareData(prev => prev ? { ...prev, work_items: updatedItems } : null);
+      setExpandedItems(new Set(expandedItems));
+    }
+  }, [expandLevel]);
+
+  // 点击外部关闭筛选菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        statusFilterRef.current &&
+        !statusFilterRef.current.contains(event.target as Node)
+      ) {
+        setShowStatusFilter(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -150,96 +295,127 @@ export default function SharePage() {
     }
   }, [token]);
 
-  // 渲染工作项
+  // 渲染工作项（完全复刻工作分解页的预览模式样式）
   const renderWorkItem = (item: WorkItem, level: number = 0) => {
-    const isExpanded = expandedItems.has(item.id);
+    const isSelected = selectedWorkItem?.id === item.id;
     const hasChildren = item.children && item.children.length > 0;
-    const progress = calculateWorkItemProgress(item);
-    
+
     return (
-      <div key={item.id} className="mb-2">
+      <div key={item.id} className="mb-4">
         <div
-          className="flex items-center p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
-          style={{ marginLeft: level > 0 ? `${Math.min(level * 1.5, 6)}rem` : '0' }}
+          className={`flex items-start p-4 rounded-lg shadow-sm border-l-4 transition-all cursor-pointer ${
+            isSelected
+              ? 'bg-blue-50 border-l-blue-600 shadow-md ring-2 ring-blue-200'
+              : 'bg-white hover:shadow-md hover:bg-gray-50'
+          } ${
+            level === 0 ? (isSelected ? 'border-l-blue-600' : 'border-l-blue-500') :
+            level === 1 ? (isSelected ? 'border-l-green-600' : 'border-l-green-500') :
+            level === 2 ? (isSelected ? 'border-l-yellow-600' : 'border-l-yellow-500') :
+            level === 3 ? (isSelected ? 'border-l-purple-600' : 'border-l-purple-500') :
+            (isSelected ? 'border-l-red-600' : 'border-l-red-500')
+          }`}
+          onClick={(e) => handleWorkItemClick(item, e)}
         >
-          {/* 展开/收起按钮 */}
-          {hasChildren && (
-            <button
-              onClick={() => toggleExpand(item.id)}
-              className="mr-2 p-1 hover:bg-gray-100 rounded"
-            >
-              {isExpanded ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              )}
-            </button>
-          )}
-          
-          {/* 工作项内容 */}
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-gray-900">{item.name}</h3>
-              <div className="flex items-center space-x-2">
-                {/* 进度指示器 */}
-                <ProgressIndicator progress={progress} size="sm" />
-                
-                {/* 状态标签 */}
-                <span className={`
-                  px-2 py-1 text-xs rounded-full
-                  ${item.status === '已完成' ? 'bg-green-100 text-green-800' :
-                    item.status === '进行中' ? 'bg-blue-100 text-blue-800' :
-                    item.status === '已暂停' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'}
-                `}>
-                  {item.status || '未开始'}
-                </span>
+          <div className="flex-grow">
+            {/* 优化布局：PC端更紧凑，移动端自适应 */}
+            <div className="flex flex-col sm:flex-row sm:items-center">
+              {/* 第一行/左侧：标题和状态 */}
+              <div className="flex items-center flex-grow flex-wrap">
+                {hasChildren && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpand(item.id);
+                    }}
+                    className="mr-2 p-1 rounded-md hover:bg-gray-100 transition-colors"
+                  >
+                    {item.isExpanded ? (
+                      <ChevronDownIcon className="h-5 w-5 text-gray-600" />
+                    ) : (
+                      <ChevronRightIcon className="h-5 w-5 text-gray-600" />
+                    )}
+                  </button>
+                )}
+                <h3 className="font-medium text-lg">{item.name}</h3>
+
+                {/* 显示里程碑标识 */}
+                {item.is_milestone && (
+                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300 font-medium">
+                    🏁 里程碑
+                  </span>
+                )}
+
+                {/* 显示工作状态徽章 */}
+                {item.status && (
+                  <span className={`ml-2 text-xs px-3 py-1 rounded-full ${
+                    item.status === '未开始' ? 'bg-gray-200 text-gray-800 border border-gray-300' :
+                    item.status === '进行中' ? 'bg-blue-200 text-blue-800 border border-blue-300' :
+                    item.status === '已暂停' ? 'bg-yellow-200 text-yellow-800 border border-yellow-300' :
+                    item.status === '已完成' ? 'bg-green-200 text-green-800 border border-green-300' :
+                    'bg-gray-200 text-gray-800 border border-gray-300'
+                  }`}>
+                    {item.status}
+                  </span>
+                )}
+
+                {/* 显示工作进度 */}
+                <div className="ml-2">
+                  <ProgressIndicator
+                    progress={getItemProgress(item)}
+                    size="sm"
+                    showBar={true}
+                    showText={true}
+                  />
+                </div>
+
+                {/* 显示参与人员 - 移到第一行 */}
+                {item.members && (
+                  <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                    {renderMembers(item.members, true)}
+                  </div>
+                )}
+
+                {/* 显示工作标签 - 移到第一行 */}
+                {item.tags && (
+                  <div className="flex flex-wrap items-center ml-2 mt-1 sm:mt-0">
+                    <TagIcon className="h-3 w-3 text-gray-500 mr-1" />
+                    {item.tags.split('，').filter(Boolean).map((tag, idx) => (
+                      <span key={`tag-${idx}`} className="inline-flex items-center text-xs px-1.5 py-0.5 ml-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 transition-colors">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-            
-            {/* 描述 */}
-            {item.description && (
-              <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-            )}
-            
-            {/* 标签和成员 */}
-            <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-              {item.tags && (
-                <div className="flex items-center">
-                  <TagIcon className="w-3 h-3 mr-1" />
-                  <span>{item.tags}</span>
-                </div>
-              )}
-              {item.members && (
-                <div className="flex items-center">
-                  <UsersIcon className="w-3 h-3 mr-1" />
-                  <span>{item.members}</span>
-                </div>
-              )}
-              {item.planned_start_time && (
-                <div className="flex items-center">
-                  <ClockIcon className="w-3 h-3 mr-1" />
-                  <span>{new Date(item.planned_start_time).toLocaleDateString()}</span>
+
+            {/* 描述区域 */}
+            <div className="mt-2">
+              {/* 描述 */}
+              {item.description && (
+                <div className="text-sm text-gray-600 leading-relaxed">
+                  {item.description}
                 </div>
               )}
             </div>
-            
-            {/* 进展备注 */}
+
+            {/* 工作进展备注 */}
             {item.progress_notes && (
-              <div className="mt-2 p-2 bg-gray-50 rounded text-sm text-gray-700">
-                {item.progress_notes}
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+                  <ClockIcon className="h-3.5 w-3.5" />
+                  <span>工作进展备注:</span>
+                </div>
+                <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded-md border border-gray-100 whitespace-pre-wrap">
+                  {item.progress_notes}
+                </div>
               </div>
             )}
           </div>
         </div>
-        
-        {/* 子项目 */}
-        {hasChildren && isExpanded && (
-          <div className="mt-2">
+
+        {hasChildren && item.isExpanded && (
+          <div className={`pl-8 mt-3 ${level < 4 ? 'border-l border-gray-200' : ''}`}>
             {item.children?.map(child => renderWorkItem(child, level + 1))}
           </div>
         )}
@@ -335,8 +511,7 @@ export default function SharePage() {
     );
   }
 
-  const filteredWorkItems = filterWorkItems(shareData.work_items);
-  const statusOptions = ['未开始', '进行中', '已暂停', '已完成'];
+  const currentItems = selectedStatuses.length > 0 ? filteredWorkItems : shareData.work_items;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -353,7 +528,7 @@ export default function SharePage() {
                 <p className="text-sm text-gray-600 mt-1">{shareData.project.description}</p>
               )}
             </div>
-            
+
             <div className="text-right text-sm text-gray-500">
               <div className="flex items-center">
                 <EyeIcon className="w-4 h-4 mr-1" />
@@ -370,54 +545,212 @@ export default function SharePage() {
         </div>
       </div>
 
-      {/* 筛选器 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="bg-white rounded-lg shadow-sm border p-4 mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">状态筛选</h3>
-          <div className="flex flex-wrap gap-2">
-            {statusOptions.map(status => (
-              <button
-                key={status}
-                onClick={() => {
-                  if (selectedStatuses.includes(status)) {
-                    setSelectedStatuses(selectedStatuses.filter(s => s !== status));
-                  } else {
-                    setSelectedStatuses([...selectedStatuses, status]);
-                  }
-                }}
-                className={`
-                  px-3 py-1 text-sm rounded-full border transition-colors
-                  ${selectedStatuses.includes(status)
-                    ? 'bg-blue-100 border-blue-300 text-blue-800'
-                    : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
-                  }
-                `}
-              >
-                {status}
-              </button>
-            ))}
-            {selectedStatuses.length > 0 && (
-              <button
-                onClick={() => setSelectedStatuses([])}
-                className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
-              >
-                清除筛选
-              </button>
-            )}
-          </div>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 左侧：工作分解列表 */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* 控制栏 */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-4">
+                {/* 层级展开控制 */}
+                <div className="flex items-center">
+                  <label htmlFor="expand-level" className="text-sm font-medium text-gray-700 mr-2">
+                    展开层级:
+                  </label>
+                  <select
+                    id="expand-level"
+                    value={expandLevel}
+                    onChange={(e) => setExpandLevel(Number(e.target.value))}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="0">仅顶级</option>
+                    <option value="1">展开1级</option>
+                    <option value="2">展开2级</option>
+                    <option value="3">展开3级</option>
+                    <option value="4">展开全部</option>
+                  </select>
+                </div>
 
-        {/* 工作分解列表 */}
-        <div className="space-y-2">
-          {filteredWorkItems.length > 0 ? (
-            filteredWorkItems.map(item => renderWorkItem(item))
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-gray-400 text-6xl mb-4">📋</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">暂无匹配的工作项</h3>
-              <p className="text-gray-600">尝试调整筛选条件</p>
+                {/* 工作状态筛选下拉菜单 */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowStatusFilter(!showStatusFilter)}
+                    className="px-4 py-2 text-sm font-medium flex items-center bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md transition-colors"
+                  >
+                    <ClockIcon className="h-4 w-4 mr-1" />
+                    工作状态筛选
+                    {selectedStatuses.length > 0 && (
+                      <span className="ml-1 bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                        {selectedStatuses.length}
+                      </span>
+                    )}
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </button>
+
+                  {showStatusFilter && (
+                    <div
+                      ref={statusFilterRef}
+                      className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-1 py-1 w-52 bg-white rounded-md shadow-lg z-10 border border-gray-200"
+                    >
+                      <div className="px-3 py-2 border-b border-gray-100">
+                        <p className="text-xs font-medium text-gray-500">选择工作状态</p>
+                      </div>
+
+                      {STATUS_OPTIONS.map(option => (
+                        <div key={option.value} className="px-3 py-2 flex items-center">
+                          <input
+                            type="checkbox"
+                            id={`status-filter-${option.value}`}
+                            checked={selectedStatuses.includes(option.value)}
+                            onChange={() => handleStatusFilterToggle(option.value)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-colors"
+                          />
+                          <label
+                            htmlFor={`status-filter-${option.value}`}
+                            className="ml-2 flex items-center cursor-pointer"
+                          >
+                            <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${option.color.split(' ')[0]}`}></span>
+                            <span className="text-sm text-gray-700">{option.value}</span>
+                          </label>
+                        </div>
+                      ))}
+
+                      <div className="border-t border-gray-100 mt-1 pt-1 px-3 py-2">
+                        <button
+                          onClick={clearStatusFilters}
+                          className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          清除筛选条件
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* 工作分解列表 */}
+            <div className="space-y-2">
+              {currentItems.length > 0 ? (
+                currentItems.map(item => renderWorkItem(item))
+              ) : (
+                <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+                  <div className="text-gray-400 text-6xl mb-4">📋</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">暂无匹配的工作项</h3>
+                  <p className="text-gray-600">尝试调整筛选条件</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右侧：项目进度概览 */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-6">
+              <div className="flex items-center mb-4">
+                <TrendingUpIcon className="h-5 w-5 text-blue-600 mr-2" />
+                <h3 className="text-lg font-semibold text-gray-900">项目进度概览</h3>
+              </div>
+
+              {/* 整体进度 */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">整体进度</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {Math.round(calculateWorkItemProgress({ children: shareData.work_items } as WorkItem))}%
+                  </span>
+                </div>
+                <ProgressIndicator
+                  progress={calculateWorkItemProgress({ children: shareData.work_items } as WorkItem)}
+                  size="lg"
+                  showBar={true}
+                  showText={false}
+                />
+              </div>
+
+              {/* 状态统计 */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">状态分布</h4>
+                {STATUS_OPTIONS.map(status => {
+                  const count = shareData.work_items.reduce((acc, item) => {
+                    const countInItem = (item: WorkItem): number => {
+                      let count = (item.status || '未开始') === status.value ? 1 : 0;
+                      if (item.children) {
+                        count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
+                      }
+                      return count;
+                    };
+                    return acc + countInItem(item);
+                  }, 0);
+
+                  const total = shareData.work_items.reduce((acc, item) => {
+                    const countInItem = (item: WorkItem): number => {
+                      let count = 1;
+                      if (item.children) {
+                        count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
+                      }
+                      return count;
+                    };
+                    return acc + countInItem(item);
+                  }, 0);
+
+                  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+
+                  return (
+                    <div key={status.value} className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`w-3 h-3 rounded-full mr-2 ${status.color.split(' ')[0]}`}></div>
+                        <span className="text-sm text-gray-700">{status.value}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium text-gray-900 mr-2">{count}</span>
+                        <span className="text-xs text-gray-500">({percentage}%)</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 项目信息 */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">项目信息</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">项目名称:</span>
+                    <span className="text-gray-900 font-medium">{shareData.project.name}</span>
+                  </div>
+                  {shareData.project.code && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">项目编码:</span>
+                      <span className="text-gray-900">{shareData.project.code}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">工作项总数:</span>
+                    <span className="text-gray-900">
+                      {shareData.work_items.reduce((acc, item) => {
+                        const countInItem = (item: WorkItem): number => {
+                          let count = 1;
+                          if (item.children) {
+                            count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
+                          }
+                          return count;
+                        };
+                        return acc + countInItem(item);
+                      }, 0)}
+                    </span>
+                  </div>
+                  {shareData.share_info.expires_at && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">分享过期:</span>
+                      <span className="text-gray-900">
+                        {new Date(shareData.share_info.expires_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
