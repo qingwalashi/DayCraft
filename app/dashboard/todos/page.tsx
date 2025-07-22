@@ -242,30 +242,54 @@ export default function TodosPage() {
   // 刷新全部项目视图 - 使用useCallback包装
   const refreshAllProjectsView = useCallback(async () => {
     if (!user) return;
-          
+
                 setIsLoading(true);
                 try {
       // 获取所有未完成的待办
-      const { data: allTodosData, error: allTodosError } = await supabase
+      const { data: activeTodosData, error: activeTodosError } = await supabase
                     .from("project_todos")
         .select(`
-          id, 
-          content, 
-          priority, 
-          due_date, 
-          status, 
+          id,
+          content,
+          priority,
+          due_date,
+          status,
           completed_at,
           project:project_id (name, code)
         `)
                     .eq("user_id", user.id)
+                    .neq("status", "completed")
                     .order("due_date", { ascending: true });
-                    
-      if (allTodosError) {
-        throw allTodosError;
+
+      if (activeTodosError) {
+        throw activeTodosError;
                   }
-                  
-      // 转换数据格式
-      const formattedTodos = (allTodosData || []).map((todo: any) => ({
+
+      // 获取最近完成的10条待办
+      const { data: completedTodosData, error: completedTodosError } = await supabase
+                    .from("project_todos")
+        .select(`
+          id,
+          content,
+          priority,
+          due_date,
+          status,
+          completed_at,
+          project:project_id (name, code)
+        `)
+                    .eq("user_id", user.id)
+                    .eq("status", "completed")
+                    .not("completed_at", "is", null)
+                    .order("completed_at", { ascending: false })
+                    .limit(10);
+
+      if (completedTodosError) {
+        throw completedTodosError;
+                  }
+
+      // 合并并转换数据格式
+      const allTodosData = [...(activeTodosData || []), ...(completedTodosData || [])];
+      const formattedTodos = allTodosData.map((todo: any) => ({
         id: todo.id,
         content: todo.content,
         priority: todo.priority,
@@ -274,11 +298,11 @@ export default function TodosPage() {
         completed_at: todo.completed_at,
         projectName: todo.project ? `${todo.project.name} (${todo.project.code})` : '未知项目'
       }));
-      
+
       // 更新状态
       setAllTodos(formattedTodos);
       setAllTodosEdited(formattedTodos);
-                  
+
       // 更新数据加载状态
                   dataLoadedRef.current = true;
                   lastLoadTimeRef.current = Date.now();
@@ -293,23 +317,40 @@ export default function TodosPage() {
   // 刷新单个项目视图 - 使用useCallback包装
   const refreshSingleProjectView = useCallback(async (projectId: string) => {
     if (!user || !projectId) return;
-    
+
                 setIsLoading(true);
                 try {
-      // 获取项目的待办
-      const { data: todosData, error: todosError } = await supabase
+      // 获取项目的未完成待办
+      const { data: activeTodosData, error: activeTodosError } = await supabase
                   .from("project_todos")
                   .select("id, content, priority, due_date, status, completed_at")
                   .eq("user_id", user.id)
         .eq("project_id", projectId)
+                  .neq("status", "completed")
                   .order("due_date", { ascending: true });
-                    
-          if (todosError) {
-        throw todosError;
+
+          if (activeTodosError) {
+        throw activeTodosError;
                 }
-                  
-      // 转换数据格式
-      const formattedTodos = (todosData || []).map((todo: any) => ({
+
+      // 获取项目最近完成的10条待办
+      const { data: completedTodosData, error: completedTodosError } = await supabase
+                  .from("project_todos")
+                  .select("id, content, priority, due_date, status, completed_at")
+                  .eq("user_id", user.id)
+        .eq("project_id", projectId)
+                  .eq("status", "completed")
+                  .not("completed_at", "is", null)
+                  .order("completed_at", { ascending: false })
+                  .limit(10);
+
+          if (completedTodosError) {
+        throw completedTodosError;
+                }
+
+      // 合并并转换数据格式
+      const allTodosData = [...(activeTodosData || []), ...(completedTodosData || [])];
+      const formattedTodos = allTodosData.map((todo: any) => ({
         id: todo.id,
         content: todo.content,
         priority: todo.priority,
@@ -317,11 +358,11 @@ export default function TodosPage() {
         status: todo.status || 'not_started',
         completed_at: todo.completed_at
       }));
-                  
+
       // 更新状态
       setTodos(formattedTodos);
       setNewTodos([]);
-      
+
       // 更新数据加载状态
                   dataLoadedRef.current = true;
                   lastLoadTimeRef.current = Date.now();
@@ -1184,7 +1225,7 @@ export default function TodosPage() {
                           </td>
                         </tr>
                       )}
-                      {allTodosEdited.filter(todo => todo.status === 'completed').map((todo, idx) => (
+                      {allTodosEdited.filter(todo => todo.status === 'completed').slice(0, 10).map((todo, idx) => (
                         <tr key={`desktop-completed-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm font-medium text-gray-700">{todo.projectName}</td>
                           <td className="px-4 py-2">
@@ -1396,7 +1437,7 @@ export default function TodosPage() {
                       <h3 className="font-medium text-gray-700">已完成（最近10条）</h3>
                     </div>
                   )}
-                  {allTodosEdited.filter(todo => todo.status === 'completed').map((todo, idx) => (
+                  {allTodosEdited.filter(todo => todo.status === 'completed').slice(0, 10).map((todo, idx) => (
                     <div key={`mobile-completed-${todo.id}`} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                       <div className="p-4 space-y-3">
                         {/* 项目名称和优先级 */}
@@ -1693,7 +1734,7 @@ export default function TodosPage() {
                       </td>
                     </tr>
                   )}
-                  {Array.isArray(todos) && todos.filter(todo => todo.status === 'completed').map((todo, idx) => (
+                  {Array.isArray(todos) && todos.filter(todo => todo.status === 'completed').slice(0, 10).map((todo, idx) => (
                     <tr key={`desktop-completed-${todo.id}`} className="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
                       <td className="px-4 py-2">
                         <input
@@ -2025,7 +2066,7 @@ export default function TodosPage() {
                   <h3 className="font-medium text-gray-700">已完成（最近10条）</h3>
                 </div>
               )}
-              {Array.isArray(todos) && todos.filter(todo => todo.status === 'completed').map((todo, idx) => (
+              {Array.isArray(todos) && todos.filter(todo => todo.status === 'completed').slice(0, 10).map((todo, idx) => (
                 <div key={`mobile-completed-${todo.id}`} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="p-4 space-y-3">
                     {/* 优先级和删除按钮 */}
