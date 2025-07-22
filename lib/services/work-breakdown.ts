@@ -213,6 +213,11 @@ export class WorkBreakdownService {
       throw new Error('工作项不存在');
     }
 
+    // 确保 itemData 有必要的属性
+    if (typeof itemData.project_id !== 'string') {
+      throw new Error('工作项数据异常：缺少项目ID');
+    }
+
     // 2. 验证移动的合法性
     await this.validateMove(itemId, newParentId);
 
@@ -229,6 +234,11 @@ export class WorkBreakdownService {
         throw new Error('目标父级工作项不存在');
       }
 
+      // 确保 level 是数字类型
+      if (typeof parentData.level !== 'number') {
+        throw new Error('父级工作项层级数据异常');
+      }
+
       newLevel = parentData.level + 1;
     }
 
@@ -242,15 +252,23 @@ export class WorkBreakdownService {
     let finalPosition = targetPosition;
     if (finalPosition === undefined) {
       // 如果没有指定位置，放在目标位置的末尾
-      const { data: siblingsData } = await this.supabase
+      let query = this.supabase
         .from('work_breakdown_items')
         .select('position')
-        .eq('parent_id', newParentId)
-        .eq('project_id', itemData.project_id)
+        .eq('project_id', itemData.project_id);
+
+      // 根据 newParentId 是否为 null 来构建查询
+      if (newParentId === null) {
+        query = query.is('parent_id', null);
+      } else {
+        query = query.eq('parent_id', newParentId);
+      }
+
+      const { data: siblingsData } = await query
         .order('position', { ascending: false })
         .limit(1);
 
-      finalPosition = siblingsData && siblingsData.length > 0
+      finalPosition = siblingsData && siblingsData.length > 0 && typeof siblingsData[0].position === 'number'
         ? siblingsData[0].position + 1
         : 0;
     }
@@ -281,7 +299,7 @@ export class WorkBreakdownService {
       .eq('id', potentialDescendantId)
       .single();
 
-    if (!itemData || !itemData.parent_id) {
+    if (!itemData || !itemData.parent_id || typeof itemData.parent_id !== 'string') {
       return false;
     }
 
@@ -305,7 +323,9 @@ export class WorkBreakdownService {
     }
 
     // 找到当前子项的最大层级
-    const currentMaxChildLevel = Math.max(...childrenData.map(child => child.level));
+    const currentMaxChildLevel = Math.max(...childrenData
+      .map(child => typeof child.level === 'number' ? child.level : 0)
+    );
 
     // 计算当前项的层级
     const { data: currentItemData } = await this.supabase
@@ -314,7 +334,7 @@ export class WorkBreakdownService {
       .eq('id', itemId)
       .single();
 
-    if (!currentItemData) {
+    if (!currentItemData || typeof currentItemData.level !== 'number') {
       return newLevel;
     }
 
@@ -376,6 +396,10 @@ export class WorkBreakdownService {
 
     // 批量更新子项层级
     for (const child of childrenData) {
+      if (typeof child.id !== 'string') {
+        continue; // 跳过无效的子项
+      }
+
       const { error } = await this.supabase
         .from('work_breakdown_items')
         .update({ level: newChildLevel })
@@ -397,13 +421,20 @@ export class WorkBreakdownService {
     insertPosition: number,
     excludeItemId: string
   ): Promise<void> {
-    const { data: siblingsData } = await this.supabase
+    let query = this.supabase
       .from('work_breakdown_items')
       .select('id, position')
-      .eq('parent_id', parentId)
       .eq('project_id', projectId)
-      .neq('id', excludeItemId)
-      .order('position');
+      .neq('id', excludeItemId);
+
+    // 根据 parentId 是否为 null 来构建查询
+    if (parentId === null) {
+      query = query.is('parent_id', null);
+    } else {
+      query = query.eq('parent_id', parentId);
+    }
+
+    const { data: siblingsData } = await query.order('position');
 
     if (!siblingsData || siblingsData.length === 0) {
       return;
@@ -411,7 +442,7 @@ export class WorkBreakdownService {
 
     // 更新位置大于等于插入位置的兄弟项
     for (const sibling of siblingsData) {
-      if (sibling.position >= insertPosition) {
+      if (typeof sibling.position === 'number' && typeof sibling.id === 'string' && sibling.position >= insertPosition) {
         const { error } = await this.supabase
           .from('work_breakdown_items')
           .update({ position: sibling.position + 1 })
@@ -430,13 +461,20 @@ export class WorkBreakdownService {
     projectId: string,
     removedPosition: number
   ): Promise<void> {
-    const { data: siblingsData } = await this.supabase
+    let query = this.supabase
       .from('work_breakdown_items')
       .select('id, position')
-      .eq('parent_id', parentId)
       .eq('project_id', projectId)
-      .gt('position', removedPosition)
-      .order('position');
+      .gt('position', removedPosition);
+
+    // 根据 parentId 是否为 null 来构建查询
+    if (parentId === null) {
+      query = query.is('parent_id', null);
+    } else {
+      query = query.eq('parent_id', parentId);
+    }
+
+    const { data: siblingsData } = await query.order('position');
 
     if (!siblingsData || siblingsData.length === 0) {
       return;
@@ -444,13 +482,15 @@ export class WorkBreakdownService {
 
     // 更新位置大于移除位置的兄弟项
     for (const sibling of siblingsData) {
-      const { error } = await this.supabase
-        .from('work_breakdown_items')
-        .update({ position: sibling.position - 1 })
-        .eq('id', sibling.id);
+      if (typeof sibling.position === 'number' && typeof sibling.id === 'string') {
+        const { error } = await this.supabase
+          .from('work_breakdown_items')
+          .update({ position: sibling.position - 1 })
+          .eq('id', sibling.id);
 
-      if (error) {
-        throw error;
+        if (error) {
+          throw error;
+        }
       }
     }
   }
