@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { createClient, Project } from "@/lib/supabase/client";
 import { WorkBreakdownService, WorkItem } from "@/lib/services/work-breakdown";
 import { toast } from "sonner";
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon, TrendingUp as TrendingUpIcon, MoveIcon } from "lucide-react";
+import { PlusIcon, ChevronDownIcon, ChevronRightIcon, XIcon, PencilIcon, TrashIcon, Eye as EyeIcon, Edit as EditIcon, Clock as ClockIcon, Tag as TagIcon, Users as UsersIcon, Download as DownloadIcon, Upload as UploadIcon, FileSpreadsheet as FileSpreadsheetIcon, FileDown as FileDownIcon, ChevronDown, Network as NetworkIcon, GripVerticalIcon, TrendingUp as TrendingUpIcon, MoveIcon, ShareIcon } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -36,6 +36,9 @@ import ProgressIndicator from '@/components/work-breakdown/ProgressIndicator';
 
 // 导入移动对话框组件
 import MoveWorkItemDialog from './move-work-item-dialog';
+
+// 导入分享对话框组件
+import ShareDialog from './share-dialog';
 
 // 视图模式
 type ViewMode = 'edit' | 'preview' | 'map';
@@ -394,6 +397,9 @@ export default function WorkBreakdownPage() {
   // 添加导入导出菜单状态
   const [showImportExportMenu, setShowImportExportMenu] = useState(false);
   const importExportMenuRef = useRef<HTMLDivElement>(null);
+
+  // 添加分享对话框状态
+  const [showShareDialog, setShowShareDialog] = useState(false);
   
   // 添加数据加载状态跟踪和刷新间隔
   const dataLoadedRef = useRef<boolean>(false);
@@ -2609,14 +2615,26 @@ export default function WorkBreakdownPage() {
             </div>
           )}
           
-          {/* 视图切换按钮 - 放在右侧 */}
+          {/* 视图切换按钮和分享按钮 - 放在右侧 */}
           <div className="flex gap-2">
+            {/* 分享按钮 */}
+            <button
+              type="button"
+              onClick={() => setShowShareDialog(true)}
+              className="px-4 py-2 text-sm font-medium flex items-center bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md transition-colors"
+              disabled={!selectedProject}
+            >
+              <ShareIcon className="h-4 w-4 mr-1" />
+              分享
+            </button>
+
+            {/* 视图切换按钮 */}
             <button
               type="button"
               onClick={() => setViewMode('edit')}
               className={`px-4 py-2 text-sm font-medium flex items-center ${
-                viewMode === 'edit' 
-                  ? 'bg-blue-600 text-white' 
+                viewMode === 'edit'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
               } border border-gray-300 rounded-md transition-colors`}
             >
@@ -2627,8 +2645,8 @@ export default function WorkBreakdownPage() {
               type="button"
               onClick={() => setViewMode('preview')}
               className={`px-4 py-2 text-sm font-medium flex items-center ${
-                viewMode === 'preview' 
-                  ? 'bg-blue-600 text-white' 
+                viewMode === 'preview'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
               } border border-gray-300 rounded-md transition-colors`}
             >
@@ -2639,8 +2657,8 @@ export default function WorkBreakdownPage() {
               type="button"
               onClick={() => setViewMode('map')}
               className={`px-4 py-2 text-sm font-medium flex items-center ${
-                viewMode === 'map' 
-                  ? 'bg-blue-600 text-white' 
+                viewMode === 'map'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
               } border border-gray-300 rounded-md transition-colors`}
             >
@@ -2915,6 +2933,25 @@ export default function WorkBreakdownPage() {
           )}
         </div>
       )}
+
+      {/* 分享对话框 */}
+      <ShareDialog
+        isOpen={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+        projectId={selectedProject?.id || ''}
+        projectName={selectedProject?.name || ''}
+      />
+
+      {/* 移动工作项对话框 */}
+      <MoveWorkItemDialog
+        isOpen={showMoveDialog}
+        onClose={() => setShowMoveDialog(false)}
+        workItem={itemToMove}
+        projectId={selectedProject?.id || ''}
+        userId={user?.id || ''}
+        onMoveComplete={handleMoveComplete}
+        potentialParents={allPotentialParents}
+      />
     </div>
   );
-} 
+}

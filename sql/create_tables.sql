@@ -317,7 +317,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 添加触发器，在删除工作分解项时级联删除子项
 CREATE TRIGGER cascade_delete_work_breakdown_items
   BEFORE DELETE ON public.work_breakdown_items
-  FOR EACH ROW EXECUTE PROCEDURE public.cascade_delete_work_breakdown_items(); 
+  FOR EACH ROW EXECUTE PROCEDURE public.cascade_delete_work_breakdown_items();
+
+-- 注意：工作分解分享表已移至独立的迁移文件
+-- 请运行 sql/work_breakdown_shares_migration.sql 来创建分享功能相关的表和策略
 
 -- 周报表
 CREATE TABLE public.weekly_reports (

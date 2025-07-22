@@ -22,6 +22,7 @@ export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
     
     // 如果用户未登录且访问受保护的路由，则重定向到登录页面
+    // 但是公开分享页面不需要登录
     if (!session && pathname.startsWith('/dashboard')) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
@@ -49,6 +50,8 @@ export const config = {
     '/forgot-password',
     '/reset-password',
     // 首页
-    '/'
+    '/',
+    // 公开分享页面（不需要登录，但需要处理）
+    '/share/:path*'
   ],
-}; 
+};

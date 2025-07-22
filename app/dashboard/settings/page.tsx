@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient, UserAISettings, UserDingTalkSettings } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell, Link, Smartphone, ShieldCheck, UserCog } from "lucide-react";
+import { Loader2, Eye, EyeOff, TestTube, PlusCircle, Settings, Bell, Link, Smartphone, ShieldCheck, UserCog, Share, Trash2, Edit, Copy, Calendar, Lock, Play, Pause } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,20 @@ interface ModelOption {
   value: string;
   label: string;
   provider?: string;
+}
+
+interface ShareItem {
+  id: string;
+  share_token: string;
+  share_url: string;
+  project_id: string;
+  project_name: string;
+  project_code: string;
+  has_password: boolean;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export default function SettingsPage() {
@@ -42,6 +56,10 @@ export default function SettingsPage() {
     is_enabled: false,
     ios_url_scheme: "dingtalk://dingtalkclient/page/link?url=",
   });
+
+  // 共享设置状态
+  const [shares, setShares] = useState<ShareItem[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
 
   // 模型选项
   const modelOptions: ModelOption[] = [
@@ -378,6 +396,92 @@ export default function SettingsPage() {
     }
   }, [formData.model_name]);
 
+  // 加载共享数据
+  const loadShares = async () => {
+    if (!user) return;
+
+    setSharesLoading(true);
+    try {
+      const response = await fetch('/api/work-breakdown/share');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '获取共享列表失败');
+      }
+
+      setShares(data.shares || []);
+    } catch (error: any) {
+      console.error('加载共享数据失败:', error);
+      toast.error(error.message || '加载共享数据失败');
+    } finally {
+      setSharesLoading(false);
+    }
+  };
+
+  // 当切换到共享设置选项卡时加载数据
+  useEffect(() => {
+    if (activeTab === 'shares') {
+      loadShares();
+    }
+  }, [activeTab, user]);
+
+  // 删除分享
+  const deleteShare = async (shareId: string) => {
+    try {
+      const response = await fetch(`/api/work-breakdown/share/${shareId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '删除分享失败');
+      }
+
+      toast.success('分享已删除');
+      loadShares(); // 重新加载列表
+    } catch (error: any) {
+      console.error('删除分享失败:', error);
+      toast.error(error.message || '删除分享失败');
+    }
+  };
+
+  // 切换分享状态
+  const toggleShareStatus = async (shareId: string, isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/work-breakdown/share/${shareId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_active: isActive }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '更新分享状态失败');
+      }
+
+      toast.success(isActive ? '分享已启用' : '分享已暂停');
+      loadShares(); // 重新加载列表
+    } catch (error: any) {
+      console.error('更新分享状态失败:', error);
+      toast.error(error.message || '更新分享状态失败');
+    }
+  };
+
+  // 复制链接
+  const copyShareUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('链接已复制到剪贴板');
+    } catch (error) {
+      console.error('复制失败:', error);
+      toast.error('复制失败，请手动复制');
+    }
+  };
+
+
+
   // 处理钉钉表单提交
   const handleDingTalkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -478,6 +582,10 @@ export default function SettingsPage() {
           <TabsTrigger value="dingtalk" className="flex items-center">
             <Bell className="h-4 w-4 mr-2" />
             钉钉配置
+          </TabsTrigger>
+          <TabsTrigger value="shares" className="flex items-center">
+            <Share className="h-4 w-4 mr-2" />
+            共享设置
           </TabsTrigger>
         </TabsList>
         
@@ -788,7 +896,144 @@ export default function SettingsPage() {
             </form>
           </div>
         </TabsContent>
+
+        <TabsContent value="shares">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">共享设置</h2>
+              <button
+                onClick={loadShares}
+                disabled={sharesLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
+              >
+                {sharesLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                刷新
+              </button>
+            </div>
+
+            {sharesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-600">加载中...</span>
+              </div>
+            ) : shares.length === 0 ? (
+              <div className="text-center py-12">
+                <Share className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">暂无共享</h3>
+                <p className="text-gray-600">您还没有创建任何工作分解的共享链接</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  前往 <a href="/dashboard/work-breakdown" className="text-blue-600 hover:text-blue-800">工作分解</a> 页面创建分享
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {shares.map((share) => (
+                  <div key={share.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h3 className="font-medium text-gray-900">{share.project_name}</h3>
+                          {share.project_code && (
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              {share.project_code}
+                            </span>
+                          )}
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            share.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {share.is_active ? '已启用' : '已暂停'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <div className="flex items-center space-x-4">
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              <span>创建时间: {new Date(share.created_at).toLocaleString()}</span>
+                            </div>
+                            {share.has_password && (
+                              <div className="flex items-center">
+                                <Lock className="h-4 w-4 mr-1" />
+                                <span>密码保护</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {share.expires_at && (
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              <span>过期时间: {new Date(share.expires_at).toLocaleString()}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center mt-2">
+                            <Link className="h-4 w-4 mr-1" />
+                            <input
+                              type="text"
+                              value={share.share_url}
+                              readOnly
+                              className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 mr-2"
+                            />
+                            <button
+                              onClick={() => copyShareUrl(share.share_url)}
+                              className="p-1 text-gray-500 hover:text-gray-700"
+                              title="复制链接"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 ml-4">
+                        <button
+                          onClick={() => window.open(share.share_url, '_blank')}
+                          className="p-2 text-gray-500 hover:text-gray-700"
+                          title="预览"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          onClick={() => toggleShareStatus(share.id, !share.is_active)}
+                          className={`p-2 ${
+                            share.is_active
+                              ? 'text-orange-600 hover:text-orange-800'
+                              : 'text-green-600 hover:text-green-800'
+                          }`}
+                          title={share.is_active ? '暂停分享' : '启用分享'}
+                        >
+                          {share.is_active ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (confirm('确定要删除这个分享吗？此操作不可恢复。')) {
+                              deleteShare(share.id);
+                            }
+                          }}
+                          className="p-2 text-red-600 hover:text-red-800"
+                          title="删除分享"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
+
+
     </div>
   );
-} 
+}
