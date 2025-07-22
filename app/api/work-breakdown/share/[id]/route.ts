@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { getBaseUrl } from '@/lib/utils/url-helper';
 
 // 更新分享配置
 export async function PUT(
@@ -98,8 +99,7 @@ export async function PUT(
     }
 
     // 构建返回数据
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ||
-      (request.headers.get('host') ? `https://${request.headers.get('host')}` : 'http://localhost:3000');
+    const baseUrl = getBaseUrl(request);
 
     // 确保projects是单个对象而不是数组
     const project = Array.isArray(updatedShare.projects) ? updatedShare.projects[0] : updatedShare.projects;

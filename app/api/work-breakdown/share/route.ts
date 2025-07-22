@@ -2,9 +2,9 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { generateShareToken } from '@/lib/utils/share-cleanup';
+import { getBaseUrl } from '@/lib/utils/url-helper';
 
 // 创建分享
 export async function POST(request: NextRequest) {
@@ -85,8 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 构建分享链接
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 
-      (request.headers.get('host') ? `https://${request.headers.get('host')}` : 'http://localhost:3000');
+    const baseUrl = getBaseUrl(request);
     const share_url = `${baseUrl}/share/${share_token}`;
 
     return NextResponse.json({
@@ -116,9 +115,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '未授权访问' }, { status: 401 });
     }
 
-    // 检查是否请求获取密码
-    const url = new URL(request.url);
-    const getPasswords = url.searchParams.get('include_passwords') === 'true';
+
 
     // 获取用户的所有分享
     const { data: shares, error: sharesError } = await supabase
@@ -146,8 +143,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 构建返回数据
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 
-      (request.headers.get('host') ? `https://${request.headers.get('host')}` : 'http://localhost:3000');
+    const baseUrl = getBaseUrl(request);
 
     const formattedShares = shares?.map(share => {
       // 确保projects是单个对象而不是数组
