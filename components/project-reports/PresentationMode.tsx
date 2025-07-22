@@ -3,16 +3,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { 
-  ChevronLeftIcon, 
-  ChevronRightIcon, 
-  XIcon, 
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  XIcon,
   PlayIcon,
   PauseIcon,
   RotateCcwIcon,
   FullscreenIcon,
   MinimizeIcon
 } from 'lucide-react';
+
+// 添加移动端高度处理的样式
+const mobileHeightStyle = `
+  @media (max-width: 768px) {
+    .presentation-mobile-height {
+      height: calc(100vh - 1.5rem) !important; /* 上下各留0.75rem间距 */
+      height: calc(100svh - 1.5rem) !important; /* 小视窗高度，上下各留0.75rem间距 */
+      max-height: calc(100vh - 1.5rem) !important;
+      max-height: calc(100svh - 1.5rem) !important;
+      width: calc(100vw - 1.5rem) !important; /* 左右各留0.75rem间距 */
+      max-width: calc(100vw - 1.5rem) !important;
+      top: 0.75rem !important;
+      left: 0.75rem !important;
+      right: 0.75rem !important;
+      bottom: 0.75rem !important;
+      transform: none !important; /* 覆盖Dialog的居中定位 */
+      position: fixed !important;
+    }
+
+    /* 支持安全区域的设备 */
+    @supports (height: 100svh) {
+      .presentation-mobile-height {
+        height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem) !important;
+        max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem) !important;
+        top: calc(0.75rem + env(safe-area-inset-top)) !important;
+        bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
+      }
+    }
+  }
+`;
 
 interface Project {
   id: string;
@@ -331,10 +361,12 @@ export default function PresentationMode({
   if (!currentSlideData) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent
-        className="max-w-[95vw] h-[100vh] md:h-[95vh] p-0 bg-gradient-to-br from-blue-50 to-indigo-100 [&>button]:hidden rounded-none md:rounded-xl overflow-hidden w-full"
-      >
+    <>
+      <style dangerouslySetInnerHTML={{ __html: mobileHeightStyle }} />
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent
+          className="presentation-mobile-height md:max-w-[95vw] md:h-[95vh] p-0 bg-gradient-to-br from-blue-50 to-indigo-100 [&>button]:hidden rounded-lg md:rounded-xl overflow-hidden"
+        >
         <div className="flex flex-col h-full">
           {/* 控制栏 */}
           <div className="flex items-center justify-between p-2 md:p-4 bg-white/80 backdrop-blur-sm border-b">
@@ -647,5 +679,6 @@ export default function PresentationMode({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
