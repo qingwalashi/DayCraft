@@ -98,16 +98,19 @@ export async function PUT(
     }
 
     // 构建返回数据
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ||
       (request.headers.get('host') ? `https://${request.headers.get('host')}` : 'http://localhost:3000');
+
+    // 确保projects是单个对象而不是数组
+    const project = Array.isArray(updatedShare.projects) ? updatedShare.projects[0] : updatedShare.projects;
 
     return NextResponse.json({
       id: updatedShare.id,
       share_token: updatedShare.share_token,
       share_url: `${baseUrl}/share/${updatedShare.share_token}`,
-      project_id: updatedShare.projects?.id,
-      project_name: updatedShare.projects?.name,
-      project_code: updatedShare.projects?.code,
+      project_id: project?.id,
+      project_name: project?.name,
+      project_code: project?.code,
       has_password: !!updatedShare.password_hash,
       expires_at: updatedShare.expires_at,
       is_active: updatedShare.is_active,

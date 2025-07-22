@@ -139,12 +139,15 @@ export async function GET(
 
     const workItemsTree = buildTree(workItems || []);
 
+    // 确保projects是单个对象而不是数组
+    const project = Array.isArray(share.projects) ? share.projects[0] : share.projects;
+
     return NextResponse.json({
       project: {
-        id: share.projects?.id,
-        name: share.projects?.name,
-        code: share.projects?.code,
-        description: share.projects?.description
+        id: project?.id,
+        name: project?.name,
+        code: project?.code,
+        description: project?.description
       },
       work_items: workItemsTree,
       share_info: {

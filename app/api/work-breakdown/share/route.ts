@@ -149,19 +149,24 @@ export async function GET(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 
       (request.headers.get('host') ? `https://${request.headers.get('host')}` : 'http://localhost:3000');
 
-    const formattedShares = shares?.map(share => ({
-      id: share.id,
-      share_token: share.share_token,
-      share_url: `${baseUrl}/share/${share.share_token}`,
-      project_id: share.projects?.id,
-      project_name: share.projects?.name,
-      project_code: share.projects?.code,
-      has_password: !!share.password_hash,
-      expires_at: share.expires_at,
-      is_active: share.is_active,
-      created_at: share.created_at,
-      updated_at: share.updated_at
-    })) || [];
+    const formattedShares = shares?.map(share => {
+      // 确保projects是单个对象而不是数组
+      const project = Array.isArray(share.projects) ? share.projects[0] : share.projects;
+
+      return {
+        id: share.id,
+        share_token: share.share_token,
+        share_url: `${baseUrl}/share/${share.share_token}`,
+        project_id: project?.id,
+        project_name: project?.name,
+        project_code: project?.code,
+        has_password: !!share.password_hash,
+        expires_at: share.expires_at,
+        is_active: share.is_active,
+        created_at: share.created_at,
+        updated_at: share.updated_at
+      };
+    }) || [];
 
     return NextResponse.json({ shares: formattedShares });
 

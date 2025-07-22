@@ -9,7 +9,7 @@ export async function cleanupExpiredShares() {
     const supabase = createClient();
     
     // 删除已过期的分享记录
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('work_breakdown_shares')
       .delete()
       .lt('expires_at', new Date().toISOString())
@@ -20,8 +20,9 @@ export async function cleanupExpiredShares() {
       return { success: false, error: error.message };
     }
 
-    console.log(`已清理 ${data?.length || 0} 个过期分享`);
-    return { success: true, count: data?.length || 0 };
+    const deletedCount = count || 0;
+    console.log(`已清理 ${deletedCount} 个过期分享`);
+    return { success: true, count: deletedCount };
   } catch (error: any) {
     console.error('清理过期分享异常:', error);
     return { success: false, error: error.message };
