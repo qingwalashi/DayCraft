@@ -60,6 +60,7 @@ export default function SettingsPage() {
   // 共享设置状态
   const [shares, setShares] = useState<ShareItem[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
+  const [sharesLoaded, setSharesLoaded] = useState(false); // 标记是否已加载过
 
   // 模型选项
   const modelOptions: ModelOption[] = [
@@ -397,8 +398,11 @@ export default function SettingsPage() {
   }, [formData.model_name]);
 
   // 加载共享数据
-  const loadShares = async () => {
+  const loadShares = async (force = false) => {
     if (!user) return;
+
+    // 如果已经加载过且不是强制刷新，则跳过
+    if (sharesLoaded && !force) return;
 
     setSharesLoading(true);
     try {
@@ -410,6 +414,7 @@ export default function SettingsPage() {
       }
 
       setShares(data.shares || []);
+      setSharesLoaded(true);
     } catch (error: any) {
       console.error('加载共享数据失败:', error);
       toast.error(error.message || '加载共享数据失败');
@@ -418,12 +423,12 @@ export default function SettingsPage() {
     }
   };
 
-  // 当切换到共享设置选项卡时加载数据
+  // 当切换到共享设置选项卡时加载数据（仅首次）
   useEffect(() => {
-    if (activeTab === 'shares') {
+    if (activeTab === 'shares' && !sharesLoaded) {
       loadShares();
     }
-  }, [activeTab, user]);
+  }, [activeTab, user, sharesLoaded]);
 
   // 删除分享
   const deleteShare = async (shareId: string) => {
@@ -438,7 +443,8 @@ export default function SettingsPage() {
       }
 
       toast.success('分享已删除');
-      loadShares(); // 重新加载列表
+      // 更新本地状态，避免重新加载
+      setShares(prevShares => prevShares.filter(share => share.id !== shareId));
     } catch (error: any) {
       console.error('删除分享失败:', error);
       toast.error(error.message || '删除分享失败');
@@ -462,7 +468,14 @@ export default function SettingsPage() {
       }
 
       toast.success(isActive ? '分享已启用' : '分享已暂停');
-      loadShares(); // 重新加载列表
+      // 更新本地状态，避免重新加载
+      setShares(prevShares =>
+        prevShares.map(share =>
+          share.id === shareId
+            ? { ...share, is_active: isActive, updated_at: new Date().toISOString() }
+            : share
+        )
+      );
     } catch (error: any) {
       console.error('更新分享状态失败:', error);
       toast.error(error.message || '更新分享状态失败');
@@ -897,18 +910,30 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="shares">
+        <TabsContent value="shares" className="space-y-4">
           <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">共享设置</h2>
-              <button
-                onClick={loadShares}
-                disabled={sharesLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
-              >
-                {sharesLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                刷新
-              </button>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+              <div className="min-w-0">
+                <h2 className="text-xl font-semibold text-gray-900">工作分解共享</h2>
+                <p className="text-sm text-gray-600 mt-1">管理您的工作分解共享链接</p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 shrink-0">
+                <button
+                  onClick={() => window.open('/dashboard/work-breakdown', '_blank')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center text-sm"
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  创建分享
+                </button>
+                <button
+                  onClick={() => loadShares(true)}
+                  disabled={sharesLoading}
+                  className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center text-sm"
+                >
+                  {sharesLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  刷新
+                </button>
+              </div>
             </div>
 
             {sharesLoading ? (
@@ -928,87 +953,103 @@ export default function SettingsPage() {
             ) : (
               <div className="space-y-4">
                 {shares.map((share) => (
-                  <div key={share.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h3 className="font-medium text-gray-900">{share.project_name}</h3>
-                          {share.project_code && (
-                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                              {share.project_code}
+                  <div key={share.id} className="border border-gray-200 rounded-lg bg-white p-4 sm:p-6 hover:shadow-sm transition-shadow">
+                    <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        {/* 项目标题和状态 */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <Share className="h-5 w-5 text-gray-400 shrink-0" />
+                            <h3 className="font-medium text-gray-900 truncate">{share.project_name}</h3>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {share.project_code && (
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                {share.project_code}
+                              </span>
+                            )}
+                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                              share.is_active
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {share.is_active ? '已启用' : '已暂停'}
                             </span>
-                          )}
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            share.is_active
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {share.is_active ? '已启用' : '已暂停'}
-                          </span>
+                            {share.has_password && (
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded flex items-center">
+                                <Lock className="h-3 w-3 mr-1" />
+                                密码保护
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="space-y-1 text-sm text-gray-600">
-                          <div className="flex items-center space-x-4">
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-1" />
-                              <span>创建时间: {new Date(share.created_at).toLocaleString()}</span>
-                            </div>
-                            {share.has_password && (
-                              <div className="flex items-center">
-                                <Lock className="h-4 w-4 mr-1" />
-                                <span>密码保护</span>
-                              </div>
-                            )}
+                        {/* 分享信息 */}
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <Calendar className="h-4 w-4 shrink-0" />
+                            <span>创建时间: {new Date(share.created_at).toLocaleDateString()}</span>
                           </div>
 
                           {share.expires_at && (
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-1" />
-                              <span>过期时间: {new Date(share.expires_at).toLocaleString()}</span>
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <Calendar className="h-4 w-4 shrink-0" />
+                              <span>过期时间: {new Date(share.expires_at).toLocaleDateString()}</span>
                             </div>
                           )}
+                        </div>
 
-                          <div className="flex items-center mt-2">
-                            <Link className="h-4 w-4 mr-1" />
+                        {/* 分享链接 */}
+                        <div className="bg-gray-50 rounded-md p-3">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Link className="h-4 w-4 text-gray-500 shrink-0" />
+                            <span className="text-sm font-medium text-gray-700">分享链接</span>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-2">
                             <input
                               type="text"
                               value={share.share_url}
                               readOnly
-                              className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 mr-2"
+                              className="flex-1 text-sm bg-white border border-gray-200 rounded px-3 py-2 font-mono text-gray-600 min-w-0"
                             />
                             <button
                               onClick={() => copyShareUrl(share.share_url)}
-                              className="p-1 text-gray-500 hover:text-gray-700"
+                              className="px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-white rounded border border-gray-200 transition-colors flex items-center justify-center shrink-0"
                               title="复制链接"
                             >
-                              <Copy className="h-4 w-4" />
+                              <Copy className="h-4 w-4 sm:mr-0 mr-1" />
+                              <span className="sm:hidden">复制</span>
                             </button>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2 ml-4">
+                      {/* 操作按钮 */}
+                      <div className="flex flex-col lg:flex-row gap-2 lg:ml-4 shrink-0">
                         <button
                           onClick={() => window.open(share.share_url, '_blank')}
-                          className="p-2 text-gray-500 hover:text-gray-700"
-                          title="预览"
+                          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors flex items-center justify-center"
+                          title="预览分享"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 mr-1" />
+                          预览
                         </button>
 
                         <button
                           onClick={() => toggleShareStatus(share.id, !share.is_active)}
-                          className={`p-2 ${
-                            share.is_active
-                              ? 'text-orange-600 hover:text-orange-800'
-                              : 'text-green-600 hover:text-green-800'
-                          }`}
+                          className="px-3 py-2 text-sm bg-blue-600 text-white border border-blue-600 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center"
                           title={share.is_active ? '暂停分享' : '启用分享'}
                         >
                           {share.is_active ? (
-                            <Pause className="h-4 w-4" />
+                            <>
+                              <Pause className="h-4 w-4 mr-1" />
+                              暂停
+                            </>
                           ) : (
-                            <Play className="h-4 w-4" />
+                            <>
+                              <Play className="h-4 w-4 mr-1" />
+                              启用
+                            </>
                           )}
                         </button>
 
@@ -1018,10 +1059,11 @@ export default function SettingsPage() {
                               deleteShare(share.id);
                             }
                           }}
-                          className="p-2 text-red-600 hover:text-red-800"
+                          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors flex items-center justify-center"
                           title="删除分享"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          删除
                         </button>
                       </div>
                     </div>
