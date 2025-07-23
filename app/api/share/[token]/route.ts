@@ -28,6 +28,7 @@ export async function GET(
         password_hash,
         expires_at,
         is_active,
+        created_at,
         projects (
           id,
           name,
@@ -137,6 +138,59 @@ export async function GET(
       return rootItems;
     };
 
+    // 获取分享者用户信息
+    let sharedBy = '未知用户';
+
+    console.log('开始获取用户信息，user_id:', share.user_id);
+
+    try {
+      // 首先尝试从user_profiles表获取用户信息
+      const { data: userData, error: userError } = await supabase
+        .from('user_profiles')
+        .select('full_name, email')
+        .eq('id', share.user_id)
+        .single();
+
+      console.log('user_profiles查询结果:', { userData, userError });
+
+      if (userData && userData.full_name) {
+        sharedBy = userData.full_name;
+        console.log('使用user_profiles.full_name:', sharedBy);
+      } else if (userData && userData.email) {
+        sharedBy = userData.email;
+        console.log('使用user_profiles.email:', sharedBy);
+      } else {
+        // 如果user_profiles表没有数据，尝试使用admin API获取用户信息
+        try {
+          const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(share.user_id);
+
+          console.log('admin.getUserById结果:', { authUser: authUser?.user, authError });
+
+          if (authUser?.user) {
+            // 优先使用用户元数据中的名称
+            if (authUser.user.user_metadata?.full_name) {
+              sharedBy = authUser.user.user_metadata.full_name;
+              console.log('使用user_metadata.full_name:', sharedBy);
+            } else if (authUser.user.user_metadata?.name) {
+              sharedBy = authUser.user.user_metadata.name;
+              console.log('使用user_metadata.name:', sharedBy);
+            } else if (authUser.user.email) {
+              sharedBy = authUser.user.email;
+              console.log('使用auth.user.email:', sharedBy);
+            }
+          }
+        } catch (adminError) {
+          console.error('Admin API获取用户信息失败:', adminError);
+          // 保持默认值
+        }
+      }
+    } catch (error) {
+      console.error('获取用户信息失败:', error);
+      // 保持默认值 '未知用户'
+    }
+
+    console.log('最终确定的分享者:', sharedBy);
+
     const workItemsTree = buildTree(workItems || []);
 
     // 确保projects是单个对象而不是数组
@@ -152,7 +206,9 @@ export async function GET(
       work_items: workItemsTree,
       share_info: {
         has_password: !!share.password_hash,
-        expires_at: share.expires_at
+        expires_at: share.expires_at,
+        shared_by: sharedBy,
+        created_at: share.created_at
       }
     });
 

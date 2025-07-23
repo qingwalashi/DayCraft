@@ -1,7 +1,7 @@
 -- =====================
 -- 用户资料表（支持多角色）
 -- =====================
-CREATE TABLE IF NOT EXISTS public.user_profiles (
+CREATE TABLE public.user_profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY, -- 用户ID，关联 auth.users
   email TEXT NOT NULL, -- 用户邮箱
   full_name TEXT, -- 用户姓名
@@ -19,22 +19,22 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY; -- 启用RLS
 
 -- 用户可以查看自己的资料
-CREATE POLICY IF NOT EXISTS "用户可以查看自己的资料" ON public.user_profiles
+CREATE POLICY "用户可以查看自己的资料" ON public.user_profiles
   FOR SELECT USING (auth.uid() = id);
 
 -- 管理员可以查看所有用户资料
-CREATE POLICY IF NOT EXISTS "管理员可查所有用户资料" ON public.user_profiles
+CREATE POLICY "管理员可查所有用户资料" ON public.user_profiles
   FOR SELECT USING (
     (auth.uid() = id)
     OR ('admin' = ANY (coalesce(auth.jwt() -> 'roles', ARRAY[]::TEXT[])) )
   );
 
 -- 用户可以更新自己的资料
-CREATE POLICY IF NOT EXISTS "用户可以更新自己的资料" ON public.user_profiles
+CREATE POLICY "用户可以更新自己的资料" ON public.user_profiles
   FOR UPDATE USING (auth.uid() = id);
 
 -- 管理员可以更新所有用户资料
-CREATE POLICY IF NOT EXISTS "管理员可更新所有用户资料" ON public.user_profiles
+CREATE POLICY "管理员可更新所有用户资料" ON public.user_profiles
   FOR UPDATE USING (
     'admin' = ANY (coalesce(auth.jwt() -> 'roles', ARRAY[]::TEXT[]))
   );
@@ -119,7 +119,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 添加触发器，自动为新用户创建资料
-CREATE TRIGGER IF NOT EXISTS on_auth_user_created
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
@@ -227,7 +227,7 @@ CREATE POLICY "用户可以删除自己日报中的条目" ON public.report_item
 -- =====================
 
 -- 确保uuid扩展已启用
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION "uuid-ossp";
 
 -- 创建工作分解表
 CREATE TABLE public.work_breakdown_items (
@@ -319,8 +319,68 @@ CREATE TRIGGER cascade_delete_work_breakdown_items
   BEFORE DELETE ON public.work_breakdown_items
   FOR EACH ROW EXECUTE PROCEDURE public.cascade_delete_work_breakdown_items();
 
--- 注意：工作分解分享表已移至独立的迁移文件
--- 请运行 sql/work_breakdown_shares_migration.sql 来创建分享功能相关的表和策略
+-- =====================
+-- 工作分解分享表
+-- =====================
+
+-- 创建工作分解分享表
+CREATE TABLE public.work_breakdown_shares (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  share_token TEXT NOT NULL UNIQUE,
+  password_hash TEXT, -- 可选的访问密码哈希
+  expires_at TIMESTAMP WITH TIME ZONE, -- 过期时间，NULL表示永不过期
+  is_active BOOLEAN DEFAULT TRUE, -- 是否启用
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 创建索引
+CREATE INDEX work_breakdown_shares_project_id_idx ON public.work_breakdown_shares(project_id);
+CREATE INDEX work_breakdown_shares_user_id_idx ON public.work_breakdown_shares(user_id);
+CREATE INDEX work_breakdown_shares_share_token_idx ON public.work_breakdown_shares(share_token);
+CREATE INDEX work_breakdown_shares_expires_at_idx ON public.work_breakdown_shares(expires_at);
+
+-- 为工作分解分享表启用行级安全策略
+ALTER TABLE public.work_breakdown_shares ENABLE ROW LEVEL SECURITY;
+
+-- 用户可以查看自己的分享
+CREATE POLICY "用户可以查看自己的分享" ON public.work_breakdown_shares
+  FOR SELECT USING (user_id = auth.uid());
+
+-- 用户可以创建自己的分享
+CREATE POLICY "用户可以创建自己的分享" ON public.work_breakdown_shares
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+-- 用户可以更新自己的分享
+CREATE POLICY "用户可以更新自己的分享" ON public.work_breakdown_shares
+  FOR UPDATE USING (user_id = auth.uid());
+
+-- 用户可以删除自己的分享
+CREATE POLICY "用户可以删除自己的分享" ON public.work_breakdown_shares
+  FOR DELETE USING (user_id = auth.uid());
+
+-- 管理员可以查看所有分享
+CREATE POLICY "管理员可查所有分享" ON public.work_breakdown_shares
+  FOR SELECT USING (
+    (user_id = auth.uid())
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
+-- 创建触发器函数，更新updated_at字段
+CREATE OR REPLACE FUNCTION public.update_work_breakdown_shares_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 添加触发器，在更新分享时更新updated_at
+CREATE TRIGGER update_work_breakdown_shares_timestamp
+  BEFORE UPDATE ON public.work_breakdown_shares
+  FOR EACH ROW EXECUTE PROCEDURE public.update_work_breakdown_shares_updated_at();
 
 -- 周报表
 CREATE TABLE public.weekly_reports (
@@ -583,7 +643,6 @@ CREATE TRIGGER on_user_profile_created_dingtalk
 -- RLS 策略：支持 admin 角色读取所有数据
 -- =====================
 -- projects
-DROP POLICY IF EXISTS "管理员可查所有项目" ON public.projects;
 CREATE POLICY "管理员可查所有项目" ON public.projects
   FOR SELECT USING (
     (user_id = auth.uid())
@@ -591,7 +650,6 @@ CREATE POLICY "管理员可查所有项目" ON public.projects
   );
 
 -- daily_reports
-DROP POLICY IF EXISTS "管理员可查所有日报" ON public.daily_reports;
 CREATE POLICY "管理员可查所有日报" ON public.daily_reports
   FOR SELECT USING (
     (user_id = auth.uid())
@@ -599,7 +657,6 @@ CREATE POLICY "管理员可查所有日报" ON public.daily_reports
   );
 
 -- user_ai_settings
-DROP POLICY IF EXISTS "管理员可查所有AI设置" ON public.user_ai_settings;
 CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
   FOR SELECT USING (
     (user_id = auth.uid())
@@ -607,7 +664,6 @@ CREATE POLICY "管理员可查所有AI设置" ON public.user_ai_settings
   );
 
 -- project_weekly_reports
-DROP POLICY IF EXISTS "管理员可查所有项目周报" ON public.project_weekly_reports;
 CREATE POLICY "管理员可查所有项目周报" ON public.project_weekly_reports
   FOR SELECT USING (
     (user_id = auth.uid())
@@ -615,7 +671,7 @@ CREATE POLICY "管理员可查所有项目周报" ON public.project_weekly_repor
   );
 
 -- project_weekly_report_items
-DROP POLICY IF EXISTS "管理员可查所有项目周报条目" ON public.project_weekly_report_items;
+CREATE POLICY "管理员可查所有项目周报条目" ON public.project_weekly_report_items
 CREATE POLICY "管理员可查所有项目周报条目" ON public.project_weekly_report_items
   FOR SELECT USING (
     report_id IN (
@@ -690,3 +746,12 @@ COMMENT ON COLUMN public.project_weekly_reports.is_plan IS '是否为工作计�
 
 COMMENT ON COLUMN public.project_weekly_report_items.work_item_id IS '工作项ID，可为空，支持直接在项目下添加工作';
 COMMENT ON COLUMN public.project_weekly_report_items.content IS '工作内容';
+
+-- 工作分解分享表注释
+COMMENT ON TABLE public.work_breakdown_shares IS '工作分解分享表';
+COMMENT ON COLUMN public.work_breakdown_shares.project_id IS '项目ID';
+COMMENT ON COLUMN public.work_breakdown_shares.user_id IS '分享创建者用户ID';
+COMMENT ON COLUMN public.work_breakdown_shares.share_token IS '分享令牌';
+COMMENT ON COLUMN public.work_breakdown_shares.password_hash IS '访问密码哈希，NULL表示无密码';
+COMMENT ON COLUMN public.work_breakdown_shares.expires_at IS '过期时间，NULL表示永不过期';
+COMMENT ON COLUMN public.work_breakdown_shares.is_active IS '是否启用';

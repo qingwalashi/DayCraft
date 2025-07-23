@@ -3,18 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { 
-  EyeIcon, 
-  EyeOffIcon, 
-  LockIcon, 
-  CalendarIcon, 
-  TagIcon, 
-  UsersIcon, 
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  CalendarIcon,
+  TagIcon,
+  UsersIcon,
   ClockIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   TrendingUpIcon,
-  ChevronDown
+  ChevronDown,
+  XIcon
 } from "lucide-react";
 import { WorkItem } from "@/lib/services/work-breakdown";
 import { calculateWorkItemProgress, STATUS_PROGRESS_MAP } from '@/lib/utils/progress-calculator';
@@ -39,6 +40,8 @@ interface ShareData {
   share_info: {
     has_password: boolean;
     expires_at: string | null;
+    shared_by: string;
+    created_at: string;
   };
 }
 
@@ -265,27 +268,48 @@ export default function SharePage() {
     });
   };
 
-  // 筛选工作项
+  // 筛选工作项（与工作分解页逻辑完全一致）
   const filterWorkItems = (items: WorkItem[]): WorkItem[] => {
     if (selectedStatuses.length === 0) return items;
-    
+
+    // 只保留符合筛选条件的工作项，不保留父级
     const filterItemsByStatus = (items: WorkItem[]): WorkItem[] => {
-      return items.filter(item => {
-        const matchesStatus = selectedStatuses.includes(item.status || '未开始');
-        const hasMatchingChildren = item.children && filterItemsByStatus(item.children).length > 0;
-        return matchesStatus || hasMatchingChildren;
-      }).map(item => ({
-        ...item,
-        children: item.children ? filterItemsByStatus(item.children) : []
-      }));
+      const result: WorkItem[] = [];
+
+      // 遍历每个工作项
+      for (const item of items) {
+        // 递归筛选子项
+        const filteredChildren = filterItemsByStatus(item.children || []);
+
+        // 如果当前项状态符合筛选条件
+        if (selectedStatuses.includes(item.status || '未开始')) {
+          // 添加当前项（带有筛选后的子项）
+          result.push({
+            ...item,
+            children: filteredChildren
+          });
+        } else if (filteredChildren.length > 0) {
+          // 如果当前项不符合条件但有符合条件的子项
+          // 将符合条件的子项直接添加到结果中
+          result.push(...filteredChildren);
+        }
+      }
+
+      return result;
     };
-    
+
     return filterItemsByStatus(items);
   };
 
-  // 处理筛选和展开
+  // 根据选中的状态筛选工作项（与工作分解页逻辑一致）
   useEffect(() => {
-    if (shareData?.work_items) {
+    if (!shareData?.work_items) return;
+
+    if (selectedStatuses.length === 0) {
+      // 如果没有选择任何状态，显示所有工作项
+      setFilteredWorkItems(shareData.work_items);
+    } else {
+      // 使用与工作分解页相同的筛选逻辑
       const filtered = filterWorkItems(shareData.work_items);
       setFilteredWorkItems(filtered);
     }
@@ -545,39 +569,184 @@ export default function SharePage() {
       {/* 头部 */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{shareData.project.name}</h1>
-              {shareData.project.code && (
-                <p className="text-sm text-gray-600">项目编码: {shareData.project.code}</p>
-              )}
-              {shareData.project.description && (
-                <p className="text-sm text-gray-600 mt-1">{shareData.project.description}</p>
-              )}
-            </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex-1 min-w-0">
+              {/* 项目标题和标签 - 移动端自适应 */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words leading-tight">
+                  {shareData.project.name}
+                </h1>
 
-            <div className="text-right text-sm text-gray-500">
-              <div className="flex items-center">
-                <EyeIcon className="w-4 h-4 mr-1" />
-                <span>只读模式</span>
+                {/* 只读模式标签 */}
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 self-start sm:self-center shrink-0">
+                  <EyeIcon className="w-3 h-3 mr-1" />
+                  只读模式
+                </span>
               </div>
-              {shareData.share_info.expires_at && (
-                <div className="flex items-center mt-1">
-                  <CalendarIcon className="w-4 h-4 mr-1" />
-                  <span>过期时间: {new Date(shareData.share_info.expires_at).toLocaleString()}</span>
+
+              {/* 项目信息 */}
+              <div className="space-y-1 mb-3">
+                {shareData.project.code && (
+                  <p className="text-sm text-gray-600 break-words">
+                    项目编码: {shareData.project.code}
+                  </p>
+                )}
+                {shareData.project.description && (
+                  <p className="text-sm text-gray-600 break-words whitespace-pre-wrap leading-relaxed">
+                    {shareData.project.description}
+                  </p>
+                )}
+              </div>
+
+              {/* 分享来源信息 - 移动端垂直布局 */}
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
+                <div className="flex items-center min-w-0">
+                  <UsersIcon className="w-4 h-4 mr-1 shrink-0" />
+                  <span className="truncate">
+                    来自 <span className="font-medium text-gray-700">{shareData.share_info.shared_by}</span> 的分享
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center min-w-0">
+                  <ClockIcon className="w-4 h-4 mr-1 shrink-0" />
+                  <span className="truncate">
+                    分享于 {new Date(shareData.share_info.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex items-center min-w-0">
+                  <CalendarIcon className="w-4 h-4 mr-1 shrink-0" />
+                  <span className="truncate">
+                    截止时间: {
+                      shareData.share_info.expires_at
+                        ? new Date(shareData.share_info.expires_at).toLocaleDateString()
+                        : <span className="font-medium text-green-600">永久</span>
+                    }
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 左侧：工作分解列表 */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* 控制栏 */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="space-y-4">
+          {/* 项目进度统计概览 */}
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <TrendingUpIcon className="h-5 w-5 mr-2 text-blue-600" />
+                {selectedWorkItem ? `${selectedWorkItem.name} 工作项进度概览` : '项目进度概览'}
+              </h3>
+              <div className="flex items-center gap-2">
+                {!selectedWorkItem && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                    💡 点击工作项查看详细进度
+                  </span>
+                )}
+                {selectedWorkItem && (
+                  <button
+                    onClick={() => setSelectedWorkItem(null)}
+                    className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors"
+                  >
+                    返回项目概览
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {(() => {
+              // 根据选中的工作项确定要统计的数据范围和计算进度
+              let itemsToAnalyze: WorkItem[];
+              let overallProgress: number;
+
+              if (selectedWorkItem) {
+                // 如果选中了工作项，直接使用该工作项的计算进度
+                overallProgress = getItemProgress(selectedWorkItem);
+
+                // 统计该工作项及其所有子项的状态分布
+                const collectAllChildren = (item: WorkItem): WorkItem[] => {
+                  const result = [item];
+                  if (item.children && Array.isArray(item.children) && item.children.length > 0) {
+                    item.children.forEach(child => {
+                      if (child) {
+                        result.push(...collectAllChildren(child));
+                      }
+                    });
+                  }
+                  return result;
+                };
+                itemsToAnalyze = collectAllChildren(selectedWorkItem);
+              } else {
+                // 如果没有选中工作项，计算项目整体进度
+                const currentItems = selectedStatuses.length > 0 ? filteredWorkItems : shareData.work_items;
+                itemsToAnalyze = Array.isArray(currentItems) ? currentItems : [];
+
+                // 计算顶级工作项的加权平均进度（复用各工作项的进度计算逻辑）
+                if (itemsToAnalyze.length > 0) {
+                  const totalProgress = itemsToAnalyze.reduce((sum, item) => {
+                    return sum + getItemProgress(item);
+                  }, 0);
+                  overallProgress = totalProgress / itemsToAnalyze.length;
+                } else {
+                  overallProgress = 0;
+                }
+              }
+
+              // 统计状态分布（用于显示各状态的数量）
+              const statusCounts = STATUS_OPTIONS.reduce((acc, option) => {
+                acc[option.value] = 0;
+                return acc;
+              }, {} as Record<string, number>);
+
+              // 统计工作项状态（不需要递归，因为itemsToAnalyze已经包含了所有需要统计的项）
+              if (Array.isArray(itemsToAnalyze)) {
+                itemsToAnalyze.forEach(item => {
+                  if (item && typeof item === 'object') {
+                    if (item.status && statusCounts.hasOwnProperty(item.status)) {
+                      statusCounts[item.status]++;
+                    } else {
+                      statusCounts['未开始']++;
+                    }
+                  }
+                });
+              }
+              const totalCount = Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {/* 整体进度 */}
+                  <div className="col-span-2 sm:col-span-4 lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
+                    <div className="text-sm text-blue-700 mb-1">
+                      {selectedWorkItem ? '工作项进度' : '整体进度'}
+                    </div>
+                    <ProgressIndicator
+                      progress={overallProgress}
+                      size="md"
+                      showBar={true}
+                      showText={true}
+                    />
+                    <div className="text-xs text-blue-600 mt-1">
+                      共 {totalCount} 个工作项
+                    </div>
+                  </div>
+
+                  {/* 各状态统计 */}
+                  {STATUS_OPTIONS.map(option => (
+                    <div key={option.value} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <div className="text-sm text-gray-700 mb-1">{option.value}</div>
+                      <div className="text-2xl font-bold text-gray-900">{statusCounts[option.value]}</div>
+                      <div className="text-xs text-gray-500">
+                        {totalCount > 0 ? Math.round((statusCounts[option.value] / totalCount) * 100) : 0}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* 控制栏 */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center gap-4">
                 {/* 层级展开控制 */}
                 <div className="flex items-center">
@@ -652,260 +821,47 @@ export default function SharePage() {
               </div>
             </div>
 
-            {/* 工作分解列表 */}
-            <div className="space-y-2">
-              {currentItems.length > 0 ? (
-                currentItems.map(item => renderWorkItem(item))
-              ) : (
-                <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-                  <div className="text-gray-400 text-6xl mb-4">📋</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">暂无匹配的工作项</h3>
-                  <p className="text-gray-600">尝试调整筛选条件</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 右侧：项目进度概览 */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <TrendingUpIcon className="h-5 w-5 text-blue-600 mr-2" />
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {selectedWorkItem ? '工作项详情' : '项目进度概览'}
-                  </h3>
-                </div>
-                {selectedWorkItem && (
-                  <button
-                    onClick={() => setSelectedWorkItem(null)}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            {/* 显示已选筛选条件 */}
+            {selectedStatuses.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-4 bg-blue-50 p-2 rounded-md border border-blue-100">
+                <span className="text-xs text-blue-700">已筛选:</span>
+                {selectedStatuses.map(status => (
+                  <span
+                    key={status}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-white text-blue-700 rounded-md border border-blue-200 text-xs"
                   >
-                    返回概览
-                  </button>
-                )}
+                    {status}
+                    <button
+                      onClick={() => handleStatusFilterToggle(status)}
+                      className="rounded-full p-0.5 hover:bg-blue-100 text-blue-500"
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={clearStatusFilters}
+                  className="text-xs text-blue-600 hover:text-blue-800 ml-2"
+                >
+                  清除全部
+                </button>
+                <span className="text-xs text-blue-700 ml-auto">
+                  注意：仅显示符合筛选条件的工作项
+                </span>
               </div>
+            )}
 
-              {selectedWorkItem ? (
-                /* 选中工作项的详情 */
-                <div className="space-y-4">
-                  {/* 工作项基本信息 */}
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">{selectedWorkItem.name}</h4>
-                    {selectedWorkItem.description && (
-                      <p className="text-sm text-gray-600 mb-3">{selectedWorkItem.description}</p>
-                    )}
-
-                    {/* 状态和进度 */}
-                    <div className="flex items-center space-x-4 mb-4">
-                      <span className={`px-3 py-1 text-sm rounded-full ${
-                        selectedWorkItem.status === '未开始' ? 'bg-gray-200 text-gray-800' :
-                        selectedWorkItem.status === '进行中' ? 'bg-blue-200 text-blue-800' :
-                        selectedWorkItem.status === '已暂停' ? 'bg-yellow-200 text-yellow-800' :
-                        selectedWorkItem.status === '已完成' ? 'bg-green-200 text-green-800' :
-                        'bg-gray-200 text-gray-800'
-                      }`}>
-                        {selectedWorkItem.status || '未开始'}
-                      </span>
-                      {selectedWorkItem.is_milestone && (
-                        <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                          🏁 里程碑
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 进度条 */}
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">完成进度</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {Math.round(getItemProgress(selectedWorkItem))}%
-                        </span>
-                      </div>
-                      <ProgressIndicator
-                        progress={getItemProgress(selectedWorkItem)}
-                        size="lg"
-                        showBar={true}
-                        showText={false}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 详细信息 */}
-                  <div className="space-y-3 pt-4 border-t border-gray-200">
-                    {selectedWorkItem.members && (
-                      <div>
-                        <span className="text-sm font-medium text-gray-700">参与成员:</span>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {renderMembers(selectedWorkItem.members)}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedWorkItem.tags && (
-                      <div>
-                        <span className="text-sm font-medium text-gray-700">标签:</span>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {selectedWorkItem.tags.split('，').filter(Boolean).map((tag, idx) => (
-                            <span key={idx} className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedWorkItem.planned_start_time && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">计划开始:</span>
-                        <span className="text-gray-900">
-                          {new Date(selectedWorkItem.planned_start_time).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-
-                    {selectedWorkItem.planned_end_time && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">计划结束:</span>
-                        <span className="text-gray-900">
-                          {new Date(selectedWorkItem.planned_end_time).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-
-                    {selectedWorkItem.progress_notes && (
-                      <div>
-                        <span className="text-sm font-medium text-gray-700">进展备注:</span>
-                        <div className="mt-1 text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
-                          {selectedWorkItem.progress_notes}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 子项统计 */}
-                    {selectedWorkItem.children && selectedWorkItem.children.length > 0 && (
-                      <div className="pt-3 border-t border-gray-100">
-                        <span className="text-sm font-medium text-gray-700">子项统计:</span>
-                        <div className="mt-2 text-sm text-gray-600">
-                          <div className="flex justify-between">
-                            <span>子项总数:</span>
-                            <span>{selectedWorkItem.children.length}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>已完成:</span>
-                            <span>
-                              {selectedWorkItem.children.filter(child => child.status === '已完成').length}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                /* 整体项目进度概览 */
-                <div>
-                  {/* 整体进度 */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">整体进度</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {Math.round(calculateWorkItemProgress({ children: shareData.work_items } as WorkItem))}%
-                      </span>
-                    </div>
-                    <ProgressIndicator
-                      progress={calculateWorkItemProgress({ children: shareData.work_items } as WorkItem)}
-                      size="lg"
-                      showBar={true}
-                      showText={false}
-                    />
-                  </div>
-
-                  {/* 状态统计 */}
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">状态分布</h4>
-                    {STATUS_OPTIONS.map(status => {
-                      const count = shareData.work_items.reduce((acc, item) => {
-                        const countInItem = (item: WorkItem): number => {
-                          let count = (item.status || '未开始') === status.value ? 1 : 0;
-                          if (item.children) {
-                            count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
-                          }
-                          return count;
-                        };
-                        return acc + countInItem(item);
-                      }, 0);
-
-                      const total = shareData.work_items.reduce((acc, item) => {
-                        const countInItem = (item: WorkItem): number => {
-                          let count = 1;
-                          if (item.children) {
-                            count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
-                          }
-                          return count;
-                        };
-                        return acc + countInItem(item);
-                      }, 0);
-
-                      const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-
-                      return (
-                        <div key={status.value} className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <div className={`w-3 h-3 rounded-full mr-2 ${status.color.split(' ')[0]}`}></div>
-                            <span className="text-sm text-gray-700">{status.value}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="text-sm font-medium text-gray-900 mr-2">{count}</span>
-                            <span className="text-xs text-gray-500">({percentage}%)</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* 项目信息 */}
-                  <div className="mt-6 pt-6 border-t border-gray-200">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">项目信息</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">项目名称:</span>
-                        <span className="text-gray-900 font-medium">{shareData.project.name}</span>
-                      </div>
-                      {shareData.project.code && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">项目编码:</span>
-                          <span className="text-gray-900">{shareData.project.code}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">工作项总数:</span>
-                        <span className="text-gray-900">
-                          {shareData.work_items.reduce((acc, item) => {
-                            const countInItem = (item: WorkItem): number => {
-                              let count = 1;
-                              if (item.children) {
-                                count += item.children.reduce((childAcc, child) => childAcc + countInItem(child), 0);
-                              }
-                              return count;
-                            };
-                            return acc + countInItem(item);
-                          }, 0)}
-                        </span>
-                      </div>
-                      {shareData.share_info.expires_at && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">分享过期:</span>
-                          <span className="text-gray-900">
-                            {new Date(shareData.share_info.expires_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* 工作分解列表 */}
+          <div className="space-y-2">
+            {currentItems.length > 0 ? (
+              currentItems.map(item => renderWorkItem(item, 0))
+            ) : (
+              <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+                <div className="text-gray-400 text-6xl mb-4">📋</div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">暂无匹配的工作项</h3>
+                <p className="text-gray-600">尝试调整筛选条件</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
