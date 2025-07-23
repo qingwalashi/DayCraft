@@ -326,7 +326,7 @@ CREATE TRIGGER cascade_delete_work_breakdown_items
 -- 创建工作分解分享表
 CREATE TABLE public.work_breakdown_shares (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE, -- 允许NULL，支持多项目分享
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   share_token TEXT NOT NULL UNIQUE,
   password_hash TEXT, -- 可选的访问密码哈希
@@ -747,11 +747,73 @@ COMMENT ON COLUMN public.project_weekly_reports.is_plan IS '是否为工作计�
 COMMENT ON COLUMN public.project_weekly_report_items.work_item_id IS '工作项ID，可为空，支持直接在项目下添加工作';
 COMMENT ON COLUMN public.project_weekly_report_items.content IS '工作内容';
 
+-- =====================
+-- 工作分解分享项目关联表
+-- =====================
+
+-- 创建工作分解分享项目关联表
+CREATE TABLE public.work_breakdown_share_projects (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  share_id UUID REFERENCES public.work_breakdown_shares(id) ON DELETE CASCADE NOT NULL,
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(share_id, project_id)
+);
+
+-- 创建索引
+CREATE INDEX work_breakdown_share_projects_share_id_idx ON public.work_breakdown_share_projects(share_id);
+CREATE INDEX work_breakdown_share_projects_project_id_idx ON public.work_breakdown_share_projects(project_id);
+
+-- 为关联表启用行级安全策略
+ALTER TABLE public.work_breakdown_share_projects ENABLE ROW LEVEL SECURITY;
+
+-- 用户可以查看自己创建的分享的项目关联
+CREATE POLICY "用户可以查看自己分享的项目关联" ON public.work_breakdown_share_projects
+  FOR SELECT USING (
+    share_id IN (
+      SELECT id FROM public.work_breakdown_shares
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- 用户可以创建自己分享的项目关联
+CREATE POLICY "用户可以创建自己分享的项目关联" ON public.work_breakdown_share_projects
+  FOR INSERT WITH CHECK (
+    share_id IN (
+      SELECT id FROM public.work_breakdown_shares
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- 用户可以删除自己分享的项目关联
+CREATE POLICY "用户可以删除自己分享的项目关联" ON public.work_breakdown_share_projects
+  FOR DELETE USING (
+    share_id IN (
+      SELECT id FROM public.work_breakdown_shares
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- 管理员可以查看所有项目关联
+CREATE POLICY "管理员可查所有项目关联" ON public.work_breakdown_share_projects
+  FOR SELECT USING (
+    (share_id IN (
+      SELECT id FROM public.work_breakdown_shares
+      WHERE user_id = auth.uid()
+    ))
+    OR (auth.jwt() -> 'roles') ? 'admin'
+  );
+
 -- 工作分解分享表注释
-COMMENT ON TABLE public.work_breakdown_shares IS '工作分解分享表';
-COMMENT ON COLUMN public.work_breakdown_shares.project_id IS '项目ID';
+COMMENT ON TABLE public.work_breakdown_shares IS '工作分解分享表，支持多项目分享';
+COMMENT ON COLUMN public.work_breakdown_shares.project_id IS '项目ID（向后兼容字段，新分享使用关联表）';
 COMMENT ON COLUMN public.work_breakdown_shares.user_id IS '分享创建者用户ID';
 COMMENT ON COLUMN public.work_breakdown_shares.share_token IS '分享令牌';
 COMMENT ON COLUMN public.work_breakdown_shares.password_hash IS '访问密码哈希，NULL表示无密码';
 COMMENT ON COLUMN public.work_breakdown_shares.expires_at IS '过期时间，NULL表示永不过期';
 COMMENT ON COLUMN public.work_breakdown_shares.is_active IS '是否启用';
+
+-- 工作分解分享项目关联表注释
+COMMENT ON TABLE public.work_breakdown_share_projects IS '工作分解分享项目关联表';
+COMMENT ON COLUMN public.work_breakdown_share_projects.share_id IS '分享ID';
+COMMENT ON COLUMN public.work_breakdown_share_projects.project_id IS '项目ID';

@@ -1,16 +1,17 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { 
-  XIcon, 
-  ShareIcon, 
-  LockIcon, 
-  CalendarIcon, 
-  CopyIcon, 
+import {
+  XIcon,
+  ShareIcon,
+  LockIcon,
+  CalendarIcon,
+  CopyIcon,
   CheckIcon,
   EyeIcon,
-  EyeOffIcon 
+  EyeOffIcon,
+  ChevronDownIcon
 } from "lucide-react";
 
 interface ShareDialogProps {
@@ -20,11 +21,17 @@ interface ShareDialogProps {
   projectName: string;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface ShareData {
   id: string;
   share_token: string;
   share_url: string;
-  project_name: string;
+  projects: Project[];
   has_password: boolean;
   expires_at: string | null;
   created_at: string;
@@ -40,9 +47,84 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 项目选择相关状态
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+
+  // 获取用户的所有项目
+  const loadProjects = async () => {
+    setLoadingProjects(true);
+    try {
+      const response = await fetch('/api/projects?active_only=true');
+      const data = await response.json();
+
+      if (response.ok) {
+        setAvailableProjects(data.projects || []);
+      } else {
+        throw new Error(data.error || '获取项目列表失败');
+      }
+    } catch (error: any) {
+      console.error('获取项目列表失败:', error);
+      toast.error(error.message || '获取项目列表失败');
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  // 初始化时加载项目列表
+  useEffect(() => {
+    if (isOpen) {
+      loadProjects();
+    }
+  }, [isOpen]);
+
+  // 当项目列表加载完成后，设置默认选择的项目
+  useEffect(() => {
+    if (isOpen && availableProjects.length > 0 && projectId) {
+      // 检查当前项目是否在可用项目列表中
+      const currentProject = availableProjects.find(p => p.id === projectId);
+      if (currentProject) {
+        setSelectedProjectIds([projectId]);
+      } else {
+        // 如果当前项目不在列表中，选择第一个可用项目
+        setSelectedProjectIds([availableProjects[0].id]);
+        toast.warning('当前项目不可用，已自动选择其他项目');
+      }
+    }
+  }, [isOpen, availableProjects, projectId]);
+
+  // 验证选择的项目是否都有效
+  const validateSelectedProjects = () => {
+    const invalidIds = selectedProjectIds.filter(id =>
+      !availableProjects.find(p => p.id === id)
+    );
+
+    if (invalidIds.length > 0) {
+      console.error('发现无效的项目ID:', invalidIds);
+      // 移除无效的项目ID
+      const validIds = selectedProjectIds.filter(id =>
+        availableProjects.find(p => p.id === id)
+      );
+      setSelectedProjectIds(validIds);
+      toast.warning('已移除无效的项目选择');
+      return false;
+    }
+    return true;
+  };
+
   // 创建分享
   const createShare = async () => {
-    if (!projectId) return;
+    if (selectedProjectIds.length === 0) {
+      toast.error('请至少选择一个项目');
+      return;
+    }
+
+    // 验证选择的项目
+    if (!validateSelectedProjects()) {
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -53,7 +135,7 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          project_id: projectId,
+          project_ids: selectedProjectIds,
           password: password.trim() || null,
           expires_in_days: expiryDays,
         }),
@@ -100,7 +182,11 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
     if (!shareData) return;
 
     let shareInfo = `📋 工作分解分享\n`;
-    shareInfo += `项目: ${shareData.project_name}\n`;
+    if (shareData.projects.length === 1) {
+      shareInfo += `项目: ${shareData.projects[0].name}\n`;
+    } else {
+      shareInfo += `项目: ${shareData.projects.map(p => p.name).join(', ')}\n`;
+    }
     shareInfo += `链接: ${shareData.share_url}`;
 
     if (shareData.has_password && shareData.original_password) {
@@ -126,6 +212,25 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
     }
   };
 
+  // 处理项目选择
+  const toggleProjectSelection = (projectId: string) => {
+    // 验证项目ID是否有效
+    const project = availableProjects.find(p => p.id === projectId);
+    if (!project) {
+      console.error('尝试选择无效的项目ID:', projectId);
+      toast.error('无效的项目选择');
+      return;
+    }
+
+    setSelectedProjectIds(prev => {
+      if (prev.includes(projectId)) {
+        return prev.filter(id => id !== projectId);
+      } else {
+        return [...prev, projectId];
+      }
+    });
+  };
+
   // 重置表单
   const resetForm = () => {
     setPassword('');
@@ -133,6 +238,10 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
     setShareData(null);
     setCopied(false);
     setError(null);
+    setSelectedProjectIds([]);
+    setShowProjectDropdown(false);
+    setAvailableProjects([]);
+    setLoadingProjects(false);
   };
 
   // 关闭对话框
@@ -165,10 +274,66 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
             // 配置表单
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">项目信息</h3>
-                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
-                  {projectName}
-                </p>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">选择项目</h3>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-left flex items-center justify-between"
+                    disabled={loadingProjects}
+                  >
+                    <span className="text-sm text-gray-600">
+                      {loadingProjects ? '加载中...' :
+                       selectedProjectIds.length === 0 ? '请选择项目' :
+                       selectedProjectIds.length === 1 ?
+                         availableProjects.find(p => p.id === selectedProjectIds[0])?.name :
+                         `已选择 ${selectedProjectIds.length} 个项目`
+                      }
+                    </span>
+                    <ChevronDownIcon className={`h-4 w-4 text-gray-400 transition-transform ${showProjectDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showProjectDropdown && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {availableProjects.map((project) => (
+                        <label
+                          key={project.id}
+                          className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedProjectIds.includes(project.id)}
+                            onChange={() => toggleProjectSelection(project.id)}
+                            className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {project.name}
+                            </div>
+                            {project.code && (
+                              <div className="text-xs text-gray-500">
+                                {project.code}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                      {availableProjects.length === 0 && !loadingProjects && (
+                        <div className="px-3 py-2 text-sm text-gray-500">
+                          没有可用的项目
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selectedProjectIds.length > 0 && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    已选择: {selectedProjectIds.map(id =>
+                      availableProjects.find(p => p.id === id)?.name
+                    ).filter(Boolean).join(', ')}
+                  </div>
+                )}
               </div>
 
               {/* 密码保护 */}
@@ -269,9 +434,25 @@ export default function ShareDialog({ isOpen, onClose, projectId, projectName }:
               <div className="bg-gray-50 p-4 rounded-md space-y-3">
                 <div>
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    项目名称
+                    {shareData.projects.length === 1 ? '项目名称' : '分享项目'}
                   </label>
-                  <p className="text-sm text-gray-900">{shareData.project_name}</p>
+                  {shareData.projects.length === 1 ? (
+                    <p className="text-sm text-gray-900">{shareData.projects[0].name}</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {shareData.projects.map((project, index) => (
+                        <div key={project.id} className="text-sm text-gray-900 flex items-center">
+                          <span className="w-4 h-4 bg-blue-100 text-blue-600 rounded-full text-xs flex items-center justify-center mr-2 shrink-0">
+                            {index + 1}
+                          </span>
+                          <span className="truncate">{project.name}</span>
+                          {project.code && (
+                            <span className="ml-2 text-xs text-gray-500">({project.code})</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {shareData.has_password && (

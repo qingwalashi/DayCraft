@@ -29,19 +29,24 @@ const STATUS_OPTIONS = [
   { value: '已完成', color: 'bg-green-200 text-green-800 border-green-300', progress: STATUS_PROGRESS_MAP['已完成'] },
 ];
 
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+}
+
 interface ShareData {
-  project: {
-    id: string;
-    name: string;
-    code: string;
-    description: string;
-  };
+  project: Project;
+  available_projects: Project[];
   work_items: WorkItem[];
   share_info: {
     has_password: boolean;
     expires_at: string | null;
     shared_by: string;
     created_at: string;
+    project_count: number;
+    current_project_id: string;
   };
 }
 
@@ -64,6 +69,10 @@ export default function SharePage() {
   const [expandLevel, setExpandLevel] = useState<number>(4); // 默认展开全部
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [filteredWorkItems, setFilteredWorkItems] = useState<WorkItem[]>([]);
+
+  // 项目切换状态
+  const [showProjectSelector, setShowProjectSelector] = useState(false);
+  const [switchingProject, setSwitchingProject] = useState(false);
   
   // 引用
   const statusFilterRef = useRef<HTMLDivElement>(null);
@@ -126,7 +135,7 @@ export default function SharePage() {
   };
 
   // 加载分享数据
-  const loadShareData = async () => {
+  const loadShareData = async (projectId?: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -135,6 +144,9 @@ export default function SharePage() {
       const url = new URL(`/api/share/${token}`, window.location.origin);
       if (password) {
         url.searchParams.set('password', password);
+      }
+      if (projectId) {
+        url.searchParams.set('project_id', projectId);
       }
 
       const response = await fetch(url.toString(), {
@@ -187,6 +199,25 @@ export default function SharePage() {
       setError(err.message || '加载失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 处理项目切换
+  const handleProjectSwitch = async (projectId: string) => {
+    if (projectId === shareData?.project.id) {
+      setShowProjectSelector(false);
+      return;
+    }
+
+    setSwitchingProject(true);
+    setShowProjectSelector(false);
+
+    try {
+      await loadShareData(projectId);
+    } catch (err: any) {
+      toast.error(err.message || '切换项目失败');
+    } finally {
+      setSwitchingProject(false);
     }
   };
 
@@ -573,15 +604,64 @@ export default function SharePage() {
             <div className="flex-1 min-w-0">
               {/* 项目标题和标签 - 移动端自适应 */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words leading-tight">
-                  {shareData.project.name}
-                </h1>
+                <div className="flex items-center gap-2 min-w-0">
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900 break-words leading-tight">
+                    {shareData.project.name}
+                  </h1>
 
-                {/* 只读模式标签 */}
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 self-start sm:self-center shrink-0">
-                  <EyeIcon className="w-3 h-3 mr-1" />
-                  只读模式
-                </span>
+                  {/* 项目切换按钮 - 仅在多项目时显示 */}
+                  {shareData.available_projects.length > 1 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowProjectSelector(!showProjectSelector)}
+                        disabled={switchingProject}
+                        className="inline-flex items-center px-2 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+                        title="切换项目"
+                      >
+                        <ChevronDownIcon className={`h-4 w-4 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {showProjectSelector && (
+                        <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
+                          <div className="p-2 border-b border-gray-100">
+                            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                              选择项目 ({shareData.available_projects.length})
+                            </div>
+                          </div>
+                          {shareData.available_projects.map((project) => (
+                            <button
+                              key={project.id}
+                              onClick={() => handleProjectSwitch(project.id)}
+                              className={`w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors ${
+                                project.id === shareData.project.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                              }`}
+                            >
+                              <div className="font-medium truncate">{project.name}</div>
+                              {project.code && (
+                                <div className="text-xs text-gray-500 truncate">{project.code}</div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* 多项目标签 */}
+                  {shareData.available_projects.length > 1 && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                      {shareData.available_projects.length} 个项目
+                    </span>
+                  )}
+
+                  {/* 只读模式标签 */}
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                    <EyeIcon className="w-3 h-3 mr-1" />
+                    只读模式
+                  </span>
+                </div>
               </div>
 
               {/* 项目信息 */}
@@ -629,6 +709,16 @@ export default function SharePage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* 项目切换加载状态 */}
+        {switchingProject && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <div className="animate-spin h-4 w-4 border-2 border-t-transparent border-blue-600 rounded-full mr-3"></div>
+              <span className="text-blue-700 text-sm font-medium">正在切换项目...</span>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           {/* 项目进度统计概览 */}
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">

@@ -16,13 +16,23 @@ interface ModelOption {
   provider?: string;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface ShareItem {
   id: string;
   share_token: string;
   share_url: string;
+  // 向后兼容字段
   project_id: string;
   project_name: string;
   project_code: string;
+  // 新增多项目字段
+  projects: Project[];
+  project_count: number;
   has_password: boolean;
   expires_at: string | null;
   is_active: boolean;
@@ -493,6 +503,37 @@ export default function SettingsPage() {
     }
   };
 
+  // 复制分享信息（包含项目信息）
+  const copyShareInfo = async (share: ShareItem) => {
+    try {
+      let shareInfo = `📋 工作分解分享\n`;
+
+      if (share.projects && share.projects.length > 1) {
+        shareInfo += `项目: ${share.projects.map(p => p.name).join(', ')}\n`;
+      } else if (share.projects && share.projects.length === 1) {
+        shareInfo += `项目: ${share.projects[0].name}\n`;
+      } else {
+        shareInfo += `项目: ${share.project_name}\n`;
+      }
+
+      shareInfo += `链接: ${share.share_url}`;
+
+      if (share.has_password) {
+        shareInfo += `\n🔒 此分享需要密码访问`;
+      }
+
+      if (share.expires_at) {
+        shareInfo += `\n⏰ 过期时间: ${new Date(share.expires_at).toLocaleString()}`;
+      }
+
+      await navigator.clipboard.writeText(shareInfo);
+      toast.success('分享信息已复制到剪贴板');
+    } catch (error) {
+      console.error('复制失败:', error);
+      toast.error('复制失败，请手动复制');
+    }
+  };
+
 
 
   // 处理钉钉表单提交
@@ -957,17 +998,52 @@ export default function SettingsPage() {
                     <div className="flex flex-col lg:flex-row lg:items-start gap-4">
                       <div className="flex-1 min-w-0">
                         {/* 项目标题和状态 */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
-                          <div className="flex items-center space-x-2 min-w-0">
-                            <Share className="h-5 w-5 text-gray-400 shrink-0" />
-                            <h3 className="font-medium text-gray-900 truncate">{share.project_name}</h3>
+                        <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 mb-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <Share className="h-5 w-5 text-gray-400 shrink-0" />
+                              <h3 className="font-medium text-gray-900">
+                                {share.projects && share.projects.length > 1
+                                  ? `多项目分享 (${share.projects.length}个项目)`
+                                  : share.project_name || share.projects?.[0]?.name || '未知项目'
+                                }
+                              </h3>
+                            </div>
+
+                            {/* 多项目列表 */}
+                            {share.projects && share.projects.length > 1 && (
+                              <div className="space-y-1 ml-7">
+                                {share.projects.map((project, index) => (
+                                  <div key={project.id} className="flex items-center space-x-2 text-sm">
+                                    <span className="w-4 h-4 bg-blue-100 text-blue-600 rounded-full text-xs flex items-center justify-center shrink-0">
+                                      {index + 1}
+                                    </span>
+                                    <span className="text-gray-700 truncate">{project.name}</span>
+                                    {project.code && (
+                                      <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                        {project.code}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
+
                           <div className="flex items-center gap-2 shrink-0">
-                            {share.project_code && (
+                            {/* 单项目时显示项目编码 */}
+                            {share.projects && share.projects.length === 1 && share.projects[0].code && (
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                {share.projects[0].code}
+                              </span>
+                            )}
+                            {/* 向后兼容：如果没有projects数组但有project_code */}
+                            {(!share.projects || share.projects.length === 0) && share.project_code && (
                               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                 {share.project_code}
                               </span>
                             )}
+
                             <span className={`text-xs px-2 py-1 rounded font-medium ${
                               share.is_active
                                 ? 'bg-blue-100 text-blue-700'
@@ -975,6 +1051,7 @@ export default function SettingsPage() {
                             }`}>
                               {share.is_active ? '已启用' : '已暂停'}
                             </span>
+
                             {share.has_password && (
                               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded flex items-center">
                                 <Lock className="h-3 w-3 mr-1" />
@@ -1012,14 +1089,24 @@ export default function SettingsPage() {
                               readOnly
                               className="flex-1 text-sm bg-white border border-gray-200 rounded px-3 py-2 font-mono text-gray-600 min-w-0"
                             />
-                            <button
-                              onClick={() => copyShareUrl(share.share_url)}
-                              className="px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-white rounded border border-gray-200 transition-colors flex items-center justify-center shrink-0"
-                              title="复制链接"
-                            >
-                              <Copy className="h-4 w-4 sm:mr-0 mr-1" />
-                              <span className="sm:hidden">复制</span>
-                            </button>
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                onClick={() => copyShareUrl(share.share_url)}
+                                className="px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-white rounded border border-gray-200 transition-colors flex items-center justify-center"
+                                title="复制链接"
+                              >
+                                <Copy className="h-4 w-4 sm:mr-0 mr-1" />
+                                <span className="sm:hidden">复制链接</span>
+                              </button>
+                              <button
+                                onClick={() => copyShareInfo(share)}
+                                className="px-3 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition-colors flex items-center justify-center"
+                                title="复制分享信息"
+                              >
+                                <Share className="h-4 w-4 sm:mr-0 mr-1" />
+                                <span className="sm:hidden">复制信息</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>

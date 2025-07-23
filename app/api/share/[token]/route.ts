@@ -18,22 +18,24 @@ export async function GET(
       return NextResponse.json({ error: '分享链接无效' }, { status: 400 });
     }
 
-    // 查找分享记录
+    // 查找分享记录及关联的项目
     const { data: share, error: shareError } = await supabase
       .from('work_breakdown_shares')
       .select(`
         id,
-        project_id,
         user_id,
         password_hash,
         expires_at,
         is_active,
         created_at,
-        projects (
-          id,
-          name,
-          code,
-          description
+        work_breakdown_share_projects (
+          project_id,
+          projects (
+            id,
+            name,
+            code,
+            description
+          )
         )
       `)
       .eq('share_token', token)
@@ -73,11 +75,37 @@ export async function GET(
       }
     }
 
-    // 获取工作分解数据
+    // 获取关联的项目列表
+    const shareProjects = share.work_breakdown_share_projects || [];
+    const validProjects = shareProjects
+      .map(sp => sp.projects)
+      .filter((p): p is any => p && typeof p === 'object' && 'id' in p && 'name' in p);
+
+    if (validProjects.length === 0) {
+      return NextResponse.json({ error: '分享中没有关联的项目' }, { status: 404 });
+    }
+
+    // 检查是否指定了特定项目
+    const requestedProjectId = url.searchParams.get('project_id');
+
+    let targetProjectId;
+    if (requestedProjectId) {
+      // 验证请求的项目是否在分享的项目列表中
+      const requestedProject = validProjects.find(p => p.id === requestedProjectId);
+      if (!requestedProject) {
+        return NextResponse.json({ error: '请求的项目不在分享范围内' }, { status: 403 });
+      }
+      targetProjectId = requestedProjectId;
+    } else {
+      // 默认使用第一个项目
+      targetProjectId = validProjects[0].id;
+    }
+
+    // 获取指定项目的工作分解数据
     const { data: workItems, error: workItemsError } = await supabase
       .from('work_breakdown_items')
       .select('*')
-      .eq('project_id', share.project_id)
+      .eq('project_id', targetProjectId)
       .eq('user_id', share.user_id)
       .order('level')
       .order('position');
@@ -193,22 +221,34 @@ export async function GET(
 
     const workItemsTree = buildTree(workItems || []);
 
-    // 确保projects是单个对象而不是数组
-    const project = Array.isArray(share.projects) ? share.projects[0] : share.projects;
+    // 获取当前显示的项目信息
+    const currentProject = validProjects.find(p => p.id === targetProjectId) || validProjects[0];
 
     return NextResponse.json({
+      // 当前显示的项目信息
       project: {
-        id: project?.id,
-        name: project?.name,
-        code: project?.code,
-        description: project?.description
+        id: currentProject.id,
+        name: currentProject.name,
+        code: currentProject.code,
+        description: currentProject.description
       },
+      // 所有可用的项目列表
+      available_projects: validProjects.map(p => ({
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        description: p.description
+      })),
+      // 当前项目的工作分解数据
       work_items: workItemsTree,
+      // 分享信息
       share_info: {
         has_password: !!share.password_hash,
         expires_at: share.expires_at,
         shared_by: sharedBy,
-        created_at: share.created_at
+        created_at: share.created_at,
+        project_count: validProjects.length,
+        current_project_id: targetProjectId
       }
     });
 
