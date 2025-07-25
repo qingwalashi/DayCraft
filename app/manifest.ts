@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'DayCraft - 智能日报助手',
+    name: 'DayCraft - 专业工作管理平台',
     short_name: 'DayCraft',
-    description: '简化日报和周报创建过程的专业工具',
+    description: '集项目管理、日报撰写、进度跟踪于一体的现代化工作平台',
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',

@@ -31,12 +31,12 @@ export default function Home() {
           <div className="flex flex-col lg:flex-row items-center">
             <div className="lg:w-1/2 lg:pr-12 w-full">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-                <span className="text-blue-600">DayCraft</span> 
-                <span className="block mt-2">智能日报助手</span>
+                <span className="text-blue-600">DayCraft</span>
+                <span className="block mt-2">专业工作管理平台</span>
               </h1>
               <p className="mt-4 text-lg sm:text-xl text-gray-600 leading-relaxed">
-                告别繁琐的日报撰写，专注于真正的工作。
-                我们的AI助手帮您整理、记录和生成专业的日报和周报，提高工作效率。
+                集项目管理、日报撰写、进度跟踪于一体的现代化工作平台。
+                通过结构化的工作分解和智能化的报告生成，让您的工作更有条理，汇报更加专业。
               </p>
               <div className="mt-6 flex flex-wrap gap-4">
                 <Link 
@@ -61,7 +61,7 @@ export default function Home() {
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="ml-2 text-sm text-gray-600">智能日报管理</p>
+                  <p className="ml-2 text-sm text-gray-600">项目管理</p>
                 </div>
                 <div className="flex items-start">
                   <div className="flex-shrink-0 h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center">
@@ -69,7 +69,7 @@ export default function Home() {
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="ml-2 text-sm text-gray-600">自动周报生成</p>
+                  <p className="ml-2 text-sm text-gray-600">智能日报</p>
                 </div>
                 <div className="flex items-start">
                   <div className="flex-shrink-0 h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center">
@@ -77,7 +77,7 @@ export default function Home() {
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="ml-2 text-sm text-gray-600">AI内容润色</p>
+                  <p className="ml-2 text-sm text-gray-600">自动周报</p>
                 </div>
                 <div className="flex items-start">
                   <div className="flex-shrink-0 h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center">
@@ -85,7 +85,7 @@ export default function Home() {
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="ml-2 text-sm text-gray-600">项目进度跟踪</p>
+                  <p className="ml-2 text-sm text-gray-600">进度跟踪</p>
                 </div>
               </div>
             </div>
@@ -122,7 +122,7 @@ export default function Home() {
       <footer className="py-4 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
         <div className="max-w-6xl mx-auto text-center">
           <div className="text-sm text-blue-100">
-            © 2025 DayCraft AI 提供技术支持
+            © 2025 DayCraft - 专业工作管理平台
           </div>
         </div>
       </footer>

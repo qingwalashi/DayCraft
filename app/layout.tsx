@@ -20,11 +20,11 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "DayCraft - 智能日报助手",
-  description: "简化日报和周报创建过程的专业工具",
+  title: "DayCraft - 专业工作管理平台",
+  description: "集项目管理、日报撰写、进度跟踪于一体的现代化工作平台，让您的工作更有条理，汇报更加专业",
   generator: "Next.js",
   manifest: "/manifest.webmanifest",
-  keywords: ["日报", "周报", "工作报告", "效率工具", "PWA"],
+  keywords: ["项目管理", "日报", "周报", "工作分解", "进度跟踪", "工作报告", "效率工具", "PWA"],
   authors: [
     {
       name: "DayCraft团队",
