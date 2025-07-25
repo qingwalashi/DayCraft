@@ -199,10 +199,15 @@ export default function NewProjectWeeklyReportPage() {
   }, [supabase, user]);
 
   // 加载现有的项目周报数据
-  const fetchExistingReport = useCallback(async (forceUpdate: boolean = false) => {
+  const fetchExistingReport = useCallback(async (targetYear: number, targetWeek: number, forceUpdate: boolean = false) => {
     if (!user) return;
 
+    // 使用传入的参数
+    const reportYear = targetYear;
+    const reportWeek = targetWeek;
+
     // 检查是否正在请求中，避免重复请求
+    const requestKey = `${reportYear}-${reportWeek}`;
     if (isRequestingRef.current) {
       console.log('项目周报编辑页面正在请求中，跳过重复请求');
       return;
@@ -214,7 +219,7 @@ export default function NewProjectWeeklyReportPage() {
       return;
     }
 
-    console.log(`加载项目周报编辑数据${forceUpdate ? '(强制刷新)' : ''}`);
+    console.log(`加载项目周报编辑数据${forceUpdate ? '(强制刷新)' : ''}: ${reportYear}年第${reportWeek}周`);
 
     // 设置请求状态
     isRequestingRef.current = true;
@@ -224,37 +229,37 @@ export default function NewProjectWeeklyReportPage() {
         .from('project_weekly_reports')
         .select('*')
         .eq('user_id', user.id)
-        .eq('year', year)
-        .eq('week_number', weekNumber)
+        .eq('year', reportYear)
+        .eq('week_number', reportWeek)
         .maybeSingle();
-      
+
       if (reportError && reportError.code !== 'PGRST116') {
         throw reportError;
       }
-      
+
       if (reportData) {
         setReportId(reportData.id as string);
         setIsPlan((reportData as any).is_plan || false);
-        
+
         // 加载报告条目
         const { data: itemsData, error: itemsError } = await supabase
           .from('project_weekly_report_items')
           .select('*')
           .eq('report_id', reportData.id as string);
-        
+
         if (itemsError) {
           throw itemsError;
         }
-        
+
         const items: WorkItem[] = itemsData?.map((item: any) => ({
           id: item.id,
           content: item.content,
           projectId: item.project_id,
           workItemId: item.work_item_id || undefined
         })) || [];
-        
+
         setWorkItems(items);
-        
+
         // 为每个项目加载工作分解项
         const projectIds = Array.from(new Set(items.map(item => item.projectId)));
         for (const projectId of projectIds) {
@@ -273,7 +278,7 @@ export default function NewProjectWeeklyReportPage() {
       isRequestingRef.current = false;
       setIsLoading(false);
     }
-  }, [supabase, user, year, weekNumber, fetchWorkBreakdownItems]);
+  }, [supabase, user, fetchWorkBreakdownItems]);
 
   // 添加工作项 - 使用选择的项目ID
   const addWorkItem = async () => {
@@ -639,7 +644,7 @@ export default function NewProjectWeeklyReportPage() {
   };
 
   // 切换到上一周
-  const goToPreviousWeek = () => {
+  const goToPreviousWeek = async () => {
     const currentDate = new Date(year, 0, 1 + (weekNumber - 1) * 7);
     const previousWeek = new Date(currentDate);
     previousWeek.setDate(currentDate.getDate() - 7);
@@ -652,12 +657,18 @@ export default function NewProjectWeeklyReportPage() {
     setWorkItems([]);
     setIsPlan(false);
 
+    // 重置数据加载状态，允许重新加载
+    dataLoadedRef.current = false;
+
     setYear(newYear);
     setWeekNumber(newWeek);
+
+    // 直接加载新周的数据
+    await fetchExistingReport(newYear, newWeek, true);
   };
 
   // 切换到下一周
-  const goToNextWeek = () => {
+  const goToNextWeek = async () => {
     const currentDate = new Date(year, 0, 1 + (weekNumber - 1) * 7);
     const nextWeek = new Date(currentDate);
     nextWeek.setDate(currentDate.getDate() + 7);
@@ -670,8 +681,14 @@ export default function NewProjectWeeklyReportPage() {
     setWorkItems([]);
     setIsPlan(false);
 
+    // 重置数据加载状态，允许重新加载
+    dataLoadedRef.current = false;
+
     setYear(newYear);
     setWeekNumber(newWeek);
+
+    // 直接加载新周的数据
+    await fetchExistingReport(newYear, newWeek, true);
   };
 
   // 复制为Markdown格式
@@ -899,32 +916,79 @@ export default function NewProjectWeeklyReportPage() {
   useEffect(() => {
     if (user && !dataLoadedRef.current) {
       fetchProjects();
-      fetchExistingReport();
-      urlParamsCheckedRef.current = true;
-    }
-  }, [user, fetchProjects, fetchExistingReport]);
 
-  // 监听年份和周数变化，重新加载数据
-  useEffect(() => {
-    if (user && dataLoadedRef.current) {
-      // 重置报告ID，因为切换了时间
-      setReportId('');
-      // 清空当前工作项内容
-      setWorkItems([]);
-      // 重置计划状态
-      setIsPlan(false);
-      // 重新加载该周的报告数据
-      fetchExistingReport(true);
+      // 检查URL参数
+      const checkUrlParams = async () => {
+        if (urlParamsCheckedRef.current) return;
+
+        try {
+          // 检查URL参数中是否有年份和周数
+          const urlParams = new URLSearchParams(window.location.search);
+          const yearParam = urlParams.get('year');
+          const weekParam = urlParams.get('week');
+
+          if (yearParam && weekParam) {
+            const targetYear = parseInt(yearParam);
+            const targetWeek = parseInt(weekParam);
+            console.log(`从URL参数获取年份和周数: ${targetYear}年第${targetWeek}周`);
+            setYear(targetYear);
+            setWeekNumber(targetWeek);
+            // 重新加载该周的报告数据
+            await fetchExistingReport(targetYear, targetWeek, true);
+          } else {
+            // 检查当前选择的年份和周数是否已存在报告
+            await fetchExistingReport(year, weekNumber);
+          }
+
+          urlParamsCheckedRef.current = true;
+        } catch (error) {
+          console.error('检查URL参数时出错', error);
+        }
+      };
+
+      checkUrlParams();
     }
-  }, [year, weekNumber, user, fetchExistingReport]);
+  }, [user]);
 
   // 添加页面可见性监听
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('项目周报编辑页面恢复可见，保持现有数据');
-          // 不再自动刷新数据，保持现有数据
+          console.log('项目周报编辑页面恢复可见');
+
+          // 不再自动刷新数据
+          console.log('保持现有数据，不自动刷新');
+
+          // 仅在必要时检查URL参数（避免频繁重新加载周报内容）
+          if (!urlParamsCheckedRef.current) {
+            setTimeout(async () => {
+              try {
+                // 检查URL参数中是否有年份和周数
+                const urlParams = new URLSearchParams(window.location.search);
+                const yearParam = urlParams.get('year');
+                const weekParam = urlParams.get('week');
+
+                if (yearParam && weekParam) {
+                  const targetYear = parseInt(yearParam);
+                  const targetWeek = parseInt(weekParam);
+                  console.log(`从URL参数获取年份和周数: ${targetYear}年第${targetWeek}周`);
+                  setYear(targetYear);
+                  setWeekNumber(targetWeek);
+                  // 重新加载该周的报告数据
+                  await fetchExistingReport(targetYear, targetWeek, true);
+                } else {
+                  // 检查当前选择的年份和周数是否已存在报告
+                  await fetchExistingReport(year, weekNumber);
+                }
+
+                urlParamsCheckedRef.current = true;
+                console.log('URL参数已检查');
+              } catch (error) {
+                console.error('检查URL参数时出错', error);
+              }
+            }, 100);
+          }
         }
       };
 
@@ -933,7 +997,7 @@ export default function NewProjectWeeklyReportPage() {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, []);
+  }, []); // 移除所有依赖项
 
   return (
     <div className="space-y-6">
