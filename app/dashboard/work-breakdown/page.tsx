@@ -2799,14 +2799,29 @@ export default function WorkBreakdownPage() {
                         } else {
                           // 如果没有选中工作项，计算项目整体进度
                           const currentItems = selectedStatuses.length > 0 ? filteredWorkItems : workItems;
-                          itemsToAnalyze = Array.isArray(currentItems) ? currentItems : [];
+
+                          // 收集所有层级的工作项（包括子项）
+                          const collectAllItems = (items: WorkItem[]): WorkItem[] => {
+                            const result: WorkItem[] = [];
+                            items.forEach(item => {
+                              if (item) {
+                                result.push(item);
+                                if (item.children && Array.isArray(item.children) && item.children.length > 0) {
+                                  result.push(...collectAllItems(item.children));
+                                }
+                              }
+                            });
+                            return result;
+                          };
+
+                          itemsToAnalyze = Array.isArray(currentItems) ? collectAllItems(currentItems) : [];
 
                           // 计算顶级工作项的加权平均进度（复用各工作项的进度计算逻辑）
-                          if (itemsToAnalyze.length > 0) {
-                            const totalProgress = itemsToAnalyze.reduce((sum, item) => {
+                          if (currentItems.length > 0) {
+                            const totalProgress = currentItems.reduce((sum, item) => {
                               return sum + getItemProgress(item);
                             }, 0);
-                            overallProgress = totalProgress / itemsToAnalyze.length;
+                            overallProgress = totalProgress / currentItems.length;
                           } else {
                             overallProgress = 0;
                           }
