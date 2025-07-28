@@ -634,6 +634,18 @@ export class WorkBreakdownService {
       throw new Error('导出Excel文件失败：' + (error instanceof Error ? error.message : '未知错误'));
     }
   }
+
+  // 导出为Excel层级合并版文件
+  exportToExcelHierarchy(workItems: WorkItem[], projectName: string): void {
+    try {
+      const blob = this.excelConverter.exportToExcelHierarchy(workItems, projectName);
+      // 使用file-saver保存文件
+      saveAs(blob, `${projectName || '工作分解'}_层级合并版.xlsx`);
+    } catch (error) {
+      console.error('导出Excel层级合并版文件失败', error);
+      throw new Error('导出Excel层级合并版文件失败：' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }
   
   // 下载Excel导入模板
   downloadExcelTemplate(): void {

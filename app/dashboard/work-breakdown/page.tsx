@@ -365,6 +365,7 @@ export default function WorkBreakdownPage() {
   
   // 添加导入导出相关状态
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingExcelHierarchy, setIsExportingExcelHierarchy] = useState(false);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
@@ -1424,7 +1425,7 @@ export default function WorkBreakdownPage() {
       toast.error('没有可导出的工作项');
       return;
     }
-    
+
     setIsExportingExcel(true);
     try {
       workBreakdownService.exportToExcel(workItems, selectedProject.name);
@@ -1434,6 +1435,26 @@ export default function WorkBreakdownPage() {
       toast.error(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsExportingExcel(false);
+    }
+  };
+
+  // 导出为Excel层级合并版
+  const handleExportExcelHierarchy = () => {
+    if (!selectedProject || !workItems.length) {
+      toast.error('没有可导出的工作项');
+      return;
+    }
+
+    setIsExportingExcelHierarchy(true);
+    try {
+      workBreakdownService.exportToExcelHierarchy(workItems, selectedProject.name);
+      toast.success('导出Excel层级合并版成功');
+    } catch (error) {
+      console.error('导出层级合并版失败', error);
+      toast.error(`导出层级合并版失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsExportingExcelHierarchy(false);
+      setShowImportExportMenu(false);
     }
   };
   
@@ -2563,7 +2584,25 @@ export default function WorkBreakdownPage() {
                       </>
                     )}
                   </button>
-                  
+
+                  <button
+                    onClick={handleExportExcelHierarchy}
+                    disabled={isExportingExcelHierarchy || !workItems.length}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  >
+                    {isExportingExcelHierarchy ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 mr-2 border-2 border-t-transparent border-gray-700 rounded-full"></div>
+                        导出层级合并版中...
+                      </>
+                    ) : (
+                      <>
+                        <FileSpreadsheetIcon className="h-4 w-4 mr-2" />
+                        导出Excel（层级合并版）
+                      </>
+                    )}
+                  </button>
+
                   <button
                     onClick={handleImportExcelClick}
                     disabled={isImportingExcel}
