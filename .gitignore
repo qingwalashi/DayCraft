@@ -53,3 +53,6 @@ public/worker-*.js.map
 
 # 缓存
 .swc/ 
+
+# supbase 备份目录
+supabase_backups/
